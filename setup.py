@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
 setup(
-  name = 'diffusion_policy',
+  name = 'imitation',
   packages = find_packages(),
 )

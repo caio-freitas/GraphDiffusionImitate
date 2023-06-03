@@ -10,3 +10,5 @@ dependencies:
   - hydra-core
   - pip:
     - pytorchvideo
+    - gymnasium
+    - gym

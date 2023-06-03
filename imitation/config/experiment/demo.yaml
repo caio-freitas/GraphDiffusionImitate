@@ -1,0 +1,7 @@
+name: demo
+seed: 0
+n_steps: 100
+n_episodes: 1
+env_runner: "KitchenPoseRunner"
+
+output_dir: "output/demo"
