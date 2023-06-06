@@ -1,11 +1,13 @@
+from abc import ABC, abstractmethod
 from typing import Dict
 import torch
 
-class BasePolicy:
+class BasePolicy(ABC):
     def __init__(self, env):
         self.action_space = env.action_space
         self.observation_space = env.observation_space
-        
+    
+    @abstractmethod
     def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
         obs_dict:

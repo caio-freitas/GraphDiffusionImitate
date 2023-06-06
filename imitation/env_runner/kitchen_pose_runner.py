@@ -1,12 +1,12 @@
 from typing import Dict
 import gymnasium as gym
+from imitation.agent.base_agent import BaseAgent
 from imitation.env_runner.base_runner import BaseRunner
 from imitation.policy.base_policy import BasePolicy
-from imitation.policy.random_policy import RandomPolicy
 
 
 class KitchenPoseRunner(BaseRunner):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir) -> None:
         super().__init__(output_dir)
         self.env = gym.make(
             'FrankaKitchen-v1',
@@ -19,12 +19,12 @@ class KitchenPoseRunner(BaseRunner):
     def reset(self) -> None:
         self.obs = self.env.reset()
 
-    def run(self, policy: BasePolicy, n_steps: int) -> Dict:
+    def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         print(self.env.metadata["render_modes"])
 
         for i in range(n_steps):
             self.env.render()
-            obs = self.env.step(policy.predict_action(self.obs))
-            print(obs[0]["observation"][:10])
+            self.obs = self.env.step(agent.act(self.obs))
+            print(self.obs[0]["observation"][:10])
         self.env.close()
 
