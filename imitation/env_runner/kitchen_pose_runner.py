@@ -1,9 +1,11 @@
+import logging
 from typing import Dict
 import gymnasium as gym
 from imitation.agent.base_agent import BaseAgent
 from imitation.env_runner.base_runner import BaseRunner
 from imitation.policy.base_policy import BasePolicy
 
+log = logging.getLogger(__name__)
 
 class KitchenPoseRunner(BaseRunner):
     def __init__(self, output_dir) -> None:
@@ -20,11 +22,9 @@ class KitchenPoseRunner(BaseRunner):
         self.obs = self.env.reset()
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
-        print(self.env.metadata["render_modes"])
-
+        log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         for i in range(n_steps):
             self.env.render()
             self.obs = self.env.step(agent.act(self.obs))
-            print(self.obs[0]["observation"][:10])
         self.env.close()
 
