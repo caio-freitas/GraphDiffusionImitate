@@ -11,14 +11,14 @@ import wandb.sdk.data_types.video as wv
 import gym
 import gym.spaces
 import multiprocessing as mp
-from diffusion_policy.gym_util.async_vector_env import AsyncVectorEnv
-from diffusion_policy.gym_util.sync_vector_env import SyncVectorEnv
-from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
-from diffusion_policy.gym_util.video_recording_wrapper import VideoRecordingWrapper, VideoRecorder
+from imitation.gym_util.async_vector_env import AsyncVectorEnv
+from imitation.gym_util.sync_vector_env import SyncVectorEnv
+from imitation.gym_util.multistep_wrapper import MultiStepWrapper
+from imitation.gym_util.video_recording_wrapper import VideoRecordingWrapper, VideoRecorder
 
-from diffusion_policy.policy.base_lowdim_policy import BaseLowdimPolicy
-from diffusion_policy.common.pytorch_util import dict_apply
-from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
+from imitation.policy.base_lowdim_policy import BaseLowdimPolicy
+from imitation.common.pytorch_util import dict_apply
+from imitation.env_runner.base_lowdim_runner import BaseLowdimRunner
 
 module_logger = logging.getLogger(__name__)
 
@@ -53,8 +53,8 @@ class KitchenLowdimRunner(BaseLowdimRunner):
         steps_per_render = int(max(task_fps // fps, 1))
 
         def env_fn():
-            from diffusion_policy.env.kitchen.v0 import KitchenAllV0
-            from diffusion_policy.env.kitchen.kitchen_lowdim_wrapper import KitchenLowdimWrapper
+            from imitation.env.kitchen.v0 import KitchenAllV0
+            from imitation.env.kitchen.kitchen_lowdim_wrapper import KitchenLowdimWrapper
             env = KitchenAllV0(use_abs_action=abs_action)
             env.robot_noise_ratio = robot_noise_ratio
             return MultiStepWrapper(
@@ -100,7 +100,7 @@ class KitchenLowdimRunner(BaseLowdimRunner):
                 init_qvel = all_init_qvel[i]
 
             def init_fn(env, init_qpos=init_qpos, init_qvel=init_qvel, enable_render=enable_render):
-                from diffusion_policy.env.kitchen.kitchen_lowdim_wrapper import KitchenLowdimWrapper
+                from imitation.env.kitchen.kitchen_lowdim_wrapper import KitchenLowdimWrapper
                 # setup rendering
                 # video_wrapper
                 assert isinstance(env.env, VideoRecordingWrapper)
@@ -128,7 +128,7 @@ class KitchenLowdimRunner(BaseLowdimRunner):
             enable_render = i < n_test_vis
 
             def init_fn(env, seed=seed, enable_render=enable_render):
-                from diffusion_policy.env.kitchen.kitchen_lowdim_wrapper import KitchenLowdimWrapper
+                from imitation.env.kitchen.kitchen_lowdim_wrapper import KitchenLowdimWrapper
                 # setup rendering
                 # video_wrapper
                 assert isinstance(env.env, VideoRecordingWrapper)

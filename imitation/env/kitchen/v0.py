@@ -1,4 +1,4 @@
-from diffusion_policy.env.kitchen.base import KitchenBase
+from imitation.env.kitchen.base import KitchenBase
 
 
 class KitchenMicrowaveKettleBottomBurnerLightV0(KitchenBase):
