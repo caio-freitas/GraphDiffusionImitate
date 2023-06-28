@@ -3,51 +3,71 @@ import torch
 import numpy as np
 import copy
 import pathlib
+import wandb
 from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.common.replay_buffer import ReplayBuffer
 from diffusion_policy.common.sampler import SequenceSampler, get_val_mask
-from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFieldLinearNormalizer
+from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
+import logging
 
-class KitchenLowdimDataset(BaseLowdimDataset):
+module_logger = logging.getLogger(__name__)
+
+class KitchenStatesDataset(BaseLowdimDataset):
     def __init__(self,
             dataset_dir,
             horizon=1,
             pad_before=0,
             pad_after=0,
             seed=42,
-            val_ratio=0.0
-        ):
+            val_ratio=0.0,
+            max_train_episodes=None
+    ):
         super().__init__()
-
+        
         data_directory = pathlib.Path(dataset_dir)
         observations = np.load(data_directory / "observations_seq.npy")
         actions = np.load(data_directory / "actions_seq.npy")
         masks = np.load(data_directory / "existence_mask.npy")
 
+        # remove the last dimension of the observations (to match with the gym ennvironment dimentions)
+        observations = observations[:, :, :-1]
+        
+        # log summary of the dataset to logger
+        module_logger.info(f'observations shape: {observations.shape}')
+        module_logger.info(f'actions shape: {actions.shape}')
+        module_logger.info(f'masks shape: {masks.shape}')
+        
+        # print instance of actions
+        module_logger.info(f'sample action{actions[0]}')
+
+        
+        # create replay buffer
         self.replay_buffer = ReplayBuffer.create_empty_numpy()
-        for i in range(len(masks)):
+        for i in range(len(masks)): # for each episode/trajectory
             eps_len = int(masks[i].sum())
             obs = observations[i,:eps_len].astype(np.float32)
             action = actions[i,:eps_len].astype(np.float32)
-            data = {                              
+            data = {
                 'obs': obs,
                 'action': action
             }
             self.replay_buffer.add_episode(data)
-        
+        # print instance of replay buffer
+        module_logger.info(f'sample replay buffer: {self.replay_buffer}')
+
         val_mask = get_val_mask(
-            n_episodes=self.replay_buffer.n_episodes, 
+            n_episodes=self.replay_buffer.n_episodes,
             val_ratio=val_ratio,
             seed=seed)
         train_mask = ~val_mask
         self.sampler = SequenceSampler(
-            replay_buffer=self.replay_buffer, 
+            replay_buffer=self.replay_buffer,
             sequence_length=horizon,
-            pad_before=pad_before, 
+            pad_before=pad_before,
             pad_after=pad_after,
             episode_mask=train_mask)
-
+        
         self.train_mask = train_mask
         self.horizon = horizon
         self.pad_before = pad_before
@@ -56,15 +76,15 @@ class KitchenLowdimDataset(BaseLowdimDataset):
     def get_validation_dataset(self):
         val_set = copy.copy(self)
         val_set.sampler = SequenceSampler(
-            replay_buffer=self.replay_buffer, 
+            replay_buffer=self.replay_buffer,
             sequence_length=self.horizon,
-            pad_before=self.pad_before, 
+            pad_before=self.pad_before,
             pad_after=self.pad_after,
             episode_mask=~self.train_mask
-            )
+        )
         val_set.train_mask = ~self.train_mask
         return val_set
-
+    
     def get_normalizer(self, mode='limits', **kwargs):
         data = {
             'obs': self.replay_buffer['obs'],

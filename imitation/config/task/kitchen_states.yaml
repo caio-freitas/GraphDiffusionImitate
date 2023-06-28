@@ -1,0 +1,36 @@
+name: kitchen_states
+
+obs_dim: 59 # states in kitchen environment
+action_dim: 9 # actions in kitchen environment
+
+dataset_dir: &dataset_dir data/kitchen
+
+
+env_runner:
+  _target_: diffusion_policy.env_runner.kitchen_states_runner.KitchenStatesRunner
+  dataset_dir: *dataset_dir
+  n_train: 6
+  n_train_vis: 2
+  train_start_seed: 0
+  n_test: 50
+  n_test_vis: 4
+  legacy_test: True
+  test_start_seed: 100000
+  max_steps: 300
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  n_latency_steps: ${n_latency_steps}
+  fps: 10
+  agent_keypoints: False
+  past_action: ${past_action_visible}
+  n_envs: null
+
+dataset:
+  _target_: diffusion_policy.dataset.kitchen_states_dataset.KitchenStatesDataset
+  dataset_dir: *dataset_dir
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1+${n_latency_steps}'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.02
+  max_train_episodes: 90
