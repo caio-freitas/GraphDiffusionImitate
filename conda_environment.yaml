@@ -12,3 +12,4 @@ dependencies:
     - pytorchvideo
     - gymnasium
     - gym
+    - -e git+https://github.com/columbia-ai-robotics/diffusion_policy#egg=diffusion_policy
