@@ -25,6 +25,7 @@ class KitchenPoseRunner(BaseRunner):
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         for i in range(n_steps):
             self.env.render()
-            self.obs = self.env.step(agent.act(self.obs))
+            self.obs = self.env.step(agent.act(self.obs))[:10]
+            log.info(f"obs: {self.obs}")
         self.env.close()
 

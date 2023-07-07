@@ -8,9 +8,14 @@ dependencies:
   - python=3.8
   - pip
   - hydra-core
+  - pytorch==2.0.0
+  - torchvision==0.15.1
+  - libglew1.5 # for robomimic
   - pip:
     - pytorchvideo
     - gymnasium==0.28.1
-    - gym==0.26.2
+    - gym
+    - robomimic
+    - -e git+https://github.com/ARISE-Initiative/robosuite.git@v1.4.1#egg=robosuite
     - -e git+https://github.com/columbia-ai-robotics/diffusion_policy#egg=diffusion_policy
-    - torch==1.12.1 # +cu102
+    - mujoco-py

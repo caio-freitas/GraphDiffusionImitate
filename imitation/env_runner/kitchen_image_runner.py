@@ -4,7 +4,7 @@ import gymnasium as gym
 from imitation.agent.base_agent import BaseAgent
 from imitation.env_runner.base_runner import BaseRunner
 from imitation.policy.base_policy import BasePolicy
-from imitation.env.kitchen_pose.kitchen_wrappers import KitchenImageWrapper
+from imitation.env.kitchen_pose.gym_kitchen_wrappers import KitchenImageWrapper
 
 log = logging.getLogger(__name__)
 
