@@ -140,6 +140,31 @@ class DiffusionAlgoCNN(PolicyAlgo):
         # TODO send process to device
         return data
         
+    def postprocess_batch_for_training(self, batch, obs_normalization_stats):
+        """
+        Args:
+            batch (dict): dictionary with torch.Tensors sampled
+                from a data loader. Assumed to be on the device where
+                training will occur (after @process_batch_for_training
+                is called)
+
+            obs_normalization_stats (dict or None): if provided, this should map observation 
+                keys to dicts with a "mean" and "std" of shape (1, ...) where ... is the 
+                default shape for the observation.
+
+        Returns:
+            batch (dict): postproceesed batch
+            
+        """
+        # Not normalize (already done in process_batch_for_training)
+        
+        # send to device
+        import torch
+        for k, v in batch.items():
+            if isinstance(v, torch.Tensor):
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+        return batch
+    
     def train_on_batch(self, batch, epoch, validate=False):
         
         # configure ema        
