@@ -74,9 +74,9 @@ class DiffusionAlgoCNN(PolicyAlgo):
         self._step_count = 0
         
         # configure normalizer
-        self.normalizer = LinearNormalizer() # TODO not normalize per batch, but per rollout
+        normalizer = LinearNormalizer() # TODO not normalize per batch, but per rollout
 
-        self.nets["policy"].set_normalizer(self.normalizer)
+        self.nets["policy"].set_normalizer(normalizer)
 
 
     def _create_optimizer(self):
@@ -127,14 +127,16 @@ class DiffusionAlgoCNN(PolicyAlgo):
         obs = batch["obs"]
         # filter out desired observations
         # obs = {"robot0_eef_pos": obs["robot0_eef_pos"]}
-        obs = list(obs.values())
+        # obs = list(obs.values())
+        obs = obs["robot0_eef_pos"]
         data = {
             "action": action,
             "obs": obs
         }
         # data = list(data.values())
         # auto normalize
-        self.normalizer.fit(data=data, last_n_dims=1)
+        print(self.nets["policy"].normalizer)
+        self.nets["policy"].normalizer.fit(data=data, last_n_dims=1)
         # TODO send process to device
         return data
         
