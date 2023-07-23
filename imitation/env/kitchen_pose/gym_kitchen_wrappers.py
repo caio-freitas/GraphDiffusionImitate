@@ -4,8 +4,7 @@ class KitchenPoseWrapper(gym.Wrapper):
     '''
     Wrapper for FrankaKitchen-v1 environment with joint values and end effector position as observations
     '''
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self):
         self.observation_space = gym.spaces.Box(low=-1, high=1, shape=(10,))
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(7,))
         self.env = gym.make(

@@ -4,15 +4,11 @@ import torch
 
 class BasePolicy(ABC):
     def __init__(self, env):
-        self.action_space = env.action_space
-        self.observation_space = env.observation_space
-    
+        pass
     @abstractmethod
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def get_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
-        obs_dict:
-            str: B,To,*
-        return: B,Ta,Da
+        Given an observation, return an action.
         """
         raise NotImplementedError()
 
