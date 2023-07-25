@@ -1,7 +1,6 @@
 num_episodes: 2
-max_episode_steps: 100
+max_steps: 100
 output_dir: ./output
-
 
 
 env_runner: 

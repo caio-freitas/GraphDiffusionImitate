@@ -20,7 +20,7 @@ def test(cfg):
     print(OmegaConf.to_yaml(cfg))
     log.info("Running test...")
     # instanciate environment runner from cfg file
-    runner = hydra.utils.instantiate(cfg.env_runner, output_dir=cfg.output_dir)
+    runner = hydra.utils.instantiate(cfg.env_runner)
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy, env=runner.env)
     # instanciate agent from policy
@@ -29,7 +29,7 @@ def test(cfg):
     # run policy in environment
     for i in range(cfg.num_episodes):
         runner.reset()
-        runner.run(agent, cfg.max_episode_steps)
+        runner.run(agent, cfg.max_steps)
 
 
 if __name__ == "__main__":

@@ -16,19 +16,28 @@ from imitation.env_runner.base_runner import BaseRunner
 log = logging.getLogger(__name__)
 
 class PushtDiffusionRunner(BaseRunner):
-    def __init__(self, output_dir) -> None:
+    def __init__(self,
+                 output_dir: str,
+                 obs_dim: int,
+                 action_dim: int,
+                 pred_horizon: int,
+                 obs_horizon: int,
+                 action_horizon: int,
+                 max_steps: int,
+                 ) -> None:
         super().__init__(output_dir)
+
         # parameters    
-        self.obs_dim = 5
-        self.action_dim = 2
-        
-        self.pred_horizon = 16
-        self.obs_horizon = 2
-        self.action_horizon = 8
-        self.max_steps = 200 # TODO add to param file
+        self.obs_dim        = obs_dim
+        self.action_dim     = action_dim
+        self.pred_horizon   = pred_horizon
+        self.obs_horizon    = obs_horizon
+        self.action_horizon = action_horizon
+        self.max_steps      = max_steps
         self.env = PushTEnv()
         self.obs = self.env.reset()
-        # keep a queue of last 2 steps of observations
+
+        # keep a queue of last 2 steps of observations (obs_horizon)
         self.obs_deque = collections.deque(
             [self.obs] * self.obs_horizon, maxlen=self.obs_horizon)
         

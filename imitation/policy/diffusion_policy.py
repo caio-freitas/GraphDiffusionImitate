@@ -31,12 +31,12 @@ def unnormalize_data(ndata, stats):
 class DiffusionUnet1DPolicy(BasePolicy):
     def __init__(self, 
                     env,
-                    obs_dim = 5,
-                    action_dim = 2,
-                    pred_horizon = 16,
-                    obs_horizon = 2,
-                    action_horizon = 2,
-                    num_diffusion_iters = 1000):
+                    obs_dim: int,
+                    action_dim: int,
+                    pred_horizon: int,
+                    obs_horizon: int,
+                    action_horizon: int,
+                    num_diffusion_iters: int):
         super().__init__(env)
         self.env = env
         self.obs_dim = obs_dim
@@ -47,8 +47,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.action_horizon = action_horizon
         self.num_diffusion_iters = num_diffusion_iters
 
-        self.device = torch.device("cpu") # torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
+
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
             # the choise of beta schedule has big impact on performance
@@ -80,10 +81,11 @@ class DiffusionUnet1DPolicy(BasePolicy):
         state_dict = torch.load(ckpt_path, map_location='cuda')
         self.ema_noise_pred_net = noise_pred_net
         self.ema_noise_pred_net.load_state_dict(state_dict)
-        print('Pretrained weights loaded.')
+        self.ema_noise_pred_net.to(self.device)
+        log.info( 'Pretrained weights loaded.')
 
     def _init_stats(self):
-        logging.log(logging.INFO, "Initializing data statistics from given dataset")
+        log.info("Initializing data statistics from given dataset")
         # download demonstration data from Google Drive
         dataset_path = "pusht_cchi_v7_replay.zarr.zip"
         if not os.path.isfile(dataset_path):
@@ -114,8 +116,8 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
         # visualize data in batch
         batch = next(iter(dataloader))
-        logging.log(logging.INFO, f"batch['obs'].shape:{batch['obs'].shape}")
-        logging.log(logging.INFO, f"batch['action'].shape: {batch['action'].shape}")
+        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
+        log.info(f"batch['action'].shape: {batch['action'].shape}")
 
     def get_action(self, obs_seq):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
@@ -153,7 +155,6 @@ class DiffusionUnet1DPolicy(BasePolicy):
         # (B, pred_horizon, action_dim)
         naction = naction[0]
         action_pred = unnormalize_data(naction, stats=self.stats['action'])
-
 
         # action here is an array with length action_horizon
         return action_pred
