@@ -7,8 +7,6 @@ import hydra
 import pathlib
 from omegaconf import DictConfig, OmegaConf
 import logging
-    
-
 
 
 log = logging.getLogger(__name__)
@@ -16,7 +14,7 @@ log = logging.getLogger(__name__)
 @hydra.main(
         version_base=None,
         config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
-        config_name="test_diffusion"
+        config_name="test_pusht_diffusion"
         )
 def test(cfg):
     print(OmegaConf.to_yaml(cfg))

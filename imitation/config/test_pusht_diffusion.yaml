@@ -1,0 +1,14 @@
+num_episodes: 2
+max_episode_steps: 100
+output_dir: ./output
+
+
+
+env_runner: 
+  _target_: imitation.env_runner.pusht_diffusion_runner.PushtDiffusionRunner
+
+policy:
+  _target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy
+
+agent:
+  _target_: imitation.agent.pusht_agent.PushTAgent
