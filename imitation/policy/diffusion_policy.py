@@ -6,9 +6,9 @@ import logging
 
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
+from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 
 from imitation.policy.base_policy import BasePolicy
-from imitation.dataset.pusht_state_dataset import PushTStateDataset
 from imitation.model.diffusion_policy.conditional_unet1d import ConditionalUnet1D
 
 
@@ -36,11 +36,15 @@ class DiffusionUnet1DPolicy(BasePolicy):
                     pred_horizon: int,
                     obs_horizon: int,
                     action_horizon: int,
-                    num_diffusion_iters: int):
+                    num_diffusion_iters: int,
+                    dataset: BaseLowdimDataset,
+                    ckpt_path: str):
         super().__init__(env)
+        self.dataset = dataset
         self.env = env
         self.obs_dim = obs_dim
         self.action_dim = action_dim
+        self.ckpt_path = ckpt_path
         
         self.pred_horizon = pred_horizon
         self.obs_horizon = obs_horizon
@@ -62,21 +66,20 @@ class DiffusionUnet1DPolicy(BasePolicy):
         )
         
 
-        self._load_nets()
+        self._load_nets(self.ckpt_path)
         self._init_stats()
 
-    def _load_nets(self):
+    def _load_nets(self, ckpt_path):
         # create network object
         noise_pred_net = ConditionalUnet1D(
             input_dim=self.action_dim,
             global_cond_dim=self.obs_dim*self.obs_horizon,
             kernel_size=5
         )
-        # load from checkpoint
-        ckpt_path = "pusht_state_100ep.ckpt"
+
+        # download pretrained weights from Google Drive
         if not os.path.isfile(ckpt_path):
-            id = "1mHDr_DEZSdiGo9yecL50BBQYzR8Fjhl_&confirm=t"
-            gdown.download(id=id, output=ckpt_path, quiet=False)
+            raise FileNotFoundError(f"Pretrained weights not found at {ckpt_path}. ")
 
         state_dict = torch.load(ckpt_path, map_location='cuda')
         self.ema_noise_pred_net = noise_pred_net
@@ -85,26 +88,12 @@ class DiffusionUnet1DPolicy(BasePolicy):
         log.info( 'Pretrained weights loaded.')
 
     def _init_stats(self):
-        log.info("Initializing data statistics from given dataset")
-        # download demonstration data from Google Drive
-        dataset_path = "pusht_cchi_v7_replay.zarr.zip"
-        if not os.path.isfile(dataset_path):
-            id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
-            gdown.download(id=id, output=dataset_path, quiet=False)
-
-        # create dataset from file
-        dataset = PushTStateDataset(
-            dataset_path=dataset_path,
-            pred_horizon=self.pred_horizon,
-            obs_horizon=self.obs_horizon,
-            action_horizon=self.action_horizon
-        )
         # save training data statistics (min, max) for each dim
-        self.stats = dataset.stats
+        self.stats = self.dataset.stats
 
         # create dataloader
         dataloader = torch.utils.data.DataLoader(
-            dataset,
+            self.dataset,
             batch_size=256,
             num_workers=1,
             shuffle=True,

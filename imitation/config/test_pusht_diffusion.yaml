@@ -27,6 +27,14 @@ policy:
   obs_horizon: ${obs_horizon}
   action_horizon: ${action_horizon}
   num_diffusion_iters: 100
+  dataset:
+    _target_: imitation.dataset.pusht_state_dataset.PushTStateDataset
+    dataset_path: ./pusht_cchi_v7_replay.zarr.zip
+    pred_horizon: ${pred_horizon}
+    obs_horizon: ${obs_horizon}
+    action_horizon: ${action_horizon}
+  ckpt_path: ./pusht_state_100ep.ckpt
+
 
 agent:
   _target_: imitation.agent.pusht_agent.PushTAgent
