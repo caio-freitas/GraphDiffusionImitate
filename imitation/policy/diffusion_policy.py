@@ -1,8 +1,14 @@
 import logging
 import os
 
+import numpy as np
 import torch
+import torch.nn as nn
+
+from tqdm.auto import tqdm
+from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+
 from imitation.model.diffusion_policy.conditional_unet1d import \
     ConditionalUnet1D
 from imitation.policy.base_policy import BasePolicy
@@ -51,6 +57,13 @@ class DiffusionUnet1DPolicy(BasePolicy):
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cpu")
 
+        # create network object
+        self.noise_pred_net = ConditionalUnet1D(
+            input_dim=self.action_dim,
+            global_cond_dim=self.obs_dim*self.obs_horizon,
+            kernel_size=5
+        )
+
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
             # the choise of beta schedule has big impact on performance
@@ -63,23 +76,16 @@ class DiffusionUnet1DPolicy(BasePolicy):
         )
         
 
-        self._load_nets(self.ckpt_path)
+        # self._load_nets(self.ckpt_path)
         self._init_stats()
 
     def _load_nets(self, ckpt_path):
-        # create network object
-        noise_pred_net = ConditionalUnet1D(
-            input_dim=self.action_dim,
-            global_cond_dim=self.obs_dim*self.obs_horizon,
-            kernel_size=5
-        )
-
         # download pretrained weights from Google Drive
         if not os.path.isfile(ckpt_path):
             raise FileNotFoundError(f"Pretrained weights not found at {ckpt_path}. ")
 
         state_dict = torch.load(ckpt_path, map_location='cuda')
-        self.ema_noise_pred_net = noise_pred_net
+        self.ema_noise_pred_net = self.noise_pred_net
         self.ema_noise_pred_net.load_state_dict(state_dict)
         self.ema_noise_pred_net.to(self.device)
         log.info( 'Pretrained weights loaded.')
@@ -89,9 +95,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.stats = self.dataset.stats
 
         # create dataloader
-        dataloader = torch.utils.data.DataLoader(
+        self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
-            batch_size=256,
+            batch_size=256, # TODO add to parameter file
             num_workers=1,
             shuffle=True,
             # accelerate cpu-gpu transfer
@@ -101,7 +107,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         )
 
         # visualize data in batch
-        batch = next(iter(dataloader))
+        batch = next(iter(self.dataloader))
         log.info(f"batch['obs'].shape:{batch['obs'].shape}")
         log.info(f"batch['action'].shape: {batch['action'].shape}")
 
@@ -144,3 +150,104 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
         # action here is an array with length action_horizon
         return action_pred
+
+
+    def train(self, 
+              dataset=None, 
+              num_epochs=100,
+              model_path="last.pt"):
+        '''
+        Trains the noise prediction network, using self.dataset
+        Resulting in the self.ema_noise_pred_net object.
+        '''
+        log.info('Training noise prediction network.')
+            
+        # Exponential Moving Average
+        # accelerates training and improves stability
+        # holds a copy of the model weights
+
+        # TODO use EMA
+        # ema = EMAModel(
+        #     model=noise_pred_net,
+        #     power=0.75)
+
+        # Standard ADAM optimizer
+        # Note that EMA parametesr are not optimized
+        optimizer = torch.optim.AdamW(
+            params=self.noise_pred_net.parameters(),
+            lr=1e-4, weight_decay=1e-6)
+
+        # Cosine LR schedule with linear warmup
+        lr_scheduler = get_scheduler(
+            name='cosine',
+            optimizer=optimizer,
+            num_warmup_steps=500,
+            num_training_steps=len(self.dataloader) * num_epochs
+        )
+
+        with tqdm(range(num_epochs), desc='Epoch') as tglobal:
+            # epoch loop
+            for epoch_idx in tglobal:
+                epoch_loss = list()
+                # batch loop
+                with tqdm(self.dataloader, desc='Batch', leave=False) as tepoch:
+                    for nbatch in tepoch:
+                        # data normalized in dataset
+                        # device transfer
+                        nobs = nbatch['obs'].to(self.device)
+                        naction = nbatch['action'].to(self.device)
+                        B = nobs.shape[0]
+
+                        # observation as FiLM conditioning
+                        # (B, obs_horizon, obs_dim)
+                        obs_cond = nobs[:,:self.obs_horizon,:]
+                        # (B, obs_horizon * obs_dim)
+                        obs_cond = obs_cond.flatten(start_dim=1)
+
+                        # sample noise to add to actions
+                        noise = torch.randn(naction.shape, device=self.device)
+
+                        # sample a diffusion iteration for each data point
+                        timesteps = torch.randint(
+                            0, self.noise_scheduler.config.num_train_timesteps,
+                            (B,), device=self.device
+                        ).long()
+
+                        # add noise to the clean images according to the noise magnitude at each diffusion iteration
+                        # (this is the forward diffusion process)
+                        noisy_actions = self.noise_scheduler.add_noise(
+                            naction, noise, timesteps)
+
+                        # predict the noise residual
+                        noise_pred = self.noise_pred_net(
+                            noisy_actions, timesteps, global_cond=obs_cond)
+
+                        # L2 loss
+                        loss = nn.functional.mse_loss(noise_pred, noise)
+
+                        # optimize
+                        loss.backward()
+                        optimizer.step()
+                        optimizer.zero_grad()
+
+                        # step lr scheduler every batch
+                        # this is different from standard pytorch behavior
+                        lr_scheduler.step()
+
+                        # TODO use EMA
+                        # update Exponential Moving Average of the model weights
+                        # ema.step(noise_pred_net)
+
+
+                        # logging
+                        loss_cpu = loss.item()
+                        epoch_loss.append(loss_cpu)
+                        tepoch.set_postfix(loss=loss_cpu)
+                tglobal.set_postfix(loss=np.mean(epoch_loss))
+                # save model checkpoint
+                torch.save(self.noise_pred_net.state_dict(), model_path)
+
+        # Weights of the EMA model
+        # is used for inference
+        # ema_noise_pred_net = ema.averaged_model
+        self.ema_noise_pred_net = self.noise_pred_net
