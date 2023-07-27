@@ -3,11 +3,11 @@ Script to test a specific policy in an enviroment
 Usage: python test.py --config-name=train
 '''
 
-import hydra
-import pathlib
-from omegaconf import DictConfig, OmegaConf
 import logging
+import pathlib
 
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
 

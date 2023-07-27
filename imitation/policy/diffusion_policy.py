@@ -1,16 +1,13 @@
-import torch
-import os
-import gdown
-import numpy as np
 import logging
+import os
 
+import torch
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from imitation.model.diffusion_policy.conditional_unet1d import \
+    ConditionalUnet1D
+from imitation.policy.base_policy import BasePolicy
 
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
-
-from imitation.policy.base_policy import BasePolicy
-from imitation.model.diffusion_policy.conditional_unet1d import ConditionalUnet1D
-
 
 log = logging.getLogger(__name__)
 
