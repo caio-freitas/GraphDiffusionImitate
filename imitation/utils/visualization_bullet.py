@@ -1,7 +1,7 @@
 import os
 import pybullet as p
 from scipy.spatial.transform import Rotation
-from plan_lib.utils import to_numpy
+from .generic import to_numpy
 
 
 
