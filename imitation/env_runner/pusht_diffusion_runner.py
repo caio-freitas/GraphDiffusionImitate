@@ -1,10 +1,8 @@
 import collections
 import logging
-from typing import Dict
-import torch
 import numpy as np
-import os
-import gdown
+from typing import Dict
+
 
 from diffusion_policy.env.pusht.pusht_env import PushTEnv
 
@@ -47,7 +45,7 @@ class PushtDiffusionRunner(BaseRunner):
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
-
+        agent.policy.load_nets(agent.policy.ckpt_path)
         done = False
         step_idx = 0
         for i in range(n_steps):
