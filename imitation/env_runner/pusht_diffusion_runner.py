@@ -45,7 +45,7 @@ class PushtDiffusionRunner(BaseRunner):
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
-
+        agent.policy.load_nets(agent.policy.ckpt_path)
         done = False
         step_idx = 0
         for i in range(n_steps):

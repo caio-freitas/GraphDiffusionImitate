@@ -76,10 +76,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
         )
         
 
-        # self._load_nets(self.ckpt_path)
         self._init_stats()
 
-    def _load_nets(self, ckpt_path):
+    def load_nets(self, ckpt_path):
         # download pretrained weights from Google Drive
         if not os.path.isfile(ckpt_path):
             raise FileNotFoundError(f"Pretrained weights not found at {ckpt_path}. ")

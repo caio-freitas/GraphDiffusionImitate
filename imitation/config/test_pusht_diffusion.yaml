@@ -33,8 +33,7 @@ policy:
     pred_horizon: ${pred_horizon}
     obs_horizon: ${obs_horizon}
     action_horizon: ${action_horizon}
-  ckpt_path: ./pusht_state_100ep.ckpt
-
+  ckpt_path: ./weights/pusht_state.pt
 
 agent:
   _target_: imitation.agent.pusht_agent.PushTAgent
