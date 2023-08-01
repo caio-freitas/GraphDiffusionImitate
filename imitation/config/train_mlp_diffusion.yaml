@@ -1,0 +1,46 @@
+num_episodes: 2
+output_dir: ./output
+
+# Environment
+obs_dim: 5
+action_dim: 2
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
+max_steps: 200
+
+# Training parameters
+num_epochs: 100
+model_path: ./weights/mlp_diffusion_last.pt
+
+
+env_runner: 
+  _target_: imitation.env_runner.pusht_diffusion_runner.PushtDiffusionRunner
+  output_dir: ${output_dir}
+  obs_dim: ${obs_dim}
+  action_dim: ${action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  max_steps: ${max_steps}
+
+
+policy:
+  _target_: imitation.policy.mlp_diffusion_policy.MLPDiffusionUnet1DPolicy
+  obs_dim: ${obs_dim}
+  action_dim: ${action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  num_diffusion_iters: 100
+  dataset:
+    _target_: imitation.dataset.pusht_state_dataset.PushTStateDataset
+    dataset_path: ./pusht_cchi_v7_replay.zarr.zip
+    pred_horizon: ${pred_horizon}
+    obs_horizon: ${obs_horizon}
+    action_horizon: ${action_horizon}
+  ckpt_path: ./weights/mlp_pusht_diffusion.ckpt
+
+
+agent:
+  _target_: imitation.agent.pusht_agent.PushTAgent
