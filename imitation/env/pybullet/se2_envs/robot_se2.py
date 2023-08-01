@@ -59,7 +59,7 @@ class SE2Bot:
         flags = p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
 
         ## URDF FILE ##
-        base_dir = os.path.abspath(__file__ + '/../../../../')
+        base_dir = os.path.abspath(__file__ + '/../../../../../')
         robot_dir = os.path.join(base_dir, 'assets/robot/se2_bot_description/robot')
         robot_file = 'robot.urdf'
         urdf_file = os.path.join(robot_dir, robot_file)
