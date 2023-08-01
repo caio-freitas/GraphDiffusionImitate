@@ -56,8 +56,9 @@ class MLPDiffusionUnet1DPolicy(BasePolicy):
 
         # create network object
         self.noise_pred_net = MLPNet(
-            input_dim=self.action_dim,
-            hidden_dims=[256, 128, 64, 128, 256],
+            input_dim=self.action_dim + self.obs_dim,
+            output_dim=self.action_dim,
+            hidden_dims=[256, 64, 4, 2, 64],
             activation=torch.nn.LeakyReLU(),
             output_activation=torch.nn.Identity()
         )
@@ -110,7 +111,7 @@ class MLPDiffusionUnet1DPolicy(BasePolicy):
 
     def get_action(self, obs_seq):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
-        nobs = normalize_data(obs_seq, stats=self.stats['obs'])
+        nobs = normalize_data([obs_seq], stats=self.stats['obs'])
         # device transfer
         nobs = torch.from_numpy(nobs).to(self.device, dtype=torch.float32)
         with torch.no_grad():
@@ -119,12 +120,15 @@ class MLPDiffusionUnet1DPolicy(BasePolicy):
                 (B, self.pred_horizon, self.action_dim), device=self.device)
             naction = noisy_action
 
+            action_obs = torch.cat([naction, nobs], dim=-1)
+
             # init scheduler
             self.noise_scheduler.set_timesteps(self.num_diffusion_iters)
 
             for k in self.noise_scheduler.timesteps:
                 # predict noise
-                noise_pred = self.ema_noise_pred_net(naction)
+
+                noise_pred = self.ema_noise_pred_net(action_obs)
 
                 # inverse diffusion step (remove noise)
                 naction = self.noise_scheduler.step(
@@ -174,8 +178,10 @@ class MLPDiffusionUnet1DPolicy(BasePolicy):
                     for nbatch in tepoch:
                         # data normalized in dataset
                         # device transfer
+                        nobs = nbatch['obs'].to(self.device)
+                        # obs_cond = nobs.flatten(start_dim=1)
                         naction = nbatch['action'].to(self.device)
-                        B = naction.shape[0]
+                        B = nobs.shape[0]
 
                         # sample noise to add to actions
                         noise = torch.randn(naction.shape, device=self.device)
@@ -189,11 +195,10 @@ class MLPDiffusionUnet1DPolicy(BasePolicy):
                         # (this is the forward diffusion process)
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
-
+                        
                         # predict the noise residual
                         noise_pred = self.noise_pred_net(
-                            noisy_actions)
-
+                            torch.cat([noisy_actions, nobs], dim=-1))
                         # L2 loss
                         loss = torch.nn.functional.mse_loss(noise_pred, noise)
 

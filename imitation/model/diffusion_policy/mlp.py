@@ -2,13 +2,15 @@ from torch import nn
 
 class MLPNet(nn.Module):
     def __init__(self, 
-                 input_dim, # Diffusion models -> input_dim = output_dim
+                 input_dim,
+                 output_dim,
                  hidden_dims=[64, 64],
                  activation=nn.ReLU(),
                  output_activation=nn.Identity(),
                  ):
         super().__init__()
         self.input_dim = input_dim
+        self.output_dim = output_dim
         self.hidden_dims = hidden_dims
         self.activation = activation
         self.output_activation = output_activation
@@ -22,7 +24,7 @@ class MLPNet(nn.Module):
                 nn.Linear(self.hidden_dims[i], self.hidden_dims[i+1]),
                 self.activation,
             ) for i in range(len(self.hidden_dims)-1)],
-            nn.Linear(self.hidden_dims[-1], self.input_dim)
+            nn.Linear(self.hidden_dims[-1], self.output_dim)
         )
     def forward(self, x):
         x = self.flatten(x)
