@@ -3,36 +3,20 @@ Usage:
 Training:
 python demo_env.py
 """
-import time
-import torch
 import logging
+import pathlib
 import random
-import pybullet as p
-import numpy as np
 import time
 from typing import Optional
-import matplotlib.pyplot as plt
-import pathlib
 
-from stoch_gpmp.planner import StochGPMP
-from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoal, CostGoalPrior
-
-from torch_kinematics_tree.models.robot_tree import DifferentiableTree
-from torch_planning_objectives.fields.distance_fields import EESE3DistanceField, LinkDistanceField, FloorDistanceField, LinkSelfDistanceField
-from torch_kinematics_tree.geometrics.frame import Frame
-from torch_kinematics_tree.geometrics.skeleton import get_skeleton_from_model
-from torch_kinematics_tree.geometrics.spatial_vector import (
-    z_rot,
-    y_rot,
-    x_rot,
-)
-from robot_envs.pybullet.utils import random_init_static_sphere
-
-
-
-from tqdm.auto import tqdm
-from omegaconf import DictConfig
+import numpy as np
+import torch
 from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
+from imitation.utils.stochgpmp import plan_stochgpmp, plot_trajectory
+from omegaconf import DictConfig
+from robot_envs.pybullet.utils import random_init_static_sphere
+from torch_kinematics_tree.geometrics.spatial_vector import x_rot, y_rot, z_rot
+from torch_kinematics_tree.models.robot_tree import DifferentiableTree
 
 
 class DifferentiableSE2(DifferentiableTree):
@@ -51,25 +35,7 @@ EPISODES = 3
 MAX_STEPS = 1000
 
 
-def plot(robot_fk,
-         start_q,
-         traj,
-         target_pos,
-         obstacle_spheres):
-    plt.figure()
-    ax = plt.axes(projection='3d')
-    skeleton = get_skeleton_from_model(robot_fk, start_q, robot_fk.get_link_names()) # visualize IK solution
-    skeleton.draw_skeleton(color='r', ax=ax)
-    for t in range(traj.shape[0] - 1):
-        if t % 4 == 0:
-            skeleton = get_skeleton_from_model(robot_fk, traj[t], robot_fk.get_link_names())
-            skeleton.draw_skeleton(color='b', ax=ax)
-        
-    skeleton = get_skeleton_from_model(robot_fk, traj[-1], robot_fk.get_link_names())
-    skeleton.draw_skeleton(color='g', ax=ax)
-    ax.plot(target_pos[0], target_pos[1], target_pos[2], 'r*', markersize=7)
-    ax.scatter(obstacle_spheres[0, :, 0], obstacle_spheres[0, :, 1], obstacle_spheres[0, :, 2], s=obstacle_spheres[0, :, 3]*2000, color='r')
-    plt.show()
+
 
 def demo():
     log.info("Running demo...")
@@ -108,8 +74,6 @@ def demo():
 
     # FK
     robot_fk = DifferentiableSE2()
-    # robot_fk.print_link_names()
-    n_dof = env.dof
     # start & goal
     start_q = torch.tensor(env.getJointStates()[0],**tensor_args)
     start_state = torch.cat((start_q, torch.zeros_like(start_q)))
@@ -124,113 +88,46 @@ def demo():
     # world setup (target_pos & target_rot can be randomized)
     target_pos = np.array([0.0, 1.0, 0.0])
     target_rot = (z_rot(-torch.tensor(torch.pi)) @ y_rot(-torch.tensor(torch.pi))).to(**tensor_args)
-    target_frame = Frame(rot=target_rot, trans=torch.from_numpy(target_pos).to(**tensor_args), device=device)
-    target_quat = target_frame.get_quaternion().squeeze().cpu().numpy()  # [x, y, z, w]
-    target_H = target_frame.get_transform_matrix()  # set translation and orientation of target here
-
-
-    q_goal = p.calculateInverseKinematics(env.robot,
-                                          env.JOINT_ID[-1],
-                                          target_pos, 
-                                          target_quat)[:n_dof]
     
-    q_goal = torch.tensor(q_goal, **tensor_args)
-    multi_goal_states = torch.cat([q_goal, torch.zeros_like(q_goal)]).unsqueeze(0)  # put IK solution
-
-    # Cost functions
-    robot_self_link = LinkSelfDistanceField(margin=0.03)
-    robot_collision_link = LinkDistanceField()
-    robot_goal = EESE3DistanceField(target_H)
-
-    # Factored Cost params
-    prior_sigmas = dict(
-        sigma_start=0.0001,
-        sigma_gp=0.0007,
-    )
-    sigma_self = 0.0001
-    sigma_coll = 10
-    sigma_goal = 0.00007
-    sigma_goal_prior = 0.0001
-    # Construct cost function
-    cost_prior = CostGP(
-        n_dof, traj_len, start_state, dt,
-        prior_sigmas, tensor_args
-    )
-    cost_self = CostCollision(n_dof, traj_len, field=robot_self_link, sigma_coll=sigma_self)
-    cost_coll = CostCollision(n_dof, traj_len, field=robot_collision_link, sigma_coll=sigma_coll)
-    cost_goal = CostGoal(n_dof, traj_len, field=robot_goal, sigma_goal=sigma_goal)
-    cost_goal_prior = CostGoalPrior(n_dof, traj_len, multi_goal_states=multi_goal_states, 
-                                    num_particles_per_goal=num_particles_per_goal, 
-                                    num_samples=num_samples, 
-                                    sigma_goal_prior=sigma_goal_prior,
-                                    tensor_args=tensor_args)
-    cost_func_list = [cost_prior, cost_goal_prior, cost_self, cost_coll, cost_goal]
-    cost_composite = CostComposite(n_dof, traj_len, cost_func_list, FK=robot_fk.compute_forward_kinematics_all_links)
-    ## Planner - 2D point particle dynamics
-    stochgpmp_params = dict(
+    pos, vel = plan_stochgpmp(
+        env,
+        robot_fk,
+        start_state=start_state,
+        target_pos=target_pos,
+        target_rot=target_rot,
         num_particles_per_goal=num_particles_per_goal,
         num_samples=num_samples,
+        tensor_args=tensor_args,
         traj_len=traj_len,
         dt=dt,
-        n_dof=n_dof,
-        opt_iters=1, # Keep this 1 for visualization
-        temperature=1.,
-        start_state=start_state,
-        multi_goal_states=multi_goal_states,
-        cost=cost_composite,
-        step_size=0.2,
-        sigma_start_init=0.0001,
-        sigma_goal_init=0.1,
-        sigma_gp_init=0.1,
-        sigma_start_sample=0.0001,
-        sigma_goal_sample=0.07,
-        sigma_gp_sample=0.02,
-        seed=seed,
-        tensor_args=tensor_args,
+        obstacle_spheres=obstacle_spheres,
+        seed=seed
+
     )
-    planner = StochGPMP(**stochgpmp_params)
-    obstacle_spheres = torch.from_numpy(obstacle_spheres).to(**tensor_args)
-
-    obs = {
-        'obstacle_spheres': obstacle_spheres
-    }
-
-    #---------------------------------------------------------------------------
-    # Optimize
-    opt_iters =  100
-
-    with tqdm(range(opt_iters + 1), desc='Optimization Step', leave=False, ) as tstep:
-        for i in tstep:
-            time_start = time.time()
-            planner.optimize(**obs)
-            print(f'Time(s) per iter: {time.time() - time_start} sec')
-            pos, vel = planner.get_recent_samples()
 
     # Plotting
     start_q = start_state.detach().cpu().numpy()
     env.step(start_q)
     trajs = pos.detach()
-    obstacle_spheres = obstacle_spheres.detach().cpu().numpy()
 
-    print(trajs.shape)
     for traj in trajs:
-        print("Restarting position")
+        log.info("Restarting position")
         env.reset()
         env.step(start_q)
         time.sleep(0.2)
         traj = traj.mean(dim=0)
-        print(traj.shape)
         for t in range(traj.shape[0] - 1):
             for i in range(10):
                 env.step(traj[t])
                 time.sleep(0.01)
             time.sleep(dt)
 
+        # final position
         for i in range (100):
             env.step(traj[-1])
             time.sleep(0.01)
         time.sleep(1)
-        plot(
+        plot_trajectory(
             robot_fk,
             start_q,
             traj,
