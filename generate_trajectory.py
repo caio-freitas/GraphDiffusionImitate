@@ -65,11 +65,11 @@ def plot(robot_fk,
             skeleton = get_skeleton_from_model(robot_fk, traj[t], robot_fk.get_link_names())
             skeleton.draw_skeleton(color='b', ax=ax)
         
-        skeleton = get_skeleton_from_model(robot_fk, traj[-1], robot_fk.get_link_names())
-        skeleton.draw_skeleton(color='g', ax=ax)
-        ax.plot(target_pos[0], target_pos[1], target_pos[2], 'r*', markersize=7)
-        ax.scatter(obstacle_spheres[0, :, 0], obstacle_spheres[0, :, 1], obstacle_spheres[0, :, 2], s=obstacle_spheres[0, :, 3]*2000, color='r')
-        plt.show()
+    skeleton = get_skeleton_from_model(robot_fk, traj[-1], robot_fk.get_link_names())
+    skeleton.draw_skeleton(color='g', ax=ax)
+    ax.plot(target_pos[0], target_pos[1], target_pos[2], 'r*', markersize=7)
+    ax.scatter(obstacle_spheres[0, :, 0], obstacle_spheres[0, :, 1], obstacle_spheres[0, :, 2], s=obstacle_spheres[0, :, 3]*2000, color='r')
+    plt.show()
 
 def demo():
     log.info("Running demo...")
@@ -197,7 +197,7 @@ def demo():
 
     #---------------------------------------------------------------------------
     # Optimize
-    opt_iters =  400 # 400
+    opt_iters =  100
 
     with tqdm(range(opt_iters + 1), desc='Optimization Step', leave=False, ) as tstep:
         for i in tstep:
@@ -215,7 +215,6 @@ def demo():
     print(trajs.shape)
     for traj in trajs:
         print("Restarting position")
-        # for i in range(100):
         env.reset()
         env.step(start_q)
         time.sleep(0.2)
