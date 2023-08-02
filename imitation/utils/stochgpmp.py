@@ -75,12 +75,12 @@ def plan_stochgpmp(env,
     # Factored Cost params
     prior_sigmas = dict(
         sigma_start=0.0001,
-        sigma_gp=0.0007,
+        sigma_gp=0.07,
     )
-    sigma_self = 0.0001
-    sigma_coll = 10
-    sigma_goal = 0.00007
-    sigma_goal_prior = 0.0001
+    sigma_self = 0.001
+    sigma_coll = 1e-5
+    sigma_goal = 0.007
+    sigma_goal_prior = 0.001
     # Construct cost function
     cost_prior = CostGP(
         env.dof, traj_len, start_state, dt,
@@ -108,13 +108,13 @@ def plan_stochgpmp(env,
         start_state=start_state,
         multi_goal_states=multi_goal_states,
         cost=cost_composite,
-        step_size=0.2,
+        step_size=0.5,
         sigma_start_init=0.0001,
-        sigma_goal_init=0.1,
-        sigma_gp_init=0.1,
+        sigma_goal_init=0.0001,
+        sigma_gp_init=50,
         sigma_start_sample=0.0001,
-        sigma_goal_sample=0.07,
-        sigma_gp_sample=0.02,
+        sigma_goal_sample=0.0001,
+        sigma_gp_sample=0.5,
         seed=seed,
         tensor_args=tensor_args,
     )
@@ -127,7 +127,7 @@ def plan_stochgpmp(env,
 
     #---------------------------------------------------------------------------
     # Optimize
-    opt_iters =  100
+    opt_iters =  400
 
     with tqdm(range(opt_iters + 1), desc='Optimization Step', leave=False, ) as tstep:
         for i in tstep:

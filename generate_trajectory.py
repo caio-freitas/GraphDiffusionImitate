@@ -46,18 +46,18 @@ def demo():
     seed = int(time.time())
     num_particles_per_goal = 10
     num_samples = 32
-    num_obst = 3
+    num_obst = 2
     traj_len = 64
-    dt = 0.05 # TODO consider this in planner
+    dt = 0.1 # TODO consider this in planner
     # set seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
     # spawn obstacles
-    obst_r = [0.1, 0.2]
-    obst_range_lower = np.array([0.6, -0.2, 0])
-    obst_range_upper = np.array([1., 0.2, 0])
+    obst_r = [0.05, 0.1]
+    obst_range_lower = np.array([-0.5 , -0.5, 0])
+    obst_range_upper = np.array([-0.5, 0.5, 0])
     obstacle_spheres = np.zeros((1, num_obst, 4))
     for i in range(num_obst):
         r, pos = random_init_static_sphere(obst_r[0], obst_r[1], obst_range_lower, obst_range_upper, 0.01)
