@@ -81,8 +81,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
     def load_nets(self, ckpt_path):
         # download pretrained weights from Google Drive
         if not os.path.isfile(ckpt_path):
-            raise FileNotFoundError(f"Pretrained weights not found at {ckpt_path}. ")
-
+            log.error(f"Pretrained weights not found at {ckpt_path}. ")
+            self.ema_noise_pred_net = self.noise_pred_net
+            return
         state_dict = torch.load(ckpt_path, map_location='cuda')
         self.ema_noise_pred_net = self.noise_pred_net
         self.ema_noise_pred_net.load_state_dict(state_dict)
