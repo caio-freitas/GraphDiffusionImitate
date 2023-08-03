@@ -8,11 +8,12 @@ import pathlib
 import random
 import time
 from typing import Optional
-
+import hydra
 import numpy as np
+from omegaconf import DictConfig, OmegaConf
 import torch
 from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
-from imitation.utils.stochgpmp import plan_stochgpmp, plot_trajectory
+from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
 from omegaconf import DictConfig
 from robot_envs.pybullet.utils import random_init_static_sphere
 from torch_kinematics_tree.geometrics.spatial_vector import x_rot, y_rot, z_rot
@@ -36,26 +37,33 @@ MAX_STEPS = 1000
 
 
 
+@hydra.main(
+        version_base=None,
+        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
+        config_name="stochgpmp_se2"
+        )
+def generate(cfg: DictConfig):
+    log.info(OmegaConf.to_yaml(cfg))
+    log.info("Running trajectories from StochGPMP...")
 
-def demo():
-    log.info("Running demo...")
     device = torch.device('cpu')
     tensor_args = {'device': device, 'dtype': torch.float32}
 
 
     seed = int(time.time())
-    num_particles_per_goal = 10
-    num_samples = 32
-    num_obst = 2
-    traj_len = 64
-    dt = 0.1 # TODO consider this in planner
+    num_particles_per_goal = cfg.num_particles_per_goal
+    num_samples = cfg.num_samples
+    num_obst = cfg.num_obst
+    traj_len = cfg.traj_len
+    dt = cfg.dt
+
     # set seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
     # spawn obstacles
-    obst_r = [0.05, 0.1]
+    obst_r = [0.05, 0.1] # TODO add to config
     obst_range_lower = np.array([-0.5 , -0.5, 0])
     obst_range_upper = np.array([-0.5, 0.5, 0])
     obstacle_spheres = np.zeros((1, num_obst, 4))
@@ -74,10 +82,13 @@ def demo():
 
     # FK
     robot_fk = DifferentiableSE2()
-    # start & goal
+    # start state from simulation 
     start_q = torch.tensor(env.getJointStates()[0],**tensor_args)
     start_state = torch.cat((start_q, torch.zeros_like(start_q)))
-    # use IK solution from pybullet
+
+    # start state from config
+    # start_state = torch.tensor(cfg.start_state, **tensor_args)
+    # env.step(start_state)
 
     # print info about the robot
     log.info("Environment info:")
@@ -86,23 +97,28 @@ def demo():
 
 
     # world setup (target_pos & target_rot can be randomized)
-    target_pos = np.array([0.0, 1.0, 0.0])
+    target_pos = np.array(cfg.target_pose)
     target_rot = (z_rot(-torch.tensor(torch.pi)) @ y_rot(-torch.tensor(torch.pi))).to(**tensor_args)
     
-    pos, vel = plan_stochgpmp(
+    planner = StochGPMPSE2Wrapper(
         env,
         robot_fk,
-        start_state=start_state,
+        start_state,
+        tensor_args,
+        seed,
+        cfg.stochgpmp_params
+    )
+
+    log.info(planner)
+    pos, vel = planner.plan_stochgpmp(
         target_pos=target_pos,
         target_rot=target_rot,
         num_particles_per_goal=num_particles_per_goal,
         num_samples=num_samples,
-        tensor_args=tensor_args,
         traj_len=traj_len,
         dt=dt,
         obstacle_spheres=obstacle_spheres,
-        seed=seed
-
+        opt_iters=cfg.opt_iters
     )
 
     # Plotting
@@ -138,4 +154,4 @@ def demo():
         
 
 if __name__ == "__main__":
-    demo()
+    generate()

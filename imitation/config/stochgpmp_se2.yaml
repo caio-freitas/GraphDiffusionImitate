@@ -1,0 +1,46 @@
+max_steps: 1000
+output_dir: ./output
+
+
+num_particles_per_goal: 10
+num_samples: 32
+num_obst: 2
+traj_len: 128
+dt: 0.05
+start_state: [0.0, -1.0, 0.0]
+target_pose: [0.0, 1.0, 0.0]
+#target_rot fixed
+seed: 0
+opt_iters:  10
+
+
+
+stochgpmp_params:
+  num_particles_per_goal: num_particles_per_goal
+  num_samples: num_samples
+  traj_len: traj_len
+  dt: dt
+  n_dof: self.env.dof
+  opt_iters: 1 # keep 1 for visualization
+  temperature: 1.
+  start_state: self.start_state
+  multi_goal_states: multi_goal_states
+  cost: cost_composite
+  step_size: 0.5
+  sigma_start_init: 0.0001
+  sigma_goal_init: 0.0001
+  sigma_gp_init: 50
+  sigma_start_sample: 0.0001
+  sigma_goal_sample: 0.0001
+  sigma_gp_sample: 0.5
+  seed: ${seed}
+  tensor_args: {device: cpu, dtype: float64}
+
+env_runner: 
+  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  output_dir: ${output_dir}
+
+planner:
+  # _partial_: true # other parameters (env and robot_fk) will be set on code
+  _target_: imitation.utils.stochgpmp.StochGPMPSE2Wrapper
+  seed: ${seed}
