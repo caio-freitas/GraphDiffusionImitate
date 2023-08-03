@@ -11,6 +11,7 @@ from typing import Optional
 import hydra
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
+import pybullet as p
 import torch
 from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
 from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
@@ -32,11 +33,6 @@ class DifferentiableSE2(DifferentiableTree):
 log = logging.getLogger(__name__)
 
 
-EPISODES = 3
-MAX_STEPS = 1000
-
-
-
 @hydra.main(
         version_base=None,
         config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
@@ -46,6 +42,7 @@ def generate(cfg: DictConfig):
     log.info(OmegaConf.to_yaml(cfg))
     log.info("Running trajectories from StochGPMP...")
 
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device('cpu')
     tensor_args = {'device': device, 'dtype': torch.float32}
 
@@ -75,20 +72,27 @@ def generate(cfg: DictConfig):
     env = SE2BotPickPlace(objects_list=['cube' for i in range((obstacle_spheres.shape[1]))],
                           obj_poses=[[obstacle_spheres[0][i,:3], [0,0,0,1]] for i in range(obstacle_spheres.shape[1])])
     
-    # env = SE2BotPickPlace()
-    env.reset()
 
     env.setControlMode("position")
 
     # FK
-    robot_fk = DifferentiableSE2()
+    robot_fk = DifferentiableSE2(device=device)
+    
+
+    # start state from config
+    start_pose = torch.tensor(cfg.start_pose, **tensor_args)
+    start_quat = torch.tensor(cfg.start_quat, **tensor_args)
+    start_joints = p.calculateInverseKinematics(env.robot,
+                                            env.JOINT_ID[-1],
+                                            start_pose, 
+                                            start_quat)[:env.dof]
+    start_joints = torch.tensor(start_joints, **tensor_args)
+    
+    env.reset(start_joints)
+
     # start state from simulation 
     start_q = torch.tensor(env.getJointStates()[0],**tensor_args)
     start_state = torch.cat((start_q, torch.zeros_like(start_q)))
-
-    # start state from config
-    # start_state = torch.tensor(cfg.start_state, **tensor_args)
-    # env.step(start_state)
 
     # print info about the robot
     log.info("Environment info:")
@@ -118,7 +122,13 @@ def generate(cfg: DictConfig):
         traj_len=traj_len,
         dt=dt,
         obstacle_spheres=obstacle_spheres,
-        opt_iters=cfg.opt_iters
+        opt_iters=cfg.opt_iters,
+        sigma_self=cfg.sigma_self,
+        sigma_coll=cfg.sigma_coll,
+        sigma_goal=cfg.sigma_goal,
+        sigma_goal_prior=cfg.sigma_goal_prior,
+        sigma_start=cfg.sigma_start,
+        sigma_gp=cfg.sigma_gp,
     )
 
     # Plotting
@@ -128,8 +138,7 @@ def generate(cfg: DictConfig):
 
     for traj in trajs:
         log.info("Restarting position")
-        env.reset()
-        env.step(start_q)
+        env.reset(start_joints)
         time.sleep(0.2)
         traj = traj.mean(dim=0)
         for t in range(traj.shape[0] - 1):

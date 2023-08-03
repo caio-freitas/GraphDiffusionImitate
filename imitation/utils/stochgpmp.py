@@ -60,7 +60,13 @@ class StochGPMPSE2Wrapper:
                     traj_len,
                     dt,
                     obstacle_spheres,
-                    opt_iters=100):
+                    opt_iters=100,
+                    sigma_self = 0.001,
+                    sigma_coll = 1e-5,
+                    sigma_goal = 0.007,
+                    sigma_goal_prior = 0.001,
+                    sigma_start=0.0001,
+                    sigma_gp=0.07):
         """
         Generate trajectories using stochgpmp
         """
@@ -85,13 +91,9 @@ class StochGPMPSE2Wrapper:
 
         # Factored Cost params
         prior_sigmas = dict(
-            sigma_start=0.0001,
-            sigma_gp=0.07,
+            sigma_start=sigma_start,
+            sigma_gp=sigma_gp,
         )
-        sigma_self = 0.001
-        sigma_coll = 1e-5
-        sigma_goal = 0.007
-        sigma_goal_prior = 0.001
         # Construct cost function
         cost_prior = CostGP(
             self.env.dof, traj_len, self.start_state, dt,
@@ -108,30 +110,14 @@ class StochGPMPSE2Wrapper:
         cost_func_list = [cost_prior, cost_goal_prior, cost_self, cost_coll, cost_goal]
         cost_composite = CostComposite(self.env.dof, traj_len, cost_func_list, FK=self.robot_fk.compute_forward_kinematics_all_links)
         ## Planner - 2D point particle dynamics
-        stochgpmp_params = dict(
-            num_particles_per_goal=num_particles_per_goal,
-            num_samples=num_samples,
-            traj_len=traj_len,
-            dt=dt,
-            n_dof=self.env.dof,
-            opt_iters=1, # Keep this 1 for visualization
-            temperature=1.,
-            start_state=self.start_state,
-            multi_goal_states=multi_goal_states,
-            cost=cost_composite,
-            step_size=0.5,
-            sigma_start_init=0.0001,
-            sigma_goal_init=0.0001,
-            sigma_gp_init=50,
-            sigma_start_sample=0.0001,
-            sigma_goal_sample=0.0001,
-            sigma_gp_sample=0.5,
-            seed=self.seed,
-            tensor_args=self.tensor_args,
-        )
+        stochgpmp_params = dict(**self.stochgpmp_params,
+                                n_dof=self.env.dof,
+                                start_state=self.start_state,
+                                cost=cost_composite,
+                                dt=dt)
 
 
-        planner = StochGPMP(**stochgpmp_params) # TODO use self.stochgpmp_params
+        planner = StochGPMP(**stochgpmp_params)
         obstacle_spheres = torch.from_numpy(obstacle_spheres).to(**self.tensor_args)
 
         obs = {
