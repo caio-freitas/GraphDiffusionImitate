@@ -2,7 +2,7 @@ import collections
 import logging
 import numpy as np
 from typing import Dict
-
+import time
 
 from diffusion_policy.env.pusht.pusht_env import PushTEnv
 
@@ -46,7 +46,7 @@ class PushtDiffusionRunner(BaseRunner):
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         agent.policy.load_nets(agent.policy.ckpt_path)
-        log.info(f"Model architecture: {agent.policy.noise_pred_net}")
+        log.info(f"Model architecture: {agent.policy}")
         done = False
         step_idx = 0
         for i in range(n_steps):
@@ -62,12 +62,11 @@ class PushtDiffusionRunner(BaseRunner):
             start = self.obs_horizon - 1
             end = start + self.action_horizon
             action = action_pred[start:end,:]
-
             # execute action_horizon number of steps
             # without replanning
-            for i in range(len(action)):
+            for j in range(len(action)):
                 # stepping env
-                obs, reward, done, info = self.env.step(action[i])
+                obs, reward, done, info = self.env.step(action[j])
                 # save observations
                 self.obs_deque.append(obs)
                 # and reward/vis
@@ -82,5 +81,7 @@ class PushtDiffusionRunner(BaseRunner):
                     done = True
                 if done:
                     break
-        
-        
+                i += 1
+            time.sleep(0.01)
+            if done:
+                break
