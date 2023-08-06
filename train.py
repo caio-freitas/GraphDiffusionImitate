@@ -24,8 +24,11 @@ def train(cfg: DictConfig) -> None:
     runner = hydra.utils.instantiate(cfg.env_runner)
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy, env=runner.env)
-    if cfg.policy.ckpt_path is not None:
-        policy.load_nets(cfg.policy.ckpt_path)
+    try:
+        if cfg.policy.ckpt_path is not None:
+            policy.load_nets(cfg.policy.ckpt_path)
+    except:
+        log.error("cfg.policy.ckpt_path doesn't exist")
     # train policy
     policy.train(dataset=policy.dataset,
                  num_epochs=cfg.num_epochs,

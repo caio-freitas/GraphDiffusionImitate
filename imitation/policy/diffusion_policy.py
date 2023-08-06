@@ -79,7 +79,6 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self._init_stats()
 
     def load_nets(self, ckpt_path):
-        # download pretrained weights from Google Drive
         if not os.path.isfile(ckpt_path):
             log.error(f"Pretrained weights not found at {ckpt_path}. ")
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)

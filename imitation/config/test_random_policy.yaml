@@ -1,13 +1,14 @@
 num_episodes: 2
-max_steps: 100
+max_steps: 1000
 output_dir: ./output
 
 
 env_runner: 
-  _target_: imitation.env_runner.kitchen_pose_runner.KitchenPoseRunner
+  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  output_dir: ${output_dir}
 
 policy:
   _target_: imitation.policy.random_policy.RandomPolicy
 
 agent:
-  _target_: imitation.agent.kitchen_agent.KitchenAgent
+  _target_: imitation.agent.robot_se2_agent.Se2Agent
