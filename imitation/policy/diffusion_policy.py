@@ -41,7 +41,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
                     action_horizon: int,
                     num_diffusion_iters: int,
                     dataset: BaseLowdimDataset,
-                    ckpt_path: str):
+                    ckpt_path= None):
         super().__init__(env)
         self.dataset = dataset
         self.env = env
@@ -54,8 +54,8 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.action_horizon = action_horizon
         self.num_diffusion_iters = num_diffusion_iters
 
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cpu")
 
         # create network object
         self.noise_pred_net = ConditionalUnet1D(
@@ -81,8 +81,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
     def load_nets(self, ckpt_path):
         # download pretrained weights from Google Drive
         if not os.path.isfile(ckpt_path):
-            raise FileNotFoundError(f"Pretrained weights not found at {ckpt_path}. ")
-
+            log.error(f"Pretrained weights not found at {ckpt_path}. ")
+            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+            return
         state_dict = torch.load(ckpt_path, map_location='cuda')
         self.ema_noise_pred_net = self.noise_pred_net
         self.ema_noise_pred_net.load_state_dict(state_dict)
@@ -172,6 +173,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
         # Standard ADAM optimizer
         # Note that EMA parametesr are not optimized
+        self.noise_pred_net.to(self.device)
         optimizer = torch.optim.AdamW(
             params=self.noise_pred_net.parameters(),
             lr=1e-4, weight_decay=1e-6)
