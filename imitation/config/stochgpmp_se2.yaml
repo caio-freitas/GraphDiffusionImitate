@@ -2,6 +2,8 @@ max_steps: 1000
 output_dir: ./output
 
 
+obs_horizon: 1
+
 num_particles_per_goal: 10
 num_samples: 32
 num_obst: 2

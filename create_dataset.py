@@ -60,7 +60,8 @@ def generate(cfg: DictConfig):
     torch.manual_seed(seed)
 
     # spawn obstacles
-    obst_r = [0.05, 0.1] # TODO add to config
+    # TODO fixed obstacles for now (add to config)
+    obst_r = [0.05, 0.1] 
     obst_range_lower = np.array([-0.5 , -0.5, 0])
     obst_range_upper = np.array([-0.5, 0.5, 0])
     obstacle_spheres = np.zeros((1, num_obst, 4))
@@ -134,38 +135,42 @@ def generate(cfg: DictConfig):
     # Plotting
     start_q = start_state.detach().cpu().numpy()
     env.step(start_q)
-    trajs = pos.detach()
-    trajs = trajs.mean(dim=0)
 
+    pos = pos.detach()
+    vel = vel.detach()
+    pos = pos.mean(dim=0)
+    vel = vel.mean(dim=0)
+    complete_traj = torch.cat((pos, vel), dim=-1)
+    observations = torch.empty((complete_traj.shape[0], complete_traj.shape[1]-1, complete_traj.shape[2]))
+    actions = torch.empty((complete_traj.shape[0], complete_traj.shape[1]-1, complete_traj.shape[2]))
+    horizon = cfg.obs_horizon
+    observations = complete_traj[:, :complete_traj.shape[1]-horizon, :]
+    actions = complete_traj[:, horizon:, :]
     # save trajectories
     with h5py.File('./data/trajs.hdf5', 'w') as f:
         data = f.create_group('data')
         data.attrs['env_args'] = OmegaConf.to_yaml(cfg)
-        for i in  range(len(trajs)):
-            traj = trajs[i]
+        for i in  range(len(actions)):
+            observation = observations[i]
+            act = actions[i]
             demo_i = data.create_group(f'demo_{i}')
-            demo_i.attrs["num_samples"] = traj.shape[0]
+            demo_i.attrs["num_samples"] = observation.shape[0]
+            demo_i.attrs["obs_horizon"] = horizon
             demo_i.attrs["model_file"] = robot_fk.model_path # or robot_file
-            
-            # states are positions of the robot links and obstacles
-            poses = []
-            for t in range(traj.shape[0]):
-                joints = torch.tensor([traj[t].detach().cpu().numpy()], **tensor_args)
-                H_pose = robot_fk.compute_forward_kinematics_all_links(joints)
-                poses.append(H_pose.detach().cpu().numpy())
 
-            states = demo_i.create_dataset('states', data=traj.detach().cpu().numpy())
-            actions = demo_i.create_dataset('actions', data=traj.detach().cpu().numpy())
-            rewards = demo_i.create_dataset('rewards', data=np.zeros((traj.shape[0], 1)))
-            dones = demo_i.create_dataset('dones', data=np.zeros((traj.shape[0], 1)))
+            demo_i.create_dataset('states', data=observation.detach().cpu().numpy())
+            demo_i.create_dataset('actions', data=act.detach().cpu().numpy())
+            demo_i.create_dataset('rewards', data=np.zeros((observation.shape[0], 1)))
+            demo_i.create_dataset('dones', data=np.zeros((observation.shape[0], 1)))
+            
             obs = demo_i.create_group('obs')
-            obs.create_dataset('joint_poses', data=poses)
+            obs.create_dataset('joint_values', data=observation.detach().cpu().numpy())
             obs.create_dataset('obstacle_spheres', data=obstacle_spheres)
             
         mask = data.create_group("mask")
-        mask.create_dataset('train', data=np.ones((trajs.shape[0], 1)))
-        mask.create_dataset('val', data=np.zeros((trajs.shape[0], 1)))
-        mask.create_dataset('test', data=np.zeros((trajs.shape[0], 1)))
+        mask.create_dataset('train', data=np.ones((observations.shape[0], 1)))
+        mask.create_dataset('val', data=np.zeros((observations.shape[0], 1)))
+        mask.create_dataset('test', data=np.zeros((observations.shape[0], 1)))
 
 
 
