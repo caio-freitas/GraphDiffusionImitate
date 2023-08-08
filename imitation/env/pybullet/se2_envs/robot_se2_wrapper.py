@@ -26,7 +26,7 @@ class DifferentiableSE2(DifferentiableTree):
 class RobotSe2EnvWrapper(gym.Env):
     def __init__(self,
                  num_obs=2,
-                 start_pose=[0,0,-1],
+                 start_pose=[0,0,1],
                  start_quat=[0,0,0,1]):
         self._generate_obstacle_spheres(num_obs)
         self.env = SE2BotPickPlace(objects_list=['cube' for i in range((self.obstacle_spheres.shape[1]))],
@@ -39,24 +39,23 @@ class RobotSe2EnvWrapper(gym.Env):
         self.action_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.N_DOF,), dtype=np.float32)
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.N_DOF,), dtype=np.float32) # TODO what else for observation space?
 
-        self.env.reset()
 
         self.env.setControlMode("position")
 
         # robot's forward kinematics
         self.robot_fk = DifferentiableSE2(device='cpu')
 
-        self.state = self.env.getJointStates()[0]
+        # self.state = self.env.getJointStates()[0]
 
-        # start_pose = torch.tensor(start_pose, **tensor_args)
-        # start_quat = torch.tensor(start_quat, **tensor_args)
-        # start_joints = p.calculateInverseKinematics(self.env,
-        #                                         self.env.JOINT_ID[-1],
-        #                                         start_pose, 
-        #                                         start_quat)[:self.env.dof]
-        # self.start_joints = torch.tensor(start_joints, **tensor_args)
+        start_pose = torch.tensor(start_pose, **tensor_args)
+        start_quat = torch.tensor(start_quat, **tensor_args)
+        start_joints = p.calculateInverseKinematics(self.env.robot,
+                                                self.env.JOINT_ID[-1],
+                                                start_pose, 
+                                                start_quat)[:self.env.dof]
+        self.start_joints = torch.tensor(start_joints, **tensor_args)
     
-        # self.env.step(self.start_joints)
+        self.env.reset(self.start_joints)
 
 
 
@@ -72,7 +71,7 @@ class RobotSe2EnvWrapper(gym.Env):
                 self.obstacle_spheres[0, i, 3] = r
 
     def reset(self):
-        [robot, obstacles, grasp_obj] = self.env.reset() # TODO use start_joints
+        [robot, obstacles, grasp_obj] = self.env.reset(self.start_joints) # TODO use start_joints
         return robot
 
     def step(self, action):
