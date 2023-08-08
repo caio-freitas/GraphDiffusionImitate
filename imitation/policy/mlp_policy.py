@@ -33,7 +33,7 @@ class MLPPolicy(BasePolicy):
         self.model = model
         # load model from ckpt
         if ckpt_path is not None:
-            self.model = self.load_nets(ckpt_path)
+            self.load_nets(ckpt_path)
         # create dataloader
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
