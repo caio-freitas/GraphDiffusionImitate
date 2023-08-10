@@ -16,7 +16,6 @@ import torch
 from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
 from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
 from omegaconf import DictConfig
-from robot_envs.pybullet.utils import random_init_static_sphere
 from torch_kinematics_tree.geometrics.spatial_vector import x_rot, y_rot, z_rot
 from torch_kinematics_tree.models.robot_tree import DifferentiableTree
 import h5py
@@ -53,23 +52,14 @@ def generate(cfg: DictConfig):
     num_obst = cfg.num_obst
     traj_len = cfg.traj_len
     dt = cfg.dt
+    obstacle_spheres = np.array(cfg.obstacles) # Fixed obstacles
 
     # set seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # spawn obstacles
-    # TODO fixed obstacles for now (add to config)
-    obst_r = [0.05, 0.1] 
-    obst_range_lower = np.array([-0.5 , -0.5, 0])
-    obst_range_upper = np.array([-0.5, 0.5, 0])
-    obstacle_spheres = np.zeros((1, num_obst, 4))
-    for i in range(num_obst):
-        r, pos = random_init_static_sphere(obst_r[0], obst_r[1], obst_range_lower, obst_range_upper, 0.01)
-        obstacle_spheres[0, i, :3] = pos
-        obstacle_spheres[0, i, 3] = r
-    
+
     env = SE2BotPickPlace(objects_list=['cube' for i in range((obstacle_spheres.shape[1]))],
                           obj_poses=[[obstacle_spheres[0][i,:3], [0,0,0,1]] for i in range(obstacle_spheres.shape[1])])
     
@@ -147,7 +137,7 @@ def generate(cfg: DictConfig):
     observations = complete_traj[:, :complete_traj.shape[1]-horizon, :]
     actions = complete_traj[:, horizon:, :]
     # save trajectories
-    with h5py.File('./data/trajs.hdf5', 'w') as f:
+    with h5py.File('./data/trajs2.hdf5', 'w') as f:
         data = f.create_group('data')
         data.attrs['env_args'] = OmegaConf.to_yaml(cfg)
         for i in  range(len(actions)):
@@ -164,7 +154,8 @@ def generate(cfg: DictConfig):
             demo_i.create_dataset('dones', data=np.zeros((observation.shape[0], 1)))
             
             obs = demo_i.create_group('obs')
-            obs.create_dataset('joint_values', data=observation.detach().cpu().numpy())
+            obs.create_dataset('joint_values', data=observation[:,:3].detach().cpu().numpy())
+            obs.create_dataset('joint_velocities', data=observation[:,3:].detach().cpu().numpy())
             obs.create_dataset('obstacle_spheres', data=obstacle_spheres)
             
         mask = data.create_group("mask")

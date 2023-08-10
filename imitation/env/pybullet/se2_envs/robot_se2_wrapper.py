@@ -27,8 +27,13 @@ class RobotSe2EnvWrapper(gym.Env):
     def __init__(self,
                  num_obs=2,
                  start_pose=[0,0,1],
-                 start_quat=[0,0,0,1]):
-        self._generate_obstacle_spheres(num_obs)
+                 start_quat=[0,0,0,1],
+                 obstacle_spheres=None):
+        
+        self.obstacle_spheres = obstacle_spheres
+        if obstacle_spheres is None:
+            self._generate_obstacle_spheres(num_obs)
+            
         self.env = SE2BotPickPlace(objects_list=['cube' for i in range((self.obstacle_spheres.shape[1]))],
                           obj_poses=[[self.obstacle_spheres[0][i,:3], [0,0,0,1]] for i in range(self.obstacle_spheres.shape[1])])
         
@@ -59,7 +64,7 @@ class RobotSe2EnvWrapper(gym.Env):
 
 
 
-    def _generate_obstacle_spheres(self, num_obs=10):
+    def _generate_obstacle_spheres(self, num_obs=2):
             # spawn obstacles
             obst_r = [0.1, 0.2] # TODO add as parameter
             obst_range_lower = np.array([-1, -1, 0]) # TODO add as parameter

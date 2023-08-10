@@ -53,21 +53,13 @@ def generate(cfg: DictConfig):
     num_obst = cfg.num_obst
     traj_len = cfg.traj_len
     dt = cfg.dt
+    obstacle_spheres = np.array(cfg.obstacles)
 
     # set seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # spawn obstacles
-    obst_r = [0.05, 0.1] # TODO add to config
-    obst_range_lower = np.array([-0.5 , -0.5, 0])
-    obst_range_upper = np.array([-0.5, 0.5, 0])
-    obstacle_spheres = np.zeros((1, num_obst, 4))
-    for i in range(num_obst):
-        r, pos = random_init_static_sphere(obst_r[0], obst_r[1], obst_range_lower, obst_range_upper, 0.01)
-        obstacle_spheres[0, i, :3] = pos
-        obstacle_spheres[0, i, 3] = r
     
     env = SE2BotPickPlace(objects_list=['cube' for i in range((obstacle_spheres.shape[1]))],
                           obj_poses=[[obstacle_spheres[0][i,:3], [0,0,0,1]] for i in range(obstacle_spheres.shape[1])])
