@@ -10,12 +10,14 @@ class Se2StateDataset(torch.utils.data.Dataset):
     https://robomimic.github.io/docs/datasets/overview.html
     '''
     def __init__(self, 
-                 dataset_path):
+                 dataset_path,
+                 obs_keys):
         super().__init__()
         self.dataset_path = dataset_path
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
         self.dataset_keys.remove("mask")
+        self.obs_keys = obs_keys
 
         # inds = np.argsort([int(elem[5:]) for elem in self.dataset_keys])
         # self.demos = [self.dataset_keys[i] for i in inds]
@@ -40,7 +42,7 @@ class Se2StateDataset(torch.utils.data.Dataset):
         obs_t = []
         # each observation modality is stored as a subgroup
         for k in data["obs"]:
-            if k == "joint_values":
+            if k in self.obs_keys:
                 obs_t = np.append(obs_t, data["obs/{}".format(k)][idx_t]) # numpy array
         # TODO review observations
         act_t = torch.tensor(data["actions"][idx_t])

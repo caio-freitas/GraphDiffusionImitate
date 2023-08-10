@@ -9,9 +9,15 @@ obs_horizon: 1
 action_horizon: 1
 max_steps: 200
 
+obs_keys: &obs_keys ['joint_values']
+
 env_runner: 
   _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
   output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
+    num_obs: 2
+    start_pose: [1.0, 0.0, 0.0] # TODO use this!
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
@@ -24,12 +30,11 @@ policy:
       _target_: torch.nn.LeakyReLU
     output_activation: 
       _target_: torch.nn.Identity
-  env:
-    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
-    num_obs: 2
+  env: ${env_runner.env}
   dataset:
     _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
     dataset_path: ./data/trajs.hdf5
+    obs_keys: *obs_keys
   ckpt_path: ./weights/se2_mlp_last.pt
 
 
