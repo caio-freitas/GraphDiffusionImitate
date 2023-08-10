@@ -22,6 +22,7 @@ env_runner:
     _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
     num_obs: 2
     start_pose: [1.0, 0.0, 0.0]
+    target_pose: [0.0, 1.0, 0.0]
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy

@@ -24,6 +24,8 @@ class RobotSe2EnvRunner(BaseRunner):
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         for i in range(n_steps):
             self.env.render()
-            self.obs = self.env.step(agent.act(self.obs))
+            self.obs, reward, done, info = self.env.step(agent.act(self.obs))
+            if done:
+                break
         self.env.close()
 
