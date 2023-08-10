@@ -16,7 +16,10 @@ class Se2StateDataset(torch.utils.data.Dataset):
         self.dataset_path = dataset_path
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
-        self.dataset_keys.remove("mask")
+        try:
+           self.dataset_keys.remove("mask")
+        except:
+              pass
         self.obs_keys = obs_keys
 
         # inds = np.argsort([int(elem[5:]) for elem in self.dataset_keys])
@@ -24,17 +27,22 @@ class Se2StateDataset(torch.utils.data.Dataset):
 
 
     def __len__(self):
-        return len(self.dataset_keys) * len(self.dataset_root["data/demo_0/obs/joint_values"]) - 1
-    
+        # accounts for different length for each demo, with different names
+        return sum([len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"]) for key in self.dataset_keys])
 
 
     def __getitem__(self, idx):
         '''
-        Returns item (demo) from dataset
+        Returns item (timestep in demo) from dataset
         '''
         # print(f"trying to get item {idx}")
-        idx_demo = idx // len(self.dataset_root["data/demo_0/obs/joint_values"])
-        idx_t = idx % len(self.dataset_root["data/demo_0/obs/joint_values"])
+        idx_demo = 0
+        for key in self.dataset_keys:
+            if idx < len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"]):
+                break
+            idx -= len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"])
+            idx_demo += 1
+        idx_t = idx # timestep in demo
         key = self.dataset_keys[idx_demo]
         # print(f"key: {key}")
         data = self.dataset_root[f"data/{key}"] # demo_idx

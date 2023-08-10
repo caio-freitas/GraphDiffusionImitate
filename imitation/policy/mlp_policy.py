@@ -9,7 +9,7 @@ import logging
 import wandb
 import os
 
-os.environ["WANDB_DISABLED"] = "false"
+os.environ["WANDB_DISABLED"] = "true"
 
 
 log = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class MLPPolicy(BasePolicy):
                     ),
                     ckpt_path=None):
         super().__init__(env)
-        self.env = env
+        self.env = env # TODO remove
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cpu")
         self.dataset = dataset
@@ -94,8 +94,8 @@ class MLPPolicy(BasePolicy):
 
         for epoch in range(num_epochs):
             for nbatch in self.dataloader:
-                nobs = nbatch['obs'].to(self.device)
-                action = nbatch['action'].to(self.device)[:,:3]
+                nobs = nbatch['obs'].to(self.device).float()
+                action = nbatch['action'].to(self.device).float()[:,:3] # TODO remove [:,:3] (change structure of dataset)
                 pred = self.model(nobs)
                 loss = loss_fn(pred, action)
                 optimizer.zero_grad()
