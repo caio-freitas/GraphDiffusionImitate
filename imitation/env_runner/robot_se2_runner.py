@@ -9,11 +9,11 @@ from imitation.env.pybullet.se2_envs.robot_se2_wrapper import RobotSe2EnvWrapper
 log = logging.getLogger(__name__)
 
 class RobotSe2EnvRunner(BaseRunner):
-    def __init__(self, output_dir) -> None:
+    def __init__(self,
+                env,
+                output_dir) -> None:
         super().__init__(output_dir)
-        self.env = RobotSe2EnvWrapper(
-            num_obs=2
-        )
+        self.env = env
 
         self.obs = self.env.reset()
 
