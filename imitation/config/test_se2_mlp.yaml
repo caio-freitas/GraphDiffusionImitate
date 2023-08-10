@@ -9,7 +9,7 @@ obs_horizon: 1
 action_horizon: 1
 max_steps: 200
 
-obs_keys: &obs_keys ['joint_values']
+obs_keys: &obs_keys ['joint_values', 'joint_velocities']
 
 env_runner: 
   _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner

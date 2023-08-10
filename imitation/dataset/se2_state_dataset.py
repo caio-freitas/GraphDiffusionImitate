@@ -52,12 +52,10 @@ class Se2StateDataset(torch.utils.data.Dataset):
         for k in data["obs"]:
             if k in self.obs_keys:
                 obs_t = np.append(obs_t, data["obs/{}".format(k)][idx_t]) # numpy array
-        # TODO review observations
+
         act_t = torch.tensor(data["actions"][idx_t])
-        # obs_t_pp = { k : obs_t[k].tolist() for k in obs_t }
-        # print(f"obs_t_pp: {obs_t}")
-        # flatten dict to torch tensor
         obs_t = torch.tensor(obs_t, dtype=torch.float32)
+        
         data_dict = {
             "obs": obs_t ,
             "action": act_t,

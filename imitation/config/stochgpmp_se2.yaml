@@ -5,7 +5,7 @@ output_dir: ./output
 obs_horizon: 1
 
 num_particles_per_goal: 10
-num_samples: 32
+num_samples: 128
 num_obst: 2
 traj_len: 64
 dt: 0.05
@@ -15,6 +15,9 @@ target_pose: [0.0, 1.0, 0.0]
 #target_rot fixed
 seed: 0
 opt_iters:  400
+
+obstacles: [[[0.5, 0.5, 0.1, 0.1], [-0.5, -0.5, 0.1, 0.1]]]
+
 
 # cost sigmas
 sigma_self: 0.001
@@ -46,6 +49,6 @@ env_runner:
   output_dir: ${output_dir}
 
 planner:
-  # _partial_: true # other parameters (env and robot_fk) will be set on code
+  # other parameters (env and robot_fk) will be set on code
   _target_: imitation.utils.stochgpmp.StochGPMPSE2Wrapper
   seed: ${seed}

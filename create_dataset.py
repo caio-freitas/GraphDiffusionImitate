@@ -137,7 +137,7 @@ def generate(cfg: DictConfig):
     observations = complete_traj[:, :complete_traj.shape[1]-horizon, :]
     actions = complete_traj[:, horizon:, :]
     # save trajectories
-    with h5py.File('./data/trajs2.hdf5', 'w') as f:
+    with h5py.File('./data/trajs.hdf5', 'w') as f:
         data = f.create_group('data')
         data.attrs['env_args'] = OmegaConf.to_yaml(cfg)
         for i in  range(len(actions)):
