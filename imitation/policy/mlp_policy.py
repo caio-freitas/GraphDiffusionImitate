@@ -8,6 +8,7 @@ from imitation.dataset.pusht_state_dataset import PushTStateDataset
 import logging
 import wandb
 import os
+from tqdm.auto import tqdm
 
 os.environ["WANDB_DISABLED"] = "true"
 
@@ -57,7 +58,6 @@ class MLPPolicy(BasePolicy):
 
     def get_action(self, obs):
         
-        log.info(f"obs: {obs}")
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)[:,:3]
         action = self.model.forward(obs).detach().cpu().numpy()
         return action[0]
@@ -92,21 +92,22 @@ class MLPPolicy(BasePolicy):
         log.info(f"batch['obs'].shape:{batch['obs']}")
         log.info(f"batch['action'].shape: {batch['action']}")
 
-        for epoch in range(num_epochs):
-            for nbatch in self.dataloader:
-                nobs = nbatch['obs'].to(self.device).float()
-                action = nbatch['action'].to(self.device).float()[:,:3] # TODO remove [:,:3] (change structure of dataset)
-                pred = self.model(nobs)
-                loss = loss_fn(pred, action)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-            wandb.log({"epoch": epoch, "loss": loss.item()})
+        with tqdm(range(num_epochs)) as pbar:
+            for epoch in pbar:
+                for nbatch in self.dataloader:
+                    nobs = nbatch['obs'].to(self.device).float()
+                    action = nbatch['action'].to(self.device).float()[:,:3] # TODO remove [:,:3] (change structure of dataset)
+                    pred = self.model(nobs)
+                    loss = loss_fn(pred, action)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                wandb.log({"epoch": epoch, "loss": loss.item()})
 
-            log.info(f'Epoch: {epoch}, Loss: {loss.item()}')
-
-            # save model
-            torch.save(self.model.state_dict(), model_path)
+                log.info(f'Epoch: {epoch}, Loss: {loss.item()}')
+                # save model
+                torch.save(self.model.state_dict(), model_path)
+                pbar.set_description(f"Epoch: {epoch}, Loss: {loss.item()}")
 
         wandb.finish()
         
