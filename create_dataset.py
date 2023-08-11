@@ -1,24 +1,26 @@
 """
+Script to generate a dataset of trajectories using StochGPMP.
+
 Usage:
-Training:
-python demo_env.py
+python create_dataset.py
 """
 import logging
 import pathlib
 import random
 import time
 from typing import Optional
+
+import h5py
 import hydra
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
 import pybullet as p
 import torch
 from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
 from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch_kinematics_tree.geometrics.spatial_vector import x_rot, y_rot, z_rot
 from torch_kinematics_tree.models.robot_tree import DifferentiableTree
-import h5py
+
 
 class DifferentiableSE2(DifferentiableTree):
     def __init__(self, link_list: Optional[str] = None, device='cpu'):
@@ -59,14 +61,12 @@ def generate(cfg: DictConfig):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-
     env = SE2BotPickPlace(objects_list=['cube' for i in range((obstacle_spheres.shape[1]))],
                           obj_poses=[[obstacle_spheres[0][i,:3], [0,0,0,1]] for i in range(obstacle_spheres.shape[1])])
-    
 
     env.setControlMode("position")
 
-    # FK
+    # forward kinematic model
     robot_fk = DifferentiableSE2(device=device)
     
 
@@ -128,7 +128,7 @@ def generate(cfg: DictConfig):
 
     pos = pos.detach()
     vel = vel.detach()
-    pos = pos.mean(dim=0)
+    pos = pos.mean(dim=0) # mean over goals (same as pos[0] for the single-goal case)
     vel = vel.mean(dim=0)
     complete_traj = torch.cat((pos, vel), dim=-1)
     observations = torch.empty((complete_traj.shape[0], complete_traj.shape[1]-1, complete_traj.shape[2]))
@@ -137,6 +137,7 @@ def generate(cfg: DictConfig):
     observations = complete_traj[:, :complete_traj.shape[1]-horizon, :]
     actions = complete_traj[:, horizon:, :]
     # save trajectories
+    # structure from https://robomimic.github.io/docs/datasets/overview.html
     with h5py.File('./data/trajs.hdf5', 'w') as f:
         data = f.create_group('data')
         data.attrs['env_args'] = OmegaConf.to_yaml(cfg)

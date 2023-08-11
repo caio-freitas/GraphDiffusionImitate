@@ -1,7 +1,6 @@
 """
 Usage:
-Training:
-python demo_env.py
+python test_stochgpmp.py
 """
 import logging
 import pathlib
@@ -10,16 +9,16 @@ import time
 from typing import Optional
 import hydra
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
 import pybullet as p
 import torch
-from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
-from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+
 from robot_envs.pybullet.utils import random_init_static_sphere
 from torch_kinematics_tree.geometrics.spatial_vector import x_rot, y_rot, z_rot
 from torch_kinematics_tree.models.robot_tree import DifferentiableTree
 
+from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
+from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
 
 class DifferentiableSE2(DifferentiableTree):
     def __init__(self, link_list: Optional[str] = None, device='cpu'):

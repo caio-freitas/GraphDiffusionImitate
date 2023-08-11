@@ -1,8 +1,10 @@
 from typing import Dict, List
-import torch
-import numpy as np
+
 import h5py
+import numpy as np
+import torch
 from tqdm import tqdm
+
 
 class Se2StateDataset(torch.utils.data.Dataset):
     '''
