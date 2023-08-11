@@ -1,0 +1,42 @@
+num_episodes: 2
+output_dir: ./output
+
+# Environment
+obs_dim: 6
+action_dim: 3
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
+
+obs_keys: &obs_keys ['joint_values', 'joint_velocities']
+
+# Training parameters
+num_epochs: 100
+model_path: ./weights/se2_vae_test.pt
+
+
+env_runner: 
+  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
+    num_obs: 2
+    start_pose: [1.0, 0.0, 0.0]
+    target_pose: [0.0, 1.0, 0.0]
+
+policy:
+  _target_: imitation.policy.vae_policy.VAEPolicy
+  model:
+    _target_: imitation.model.vae.VAE
+    input_dim: ${obs_dim}
+    # hidden_dims: [64, 32, 16, 8]
+  env: ${env_runner.env}
+  dataset:
+    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    dataset_path: ./data/trajs.hdf5
+    obs_keys: *obs_keys
+  # ckpt_path: None
+
+
+agent:
+  _target_: imitation.agent.robot_se2_agent.Se2Agent
