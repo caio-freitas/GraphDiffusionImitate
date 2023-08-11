@@ -1,22 +1,23 @@
 """
+Script to generate a dataset of trajectories using StochGPMP.
+
 Usage:
-Training:
-python demo_env.py
+python create_dataset.py
 """
 import logging
 import pathlib
 import random
 import time
 from typing import Optional
+
+import h5py
 import hydra
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
 import pybullet as p
 import torch
 from imitation.env.pybullet.se2_envs.robot_se2_pickplace import SE2BotPickPlace
 from imitation.utils.stochgpmp import StochGPMPSE2Wrapper, plot_trajectory
-from omegaconf import DictConfig
-from robot_envs.pybullet.utils import random_init_static_sphere
+from omegaconf import DictConfig, OmegaConf
 from torch_kinematics_tree.geometrics.spatial_vector import x_rot, y_rot, z_rot
 from torch_kinematics_tree.models.robot_tree import DifferentiableTree
 
@@ -53,29 +54,19 @@ def generate(cfg: DictConfig):
     num_obst = cfg.num_obst
     traj_len = cfg.traj_len
     dt = cfg.dt
+    obstacle_spheres = np.array(cfg.obstacles) # Fixed obstacles
 
     # set seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # spawn obstacles
-    obst_r = [0.05, 0.1] # TODO add to config
-    obst_range_lower = np.array([-0.5 , -0.5, 0])
-    obst_range_upper = np.array([-0.5, 0.5, 0])
-    obstacle_spheres = np.zeros((1, num_obst, 4))
-    for i in range(num_obst):
-        r, pos = random_init_static_sphere(obst_r[0], obst_r[1], obst_range_lower, obst_range_upper, 0.01)
-        obstacle_spheres[0, i, :3] = pos
-        obstacle_spheres[0, i, 3] = r
-    
     env = SE2BotPickPlace(objects_list=['cube' for i in range((obstacle_spheres.shape[1]))],
                           obj_poses=[[obstacle_spheres[0][i,:3], [0,0,0,1]] for i in range(obstacle_spheres.shape[1])])
-    
 
     env.setControlMode("position")
 
-    # FK
+    # forward kinematic model
     robot_fk = DifferentiableSE2(device=device)
     
 
@@ -134,31 +125,46 @@ def generate(cfg: DictConfig):
     # Plotting
     start_q = start_state.detach().cpu().numpy()
     env.step(start_q)
-    trajs = pos.detach()
 
-    for traj in trajs:
-        log.info("Restarting position")
-        env.reset(start_joints)
-        time.sleep(0.2)
-        traj = traj.mean(dim=0)
-        for t in range(traj.shape[0] - 1):
-            for i in range(10):
-                env.step(traj[t])
-                time.sleep(0.01)
-            time.sleep(dt)
+    pos = pos.detach()
+    vel = vel.detach()
+    pos = pos.mean(dim=0) # mean over goals (same as pos[0] for the single-goal case)
+    vel = vel.mean(dim=0)
+    complete_traj = torch.cat((pos, vel), dim=-1)
+    observations = torch.empty((complete_traj.shape[0], complete_traj.shape[1]-1, complete_traj.shape[2]))
+    actions = torch.empty((complete_traj.shape[0], complete_traj.shape[1]-1, complete_traj.shape[2]))
+    horizon = cfg.obs_horizon
+    observations = complete_traj[:, :complete_traj.shape[1]-horizon, :]
+    actions = complete_traj[:, horizon:, :]
+    # save trajectories
+    # structure from https://robomimic.github.io/docs/datasets/overview.html
+    with h5py.File('./data/trajs.hdf5', 'w') as f:
+        data = f.create_group('data')
+        data.attrs['env_args'] = OmegaConf.to_yaml(cfg)
+        for i in  range(len(actions)):
+            observation = observations[i]
+            act = actions[i]
+            demo_i = data.create_group(f'demo_{i}')
+            demo_i.attrs["num_samples"] = observation.shape[0]
+            demo_i.attrs["obs_horizon"] = horizon
+            demo_i.attrs["model_file"] = robot_fk.model_path # or robot_file
 
-        # final position
-        for i in range (100):
-            env.step(traj[-1])
-            time.sleep(0.01)
-        time.sleep(1)
-        plot_trajectory(
-            robot_fk,
-            start_q,
-            traj,
-            target_pos,
-            obstacle_spheres
-        )
+            demo_i.create_dataset('states', data=observation.detach().cpu().numpy())
+            demo_i.create_dataset('actions', data=act.detach().cpu().numpy())
+            demo_i.create_dataset('rewards', data=np.zeros((observation.shape[0], 1)))
+            demo_i.create_dataset('dones', data=np.zeros((observation.shape[0], 1)))
+            
+            obs = demo_i.create_group('obs')
+            obs.create_dataset('joint_values', data=observation[:,:3].detach().cpu().numpy())
+            obs.create_dataset('joint_velocities', data=observation[:,3:].detach().cpu().numpy())
+            obs.create_dataset('obstacle_spheres', data=obstacle_spheres)
+            
+        mask = data.create_group("mask")
+        mask.create_dataset('train', data=np.ones((observations.shape[0], 1)))
+        mask.create_dataset('val', data=np.zeros((observations.shape[0], 1)))
+        mask.create_dataset('test', data=np.zeros((observations.shape[0], 1)))
+
+
 
         
 

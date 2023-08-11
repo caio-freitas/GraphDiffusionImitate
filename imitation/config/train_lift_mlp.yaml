@@ -1,0 +1,47 @@
+num_episodes: 2
+output_dir: ./output
+
+# Environment
+obs_dim: 19
+action_dim: 7
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
+
+
+# Training parameters
+num_epochs: 2000
+model_path: ./weights/lift_mlp_last.pt
+
+obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
+
+
+env_runner: 
+  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
+    num_obs: 2
+    start_pose: [1.0, 0.0, 0.0] # TODO use this!
+
+policy:
+  _target_: imitation.policy.mlp_policy.MLPPolicy
+  model:
+    _target_: imitation.model.mlp.MLPNet
+    input_dim: ${obs_dim}
+    output_dim: ${action_dim}
+    hidden_dims: [256, 256, 128, 32, 128, 256]
+    activation:
+      _target_: torch.nn.LeakyReLU
+    output_activation: 
+      _target_: torch.nn.Identity
+  env: ${env_runner.env}
+  dataset:
+    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    dataset_path: ./data/lift_low_dim_v141.hdf5
+    obs_keys: *obs_keys
+  # ckpt_path: None
+
+
+agent:
+  _target_: imitation.agent.robot_se2_agent.Se2Agent

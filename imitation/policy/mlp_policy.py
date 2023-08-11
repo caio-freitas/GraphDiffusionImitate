@@ -28,16 +28,18 @@ class MLPPolicy(BasePolicy):
                     ),
                     ckpt_path=None):
         super().__init__(env)
-        self.env = env
+        self.env = env # TODO remove
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         self.dataset = dataset
         self.model = model
         # load model from ckpt
         if ckpt_path is not None:
-            self.model = self.load_nets(ckpt_path)
+            self.load_nets(ckpt_path)
         # create dataloader
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
-            batch_size=256,
+            batch_size=32,
             num_workers=1,
             shuffle=True,
             # accelerate cpu-gpu transfer
@@ -46,26 +48,26 @@ class MLPPolicy(BasePolicy):
             persistent_workers=True
         )
 
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")
-
         self.ckpt_path = ckpt_path
         
-        
     def load_nets(self, ckpt_path):
+        log.info(f"Loading model from {ckpt_path}")
         self.model.load_state_dict(torch.load(ckpt_path))
-
+        
 
     def get_action(self, obs):
-        obs = torch.tensor(obs, dtype=torch.float32).to(self.device)
-        return self.model.forward(obs).detach().cpu().numpy()
+        
+        log.info(f"obs: {obs}")
+        obs = torch.tensor([obs], dtype=torch.float32).to(self.device)[:,:3]
+        action = self.model.forward(obs).detach().cpu().numpy()
+        return action[0]
 
     def train(self, dataset, num_epochs, model_path):
         '''Train the policy on the given dataset for the given number of epochs.
         Usinf self.model.forward() to get the action for the given observation.'''
 
-        loss_fn = nn.MSELoss()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-2)
+        loss_fn = nn.MSELoss() # TODO change to abs loss
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
 
         wandb.init(
@@ -79,21 +81,21 @@ class MLPPolicy(BasePolicy):
             "activation": self.model.activation,
             "output_activation": self.model.output_activation,
             "loss": loss_fn,
-            "episodes": len(self.dataset.indices),
+            "episodes": len(self.dataset),
             "batch_size": self.dataloader.batch_size,
-            "env": "PushT",
+            "env": self.env.__class__.__name__,
             }
         )
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
-        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
-        log.info(f"batch['action'].shape: {batch['action'].shape}")
+        log.info(f"batch['obs'].shape:{batch['obs']}")
+        log.info(f"batch['action'].shape: {batch['action']}")
 
         for epoch in range(num_epochs):
             for nbatch in self.dataloader:
-                nobs = nbatch['obs'].to(self.device)
-                action = nbatch['action'].to(self.device)
+                nobs = nbatch['obs'].to(self.device).float()
+                action = nbatch['action'].to(self.device).float()[:,:3] # TODO remove [:,:3] (change structure of dataset)
                 pred = self.model(nobs)
                 loss = loss_fn(pred, action)
                 optimizer.zero_grad()

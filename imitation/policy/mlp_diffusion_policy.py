@@ -6,8 +6,7 @@ import torch
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.optimization import get_scheduler
 
-from imitation.model.diffusion_policy.mlp import \
-    MLPNet
+from imitation.model.mlp import MLPNet
 from imitation.policy.base_policy import BasePolicy
 
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
