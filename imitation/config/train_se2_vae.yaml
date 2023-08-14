@@ -4,7 +4,7 @@ output_dir: ./output
 # Environment
 obs_dim: 6
 action_dim: 3
-pred_horizon: 1
+pred_horizon: 5
 obs_horizon: 1
 action_horizon: 1
 
@@ -29,12 +29,13 @@ policy:
   model:
     _target_: imitation.model.vae.VAE
     input_dim: ${obs_dim}
-    # hidden_dims: [64, 32, 16, 8]
+    hidden_dims: [32, 32, 16, 8]
   env: ${env_runner.env}
   dataset:
     _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
-    dataset_path: ./data/trajs.hdf5
+    dataset_path: ./data/trajs2.hdf5
     obs_keys: *obs_keys
+    pred_horizon: ${pred_horizon}
   # ckpt_path: None
 
 

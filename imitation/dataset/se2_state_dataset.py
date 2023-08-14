@@ -11,8 +11,10 @@ class Se2StateDataset(torch.utils.data.Dataset):
     '''
     def __init__(self, 
                  dataset_path,
-                 obs_keys):
+                 obs_keys,
+                 pred_horizon=1):
         super().__init__()
+        self.pred_horizon = pred_horizon
         self.dataset_path = dataset_path
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
@@ -26,10 +28,13 @@ class Se2StateDataset(torch.utils.data.Dataset):
         # self.demos = [self.dataset_keys[i] for i in inds]
 
 
+
     def __len__(self):
         # accounts for different length for each demo, with different names
-        return sum([len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"]) for key in self.dataset_keys])
-
+        # and considers pred_horizon
+        return sum(
+            [len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"]) for key in self.dataset_keys]
+        ) - self.pred_horizon*len(self.dataset_keys)
 
     def __getitem__(self, idx):
         '''
@@ -37,25 +42,45 @@ class Se2StateDataset(torch.utils.data.Dataset):
         '''
         # print(f"trying to get item {idx}")
         idx_demo = 0
-        for key in self.dataset_keys:
-            if idx < len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"]):
-                break
-            idx -= len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"])
+        # find which demo idx is in, using self.pred_horizon steps in the future
+        while idx + self.pred_horizon > len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]):
+            # print("idx: {}, removing: {}".format(idx, len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"])))
+            # remove what's left of the current demo
+            if idx <= 0 or idx_demo == len(self.dataset_keys):
+                print("idx out of bounds")
+                print(f"idx: {idx}, idx_demo: {idx_demo}")
+                
+                return None
+            idx -= min(len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]), idx)
+            # the data will be repeated for all idx in the range len(demos) - self.pred_horizon
             idx_demo += 1
-        idx_t = idx # timestep in demo
+
+            
+        assert idx_demo < len(self.dataset_keys), f"idx_demo: {idx_demo}, len(self.dataset_keys): {len(self.dataset_keys)}"
+        assert idx <= len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]), f"idx: {idx}, len(self.dataset_root[f'data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}']): {len(self.dataset_root[f'data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}'])}"
+        idx_t = idx # initial timestep in demo
         key = self.dataset_keys[idx_demo]
         # print(f"key: {key}")
         data = self.dataset_root[f"data/{key}"] # demo_idx
         # turn h5py._hl.dataset.Dataset into numpy array
-        obs_t = []
-        # each observation modality is stored as a subgroup
-        for k in data["obs"]:
-            if k in self.obs_keys:
-                obs_t = np.append(obs_t, data["obs/{}".format(k)][idx_t]) # numpy array
+        obs_len = len(data["obs/{}".format(self.obs_keys[0])][0])
+        key_len = len(self.obs_keys)   
+        obs_t = None # (pred_horizon, key_len*obs_len)
+        # for each observation modality, store pred_horizon steps in the future
 
-        act_t = torch.tensor(data["actions"][idx_t])
+        for i, obs_key in enumerate(self.obs_keys):
+            if i == 0:
+                obs_t = torch.tensor(data[f"obs/{obs_key}"][idx_t:idx_t+self.pred_horizon], dtype=torch.float32)
+                continue
+            obs_t = torch.cat(
+                (obs_t,
+                torch.tensor(data[f"obs/{obs_key}"][idx_t:idx_t+self.pred_horizon], dtype=torch.float32)),
+                dim=-1                
+                )
+
+        act_t = torch.tensor(data["actions"][idx_t:idx_t+self.pred_horizon], dtype=torch.float32)
         obs_t = torch.tensor(obs_t, dtype=torch.float32)
-        
+
         data_dict = {
             "obs": obs_t ,
             "action": act_t,
