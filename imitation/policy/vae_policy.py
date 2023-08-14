@@ -10,7 +10,7 @@ import wandb
 import os
 from tqdm.auto import tqdm
 
-os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_DISABLED"] = "false"
 
 
 log = logging.getLogger(__name__)
@@ -30,27 +30,36 @@ class VAEPolicy(BasePolicy):
                     ckpt_path=None):
         super().__init__(env)
         self.env = env
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cpu")
         self.dataset = dataset
         self.model = model
+        log.info(f"Model: {self.model}")
         # load model from ckpt
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
         # create dataloader
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
-            batch_size=32,
+            batch_size=4,
             num_workers=1,
             shuffle=True,
             # accelerate cpu-gpu transfer
             pin_memory=True,
             # don't kill worker process afte each epoch
-            persistent_workers=True
+            persistent_workers=True,
+            collate_fn=self.collate_fn
         )
 
         self.ckpt_path = ckpt_path
         
+    def collate_fn(self, batch):
+        return {
+            'action': torch.stack([x['action'] for x in batch]),
+            'obs': torch.stack([x['obs'] for x in batch])
+        }
+
+
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
         self.model.load_state_dict(torch.load(ckpt_path))
@@ -63,11 +72,20 @@ class VAEPolicy(BasePolicy):
         return action.detach().cpu().numpy()[0]
 
 
+    def elbo_loss(self, x, x_hat, mean, logvar):
+        '''Implement ELBO loss for VAE Policy'''
+        # is binary cross entropy the right distribution?
+        reconstruction_loss = nn.functional.cross_entropy(x_hat, x, reduction='sum')
+        # reconstruction_loss = nn.functional.gaussian_nll_loss(x_hat, x, logvar.exp(), reduction='sum')
+
+        KLD = - 0.5 * torch.sum(1+ logvar - mean.pow(2) - logvar.exp())
+
+        return -(reconstruction_loss + KLD) # negative ELBO
+
     def train(self, dataset, num_epochs, model_path):
         '''Train the Variation Autoencoder Model on the given dataset for the given number of epochs.
         '''
-
-        loss_fn = nn.MSELoss() # TODO change to abs loss
+        
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
 
@@ -79,7 +97,7 @@ class VAEPolicy(BasePolicy):
             "n_epochs": num_epochs,
             "lr": optimizer.param_groups[0]['lr'],
             "hidden_dims": self.model.hidden_dims,
-            "loss": loss_fn,
+            "loss": "ELBO",
             "episodes": len(self.dataset),
             "batch_size": self.dataloader.batch_size,
             "env": self.env.__class__.__name__,
@@ -95,8 +113,8 @@ class VAEPolicy(BasePolicy):
             for epoch in pbar:
                 for nbatch in self.dataloader:
                     action = nbatch['action'].to(self.device).float()
-                    pred = self.model(action)
-                    loss = loss_fn(pred, action)
+                    x_hat, mean, log_var = self.model(action)
+                    loss = self.elbo_loss(action, x_hat, mean, log_var)
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
