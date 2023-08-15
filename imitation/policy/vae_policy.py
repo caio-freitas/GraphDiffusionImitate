@@ -66,9 +66,10 @@ class VAEPolicy(BasePolicy):
         self.model.load_state_dict(torch.load(ckpt_path))
         
 
-    def get_action(self, obs, laten):
+    def get_action(self, obs, latent=None):
         ''' Implement sampling for VAE Policy'''
-        latent = torch.randn(1, self.model.latent_dim).to(self.device)
+        if latent is None:
+            latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
         action = torch.reshape(action, (self.pred_horizon,2*self.env.N_DOF))
         return action.detach().cpu().numpy()

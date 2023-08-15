@@ -20,9 +20,9 @@ def plot_trajectory(robot_fk,
          start_q,
          traj,
          target_pos,
-         obstacle_spheres):
+         obstacle_spheres,
+         ax = plt.axes(projection='3d')):
     plt.figure()
-    ax = plt.axes(projection='3d')
     skeleton = get_skeleton_from_model(robot_fk, start_q, robot_fk.get_link_names()) # visualize IK solution
     skeleton.draw_skeleton(color='r', ax=ax)
     for t in range(traj.shape[0] - 1):
@@ -35,6 +35,7 @@ def plot_trajectory(robot_fk,
     ax.plot(target_pos[0], target_pos[1], target_pos[2], 'r*', markersize=7)
     ax.scatter(obstacle_spheres[0, :, 0], obstacle_spheres[0, :, 1], obstacle_spheres[0, :, 2], s=obstacle_spheres[0, :, 3]*2000, color='r')
     plt.show()
+    return ax
 
 class StochGPMPSE2Wrapper:
     def __init__(self,
