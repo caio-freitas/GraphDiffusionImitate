@@ -10,7 +10,7 @@ import wandb
 import os
 from tqdm.auto import tqdm
 
-os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_DISABLED"] = "false"
 
 
 log = logging.getLogger(__name__)
@@ -30,8 +30,8 @@ class VAEPolicy(BasePolicy):
                     ckpt_path=None):
         super().__init__(env)
         self.env = env
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.device = torch.device("cpu")
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         self.dataset = dataset
         self.pred_horizon = self.dataset.pred_horizon
         self.model = model
@@ -71,7 +71,8 @@ class VAEPolicy(BasePolicy):
         if latent is None:
             latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
-        action = torch.reshape(action, (self.pred_horizon,2*self.env.N_DOF))
+        print(self.env.action_space.shape)
+        action = torch.reshape(action, (self.pred_horizon, self.env.action_space.shape[0]))
         return action.detach().cpu().numpy()
 
 

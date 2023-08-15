@@ -1,0 +1,44 @@
+num_episodes: 2
+output_dir: ./output
+
+# Environment
+obs_dim: 19 # TODO find a way to get this from the env
+action_dim: 8
+pred_horizon: 5
+obs_horizon: 1
+action_horizon: 1
+
+
+# Training parameters
+num_epochs: 20
+model_path: ./weights/lift_vae_last.pt
+
+obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
+action_keys: &action_keys ['robot0_gripper_qpos', 'robot0_gripper_qvel']
+
+
+env_runner: 
+  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+
+policy:
+  _target_: imitation.policy.vae_policy.VAEPolicy
+  model:
+    _target_: imitation.model.vae.VAE
+    # input is action_dim*obs_horizon
+    input_dim: 40 # 8*5
+    hidden_dims: [64, 32, 16, 8]
+    latent_dim: 4
+  env: ${env_runner.env}
+  dataset:
+    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    dataset_path: ./data/lift_low_dim_v141.hdf5
+    obs_keys: *obs_keys
+    pred_horizon: ${pred_horizon}
+  # ckpt_path: ./weights/se2_vae_test.pt
+
+
+agent:
+  _target_: imitation.agent.robot_se2_agent.Se2Agent
