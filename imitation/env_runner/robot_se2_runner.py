@@ -5,7 +5,7 @@ from imitation.agent.base_agent import BaseAgent
 from imitation.env_runner.base_runner import BaseRunner
 from imitation.policy.base_policy import BasePolicy
 from imitation.env.pybullet.se2_envs.robot_se2_wrapper import RobotSe2EnvWrapper
-
+import time
 log = logging.getLogger(__name__)
 
 class RobotSe2EnvRunner(BaseRunner):
@@ -24,8 +24,10 @@ class RobotSe2EnvRunner(BaseRunner):
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         for i in range(n_steps):
             self.env.render()
-            self.obs, reward, done, info = self.env.step(agent.act(self.obs))
-            if done:
-                break
+            actions = agent.act(self.obs)
+            for action in actions: # in case of prediction horizon > 1
+                self.obs, reward, done, info = self.env.step(action)
+                if done:
+                    break
         self.env.close()
 

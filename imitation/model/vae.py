@@ -8,7 +8,8 @@ from torch import nn
 class VAE(nn.Module):
     def __init__(self,
                  input_dim, # output_dim = input_dim
-                 hidden_dims=[64, 32, 16]
+                 hidden_dims=[64, 32, 16],
+                 latent_dim=2
                  ):
         super().__init__()
         self.input_dim = input_dim
@@ -22,7 +23,7 @@ class VAE(nn.Module):
                 ) for i in range(len(hidden_dims)-1)
             ]
         )
-        self.latent_dim =  2
+        self.latent_dim =  latent_dim
         # latent mean and variance 
         self.mean_layer = nn.Linear(self.hidden_dims[-1], self.latent_dim)
         self.logvar_layer = nn.Linear(self.hidden_dims[-1], self.latent_dim)
@@ -34,7 +35,7 @@ class VAE(nn.Module):
                 ) for i in range(1, len(hidden_dims))
             ],
             nn.Linear(self.hidden_dims[0], input_dim),
-            nn.Sigmoid()
+            nn.Identity()
         )
 
     def reparameterization(self, mean, var):
@@ -53,7 +54,7 @@ class VAE(nn.Module):
         x_hat = self.decode(z)
         return x_hat, mean, logvar
 
-    
+
     def decode(self, x):
         return self.decoder(x)
     

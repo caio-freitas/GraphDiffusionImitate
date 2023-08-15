@@ -21,10 +21,10 @@ obstacles: [[[0.5, 0.5, 0.1, 0.1], [-0.5, -0.5, 0.1, 0.1]]]
 
 # cost sigmas
 sigma_self: 0.001
-sigma_coll: 0.0001
+sigma_coll: 0.00001
 sigma_goal: 0.0007
 sigma_goal_prior: 0.001
-sigma_start: 0.0001
+sigma_start: 0.001
 sigma_gp: 0.07
 
 
@@ -37,10 +37,10 @@ stochgpmp_params:
   step_size: 0.5
   sigma_start_init: 0.0001
   sigma_goal_init: 0.0001
-  sigma_gp_init: 10
+  sigma_gp_init: 50
   sigma_start_sample: 0.0001
   sigma_goal_sample: 0.0001
-  sigma_gp_sample: 0.5
+  sigma_gp_sample: 2
   seed: ${seed}
   # tensor_args: {device: cpu, dtype: float64}
 

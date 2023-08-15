@@ -10,7 +10,7 @@ import wandb
 import os
 from tqdm.auto import tqdm
 
-os.environ["WANDB_DISABLED"] = "false"
+os.environ["WANDB_DISABLED"] = "true"
 
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ class VAEPolicy(BasePolicy):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # self.device = torch.device("cpu")
         self.dataset = dataset
+        self.pred_horizon = self.dataset.pred_horizon
         self.model = model
         log.info(f"Model: {self.model}")
         # load model from ckpt
@@ -65,22 +66,23 @@ class VAEPolicy(BasePolicy):
         self.model.load_state_dict(torch.load(ckpt_path))
         
 
-    def get_action(self):
+    def get_action(self, obs, laten):
         ''' Implement sampling for VAE Policy'''
         latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
-        return action.detach().cpu().numpy()[0]
+        action = torch.reshape(action, (self.pred_horizon,2*self.env.N_DOF))
+        return action.detach().cpu().numpy()
 
 
     def elbo_loss(self, x, x_hat, mean, logvar):
         '''Implement ELBO loss for VAE Policy'''
         # is binary cross entropy the right distribution?
-        reconstruction_loss = nn.functional.cross_entropy(x_hat, x, reduction='sum')
-        # reconstruction_loss = nn.functional.gaussian_nll_loss(x_hat, x, logvar.exp(), reduction='sum')
+        # reconstruction_loss = nn.functional.cross_entropy(x_hat, x, reduction='mean')
+        reconstruction_loss = nn.functional.mse_loss(x_hat, x)
 
         KLD = - 0.5 * torch.sum(1+ logvar - mean.pow(2) - logvar.exp())
 
-        return -(reconstruction_loss + KLD) # negative ELBO
+        return reconstruction_loss + KLD
 
     def train(self, dataset, num_epochs, model_path):
         '''Train the Variation Autoencoder Model on the given dataset for the given number of epochs.
