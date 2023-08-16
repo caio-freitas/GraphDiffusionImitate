@@ -8,7 +8,7 @@ from imitation.env.pybullet.se2_envs.robot_se2_wrapper import RobotSe2EnvWrapper
 import time
 log = logging.getLogger(__name__)
 
-class RobotSe2EnvRunner(BaseRunner):
+class RobomimicEnvRunner(BaseRunner):
     def __init__(self,
                 env,
                 output_dir) -> None:
@@ -26,6 +26,7 @@ class RobotSe2EnvRunner(BaseRunner):
         for i in range(n_steps):
             self.env.render()
             actions = agent.act(self.obs)
+            # TODO solve the implementation of action sequence
             for action in actions:
                 if done:
                     break

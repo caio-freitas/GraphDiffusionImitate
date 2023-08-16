@@ -4,9 +4,9 @@ import numpy as np
 import h5py
 from tqdm import tqdm
 
-class Se2StateDataset(torch.utils.data.Dataset):
+class RobomimicLowdimDataset(torch.utils.data.Dataset):
     '''
-    Dataset class for Se2 task, with structure from robomimic.
+    Dataset class for SE2 task (and robomimic), with structure from robomimic.
     https://robomimic.github.io/docs/datasets/overview.html
     '''
     def __init__(self, 
@@ -41,6 +41,7 @@ class Se2StateDataset(torch.utils.data.Dataset):
         Returns item (timestep in demo) from dataset
         '''
         # print(f"trying to get item {idx}")
+        idx=0 # TODO: remove this, just for overfitting
         idx_demo = 0
         # find which demo idx is in, using self.pred_horizon steps in the future
         while idx + self.pred_horizon > len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]):
@@ -80,6 +81,7 @@ class Se2StateDataset(torch.utils.data.Dataset):
         obs_t = obs_t.flatten()
 
         act_t = torch.tensor(demo["actions"][idx_t:idx_t+self.pred_horizon], dtype=torch.float32)
+        print(f"act_t: {act_t.shape}")
         act_t = act_t.flatten()
 
         obs_t = torch.tensor(obs_t, dtype=torch.float32)

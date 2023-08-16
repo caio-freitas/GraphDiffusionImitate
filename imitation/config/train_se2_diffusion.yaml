@@ -15,7 +15,7 @@ model_path: ./se2_diffusion_policy.pt
 
 
 env_runner: 
-  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
 
 
@@ -29,7 +29,7 @@ policy:
   action_horizon: ${action_horizon}
   num_diffusion_iters: 100
   dataset:
-    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/trajs.hdf5
     pred_horizon: ${pred_horizon}
     obs_horizon: ${obs_horizon}

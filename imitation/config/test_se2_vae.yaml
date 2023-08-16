@@ -12,7 +12,7 @@ max_steps: 1000
 obs_keys: &obs_keys ['joint_values', 'joint_velocities']
 
 env_runner: 
-  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
   env:
     _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
@@ -29,7 +29,7 @@ policy:
     latent_dim: 4
   env: ${env_runner.env}
   dataset:
-    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/trajs.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}

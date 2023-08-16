@@ -17,7 +17,7 @@ obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_grip
 
 
 env_runner: 
-  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
   env:
     _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
@@ -37,7 +37,7 @@ policy:
       _target_: torch.nn.Identity
   env: ${env_runner.env}
   dataset:
-    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
   # ckpt_path: None
