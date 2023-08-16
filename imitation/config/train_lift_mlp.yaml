@@ -4,7 +4,7 @@ output_dir: ./output
 # Environment
 obs_dim: 19
 action_dim: 7
-pred_horizon: 1
+pred_horizon: 5
 obs_horizon: 1
 action_horizon: 1
 
@@ -20,16 +20,15 @@ env_runner:
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
   env:
-    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
-    num_obs: 2
-    start_pose: [1.0, 0.0, 0.0] # TODO use this!
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    task: "Lift"
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
   model:
     _target_: imitation.model.mlp.MLPNet
-    input_dim: ${obs_dim}
-    output_dim: ${action_dim}
+    input_dim: 95 # 19 * 5
+    output_dim: 35 # 7 * 5
     hidden_dims: [256, 256, 128, 32, 128, 256]
     activation:
       _target_: torch.nn.LeakyReLU
@@ -40,8 +39,9 @@ policy:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
+    pred_horizon: ${pred_horizon}
   # ckpt_path: None
 
 
 agent:
-  _target_: imitation.agent.robot_se2_agent.Se2Agent
+  _target_: imitation.agent.robomimic_lowdim_agent.Se2Agent

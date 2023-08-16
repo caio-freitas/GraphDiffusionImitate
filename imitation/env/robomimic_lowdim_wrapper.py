@@ -9,11 +9,12 @@ from robosuite.wrappers.gym_wrapper import GymWrapper
 
 class RobomimicLowdimWrapper(gym.Env):
     def __init__(self,
-                 max_steps=5000
+                 max_steps=5000,
+                 task="Lift"
                  ):
         self.env = GymWrapper(
             suite.make(
-                "Lift",
+                task,
                 robots="Panda",  # use Sawyer robot
                 use_camera_obs=False,  # do not use pixel observations
                 has_offscreen_renderer=False,  # not needed since not using pixel obs

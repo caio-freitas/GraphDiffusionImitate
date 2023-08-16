@@ -10,7 +10,7 @@ pred_horizon: 16
 
 # Training parameters
 num_epochs: 100
-model_path: ./weights/lift_vae_last.pt
+model_path: ./weights/lift_vae_overfit.pt
 
 obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
 
@@ -20,6 +20,7 @@ env_runner:
   output_dir: ${output_dir}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    task: "Lift"
 
 policy:
   _target_: imitation.policy.vae_policy.VAEPolicy
@@ -35,8 +36,8 @@ policy:
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
-  ckpt_path: ./weights/lift_vae_last.pt
+  ckpt_path: ./weights/lift_vae_overfit.pt
 
 
 agent:
-  _target_: imitation.agent.robot_se2_agent.Se2Agent
+  _target_: imitation.agent.robomimic_lowdim_agent.Se2Agent

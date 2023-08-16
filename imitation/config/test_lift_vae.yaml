@@ -20,6 +20,7 @@ env_runner:
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${max_steps}
+    task: "Lift"
 policy:
   _target_: imitation.policy.vae_policy.VAEPolicy
   model:
@@ -38,4 +39,4 @@ policy:
 
 
 agent:
-  _target_: imitation.agent.robot_se2_agent.Se2Agent
+  _target_: imitation.agent.robomimic_lowdim_agent.Se2Agent
