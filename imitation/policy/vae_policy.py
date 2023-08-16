@@ -44,7 +44,7 @@ class VAEPolicy(BasePolicy):
             self.dataset,
             batch_size=4,
             num_workers=1,
-            shuffle=True,
+            shuffle=False, # tp overfit
             # accelerate cpu-gpu transfer
             pin_memory=True,
             # don't kill worker process afte each epoch
@@ -71,8 +71,8 @@ class VAEPolicy(BasePolicy):
         if latent is None:
             latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
-        print(self.env.action_space.shape)
-        action = torch.reshape(action, (self.pred_horizon, self.env.action_space.shape[0]))
+        log.info(f"action_space: {self.env.action_space.shape}")
+        action = torch.reshape(action, (self.pred_horizon, self.env.action_space.shape[0]-1)) # TODO remove gripper dim
         return action.detach().cpu().numpy()
 
 
@@ -110,8 +110,10 @@ class VAEPolicy(BasePolicy):
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
-        log.info(f"batch['obs'].shape:{batch['obs']}")
-        log.info(f"batch['action'].shape: {batch['action']}")
+        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
+        log.info(f"batch['action'].shape: {batch['action'].shape}")
+
+        # keep first self.action_dim
 
         with tqdm(range(num_epochs)) as pbar:
             for epoch in pbar:

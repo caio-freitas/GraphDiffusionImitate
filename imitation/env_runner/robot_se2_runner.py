@@ -22,12 +22,17 @@ class RobotSe2EnvRunner(BaseRunner):
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
+        done = False
         for i in range(n_steps):
             self.env.render()
             actions = agent.act(self.obs)
-            for action in actions: # in case of prediction horizon > 1
-                self.obs, reward, done, info = self.env.step(action)
+            for action in actions:
                 if done:
                     break
+                log.info(f"action: {action}")
+                self.obs, reward, done, info = self.env.step(action)
+            if done:
+                break
+
         self.env.close()
 

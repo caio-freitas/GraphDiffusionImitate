@@ -1,16 +1,15 @@
-num_episodes: 2
+num_episodes: 1
 output_dir: ./output
 
 # Environment
 obs_dim: 19
-action_dim: 8
-pred_horizon: 5
-obs_horizon: 1
-action_horizon: 1
+action_dim: 7
+pred_horizon: 16
+
 
 model_path: ./weights/lift_vae_last.pt
 
-max_steps: 2000
+max_steps: 5000
 
 obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
 
@@ -20,13 +19,13 @@ env_runner:
   output_dir: ${output_dir}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-
+    max_steps: ${max_steps}
 policy:
   _target_: imitation.policy.vae_policy.VAEPolicy
   model:
     _target_: imitation.model.vae.VAE
     # input is action_dim*obs_horizon
-    input_dim: 40 # 8*5
+    input_dim: 112 # 8*5
     hidden_dims: [64, 32, 16, 8]
     latent_dim: 4
   env: ${env_runner.env}

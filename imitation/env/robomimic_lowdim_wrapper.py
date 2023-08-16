@@ -9,6 +9,7 @@ from robosuite.wrappers.gym_wrapper import GymWrapper
 
 class RobomimicLowdimWrapper(gym.Env):
     def __init__(self,
+                 max_steps=5000
                  ):
         self.env = GymWrapper(
             suite.make(
@@ -19,6 +20,7 @@ class RobomimicLowdimWrapper(gym.Env):
                 has_renderer=True,  # make sure we can render to the screen
                 reward_shaping=True,  # use dense rewards
                 control_freq=20,  # control should happen fast enough so that simulation looks smooth
+                horizon=max_steps,  # long horizon so we can sample high rewards
             )
         )
         self.env.reset()
@@ -31,6 +33,7 @@ class RobomimicLowdimWrapper(gym.Env):
         return self.env.reset()
 
     def step(self, action):
+        action = [*action, 0] # fix gripper action
         obs, reward, done, _, info = self.env.step(action)
         return obs, reward, done, info
     
