@@ -3,7 +3,7 @@ output_dir: ./output
 
 # Environment
 obs_dim: 6
-action_dim: 3
+action_dim: 6
 pred_horizon: 5
 obs_horizon: 1
 action_horizon: 1
@@ -22,9 +22,10 @@ env_runner:
 
 policy:
   _target_: imitation.policy.vae_policy.VAEPolicy
+  action_dim: ${action_dim}
   model:
     _target_: imitation.model.vae.VAE
-    input_dim: 30 # 6*5
+    input_dim: ${eval:'${action_dim}*${pred_horizon}'}
     hidden_dims: [128, 32, 16, 8]
     latent_dim: 4
   env: ${env_runner.env}
