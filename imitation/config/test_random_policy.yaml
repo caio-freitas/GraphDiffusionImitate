@@ -4,11 +4,14 @@ output_dir: ./output
 
 
 env_runner: 
-  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+
 
 policy:
   _target_: imitation.policy.random_policy.RandomPolicy
 
 agent:
-  _target_: imitation.agent.robot_se2_agent.Se2Agent
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

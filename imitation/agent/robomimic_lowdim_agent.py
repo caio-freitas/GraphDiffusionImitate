@@ -1,6 +1,6 @@
 from imitation.agent.base_agent import BaseAgent
 
-class Se2Agent(BaseAgent):
+class RobomimicLowdimAgent(BaseAgent):
     def __init__(self, policy):
         super().__init__(policy)
         self.env = policy.env

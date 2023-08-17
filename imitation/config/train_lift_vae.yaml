@@ -4,14 +4,13 @@ output_dir: ./output
 # Environment
 obs_dim: 19
 action_dim: 7
-pred_horizon: 1
-obs_horizon: 1
-action_horizon: 1
+pred_horizon: 16
+
 
 
 # Training parameters
-num_epochs: 2000
-model_path: ./weights/lift_mlp_last.pt
+num_epochs: 100
+model_path: ./weights/lift_vae_overfit.pt
 
 obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
 
@@ -19,28 +18,27 @@ obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_grip
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
+  action_horizon: ${pred_horizon}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    max_steps: ${max_steps}
     task: "Lift"
 
 policy:
-  _target_: imitation.policy.mlp_policy.MLPPolicy
+  _target_: imitation.policy.vae_policy.VAEPolicy
   model:
-    _target_: imitation.model.mlp.MLPNet
-    input_dim: ${obs_dim}
-    output_dim: ${action_dim}
-    hidden_dims: [256, 256, 256, 256]
-    activation:
-      _target_: torch.nn.LeakyReLU
-    output_activation: 
-      _target_: torch.nn.Identity
+    _target_: imitation.model.vae.VAE
+    # input is action_dim*obs_horizon
+    input_dim: ${eval:'${action_dim}*${pred_horizon}'}
+    hidden_dims: [64, 32, 16, 8]
+    latent_dim: 4
   env: ${env_runner.env}
   dataset:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
-  # ckpt_path: None
+  ckpt_path: ./weights/lift_vae_overfit.pt
 
 
 agent:

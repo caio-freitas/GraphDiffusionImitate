@@ -8,15 +8,15 @@ pred_horizon: 1
 obs_horizon: 1
 action_horizon: 1
 
-obs_keys: &obs_keys ['joint_values']
+obs_keys: &obs_keys ['joint_values', 'joint_velocities']
 
 # Training parameters
-num_epochs: 2000
+num_epochs: 100
 model_path: ./weights/se2_mlp_test.pt
 
 
 env_runner: 
-  _target_: imitation.env_runner.robot_se2_runner.RobotSe2EnvRunner
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
   env:
     _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
@@ -30,18 +30,18 @@ policy:
     _target_: imitation.model.mlp.MLPNet
     input_dim: ${obs_dim}
     output_dim: ${action_dim}
-    hidden_dims: [256, 256, 128, 32, 128, 256]
+    hidden_dims: [128, 128, 128, 128]
     activation:
       _target_: torch.nn.LeakyReLU
     output_activation: 
       _target_: torch.nn.Identity
   env: ${env_runner.env}
   dataset:
-    _target_: imitation.dataset.se2_state_dataset.Se2StateDataset
+    _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/trajs.hdf5
     obs_keys: *obs_keys
-  # ckpt_path: None
+  ckpt_path: ./weights/se2_mlp_test.pt
 
 
 agent:
-  _target_: imitation.agent.robot_se2_agent.Se2Agent
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

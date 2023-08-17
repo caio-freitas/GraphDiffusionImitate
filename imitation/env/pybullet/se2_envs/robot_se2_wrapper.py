@@ -81,6 +81,7 @@ class RobotSe2EnvWrapper(gym.Env):
         return robot
 
     def step(self, action):
+        action = action[:self.N_DOF] # Position Only
         [robot, obstacles, grasp_obj] = self.env.step(action)
         pose = torch.tensor(p.getLinkState(self.env.robot, self.env.JOINT_ID[-1])[0], **self.tensor_args)
         done = torch.norm(self.target_pose - pose) < 0.1

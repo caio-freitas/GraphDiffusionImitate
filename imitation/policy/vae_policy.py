@@ -10,14 +10,14 @@ import wandb
 import os
 from tqdm.auto import tqdm
 
-os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_DISABLED"] = "false"
 
 
 log = logging.getLogger(__name__)
 
 
 
-class MLPPolicy(BasePolicy):
+class VAEPolicy(BasePolicy):
     def __init__(self,
                     env,
                     model: nn.Module,
@@ -29,57 +29,84 @@ class MLPPolicy(BasePolicy):
                     ),
                     ckpt_path=None):
         super().__init__(env)
-        self.env = env # TODO remove
+        self.env = env
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cpu")
         self.dataset = dataset
+        self.pred_horizon = self.dataset.pred_horizon
         self.model = model
+        log.info(f"Model: {self.model}")
         # load model from ckpt
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
         # create dataloader
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
-            batch_size=32,
+            batch_size=4,
             num_workers=1,
-            shuffle=True,
+            shuffle=False, # tp overfit
             # accelerate cpu-gpu transfer
             pin_memory=True,
             # don't kill worker process afte each epoch
-            persistent_workers=True
+            persistent_workers=True,
+            collate_fn=self.collate_fn
         )
 
         self.ckpt_path = ckpt_path
         
+    def collate_fn(self, batch):
+        return {
+            'action': torch.stack([x['action'] for x in batch]),
+            'obs': torch.stack([x['obs'] for x in batch])
+        }
+
+
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
         self.model.load_state_dict(torch.load(ckpt_path))
         
 
-    def get_action(self, obs):
-        obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
-        action = self.model.forward(obs).detach().cpu().numpy()
-        return action
+    def get_action(self, obs, latent=None):
+        ''' 
+        Implement sampling for VAE Policy
+        obs: torch.Tensor of shape (obs_dim) (currently not used)
+        latent: torch.Tensor of shape (1, latent_dim) 
+        to choose a specific latent vector
+        '''
+        if latent is None:
+            latent = torch.randn(1, self.model.latent_dim).to(self.device)
+        action = self.model.decode(latent)
+        log.info(f"action_space: {self.env.action_space.shape}")
+        action = torch.reshape(action, (self.pred_horizon, self.env.action_space.shape[0]-1)) # TODO remove gripper dim
+        return action.detach().cpu().numpy()
+
+
+    def elbo_loss(self, x, x_hat, mean, logvar):
+        '''Implement ELBO loss for VAE Policy'''
+        # is binary cross entropy the right distribution?
+        # reconstruction_loss = nn.functional.cross_entropy(x_hat, x, reduction='mean')
+        reconstruction_loss = nn.functional.mse_loss(x_hat, x)
+
+        KLD = - 0.5 * torch.sum(1+ logvar - mean.pow(2) - logvar.exp())
+
+        return reconstruction_loss + KLD
 
     def train(self, dataset, num_epochs, model_path):
-        '''Train the policy on the given dataset for the given number of epochs.
-        Usinf self.model.forward() to get the action for the given observation.'''
-
-        loss_fn = nn.MSELoss() # TODO change to abs loss
+        '''Train the Variation Autoencoder Model on the given dataset for the given number of epochs.
+        '''
+        
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
 
         wandb.init(
-            project="mlp_policy",
+            project="vae_policy",
             # track hyperparameters and run metadata
             config={
-            "architecture": "MLP",
+            "architecture": "VAE",
             "n_epochs": num_epochs,
             "lr": optimizer.param_groups[0]['lr'],
             "hidden_dims": self.model.hidden_dims,
-            "activation": self.model.activation,
-            "output_activation": self.model.output_activation,
-            "loss": loss_fn,
+            "loss": "ELBO",
             "episodes": len(self.dataset),
             "batch_size": self.dataloader.batch_size,
             "env": self.env.__class__.__name__,
@@ -88,16 +115,17 @@ class MLPPolicy(BasePolicy):
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
-        log.info(f"batch['obs'].shape:{batch['obs']}")
-        log.info(f"batch['action'].shape: {batch['action']}")
+        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
+        log.info(f"batch['action'].shape: {batch['action'].shape}")
+
+        # keep first self.action_dim
 
         with tqdm(range(num_epochs)) as pbar:
             for epoch in pbar:
                 for nbatch in self.dataloader:
-                    nobs = nbatch['obs'].to(self.device).float()
                     action = nbatch['action'].to(self.device).float()
-                    pred = self.model(nobs)
-                    loss = loss_fn(pred, action)
+                    x_hat, mean, log_var = self.model(action)
+                    loss = self.elbo_loss(action, x_hat, mean, log_var)
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
