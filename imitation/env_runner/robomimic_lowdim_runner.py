@@ -1,11 +1,14 @@
 import logging
 from typing import Dict
+
 import gymnasium as gym
+
 from imitation.agent.base_agent import BaseAgent
+from imitation.env.pybullet.se2_envs.robot_se2_wrapper import \
+    RobotSe2EnvWrapper
 from imitation.env_runner.base_runner import BaseRunner
 from imitation.policy.base_policy import BasePolicy
-from imitation.env.pybullet.se2_envs.robot_se2_wrapper import RobotSe2EnvWrapper
-import time
+
 log = logging.getLogger(__name__)
 
 class RobomimicEnvRunner(BaseRunner):
