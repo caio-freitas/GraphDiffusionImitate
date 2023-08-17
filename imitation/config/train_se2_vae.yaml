@@ -42,4 +42,4 @@ policy:
 
 
 agent:
-  _target_: imitation.agent.robomimic_lowdim_agent.Se2Agent
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
