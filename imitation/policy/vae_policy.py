@@ -21,6 +21,7 @@ class VAEPolicy(BasePolicy):
     def __init__(self,
                     env,
                     model: nn.Module,
+                    action_dim: int,
                     dataset = PushTStateDataset(
                         dataset_path='./pusht_cchi_v7_replay.zarr.zip',
                         pred_horizon=1,
@@ -34,6 +35,7 @@ class VAEPolicy(BasePolicy):
         self.device = torch.device("cpu")
         self.dataset = dataset
         self.pred_horizon = self.dataset.pred_horizon
+        self.action_dim = action_dim
         self.model = model
         log.info(f"Model: {self.model}")
         # load model from ckpt
@@ -77,7 +79,7 @@ class VAEPolicy(BasePolicy):
             latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
         log.info(f"action_space: {self.env.action_space.shape}")
-        action = torch.reshape(action, (self.pred_horizon, self.env.action_space.shape[0]-1)) # TODO remove gripper dim
+        action = torch.reshape(action, (self.pred_horizon, self.action_dim)) # TODO remove gripper dim
         return action.detach().cpu().numpy()
 
 

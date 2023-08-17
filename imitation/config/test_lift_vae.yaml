@@ -25,6 +25,7 @@ env_runner:
   
 policy:
   _target_: imitation.policy.vae_policy.VAEPolicy
+  action_dim: ${action_dim}
   model:
     _target_: imitation.model.vae.VAE
     # input is action_dim*obs_horizon
