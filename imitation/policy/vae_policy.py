@@ -67,7 +67,12 @@ class VAEPolicy(BasePolicy):
         
 
     def get_action(self, obs, latent=None):
-        ''' Implement sampling for VAE Policy'''
+        ''' 
+        Implement sampling for VAE Policy
+        obs: torch.Tensor of shape (obs_dim) (currently not used)
+        latent: torch.Tensor of shape (1, latent_dim) 
+        to choose a specific latent vector
+        '''
         if latent is None:
             latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
