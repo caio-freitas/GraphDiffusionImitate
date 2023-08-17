@@ -14,10 +14,11 @@ log = logging.getLogger(__name__)
 class RobomimicEnvRunner(BaseRunner):
     def __init__(self,
                 env,
-                output_dir) -> None:
+                output_dir,
+                action_horizon=1) -> None:
         super().__init__(output_dir)
         self.env = env
-
+        self.action_horizon = action_horizon
         self.obs = self.env.reset()
 
     def reset(self) -> None:
@@ -29,14 +30,13 @@ class RobomimicEnvRunner(BaseRunner):
         for i in range(n_steps):
             self.env.render()
             actions = agent.act(self.obs)
-            # TODO solve the implementation of action sequence
-            for action in actions:
+            for i in range(self.action_horizon):
+                # Make sure the action is always [[...]]
+                action = actions[i] 
                 if done:
                     break
                 log.info(f"action: {action}")
                 self.obs, reward, done, info = self.env.step(action)
-            if done:
-                break
 
         self.env.close()
 
