@@ -31,12 +31,16 @@ class RobomimicLowdimWrapper(gym.Env):
 
 
     def reset(self):
-        return self.env.reset()
+        obs, _ =  self.env.reset()
+        return obs[:19]
+    
 
     def step(self, action):
+        print(f"action: {action}")
         action = [*action, 0] # fix gripper action
         obs, reward, done, _, info = self.env.step(action)
-        return obs, reward, done, info
+        print(f"obs: {obs}")
+        return obs[:19], reward, done, info
     
     def render(self):
         return self.env.render()

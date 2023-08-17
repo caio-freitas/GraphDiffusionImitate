@@ -1,17 +1,15 @@
-num_episodes: 2
+num_episodes: 1
 output_dir: ./output
 
 # Environment
 obs_dim: 19
 action_dim: 7
 pred_horizon: 1
-obs_horizon: 1
-action_horizon: 1
 
 
-# Training parameters
-num_epochs: 2000
 model_path: ./weights/lift_mlp_last.pt
+
+max_steps: 5000
 
 obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
 
@@ -19,9 +17,12 @@ obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_grip
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
+  action_horizon: ${pred_horizon}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    max_steps: ${max_steps}
     task: "Lift"
+
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
@@ -40,7 +41,7 @@ policy:
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
-  # ckpt_path: None
+  ckpt_path: ${model_path}
 
 
 agent:

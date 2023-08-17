@@ -40,7 +40,6 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         '''
         Returns item (timestep in demo) from dataset
         '''
-        # print(f"trying to get item {idx}")
         idx=0 # TODO: remove this, just for overfitting
         idx_demo = 0
         # find which demo idx is in, using self.pred_horizon steps in the future
@@ -60,14 +59,13 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         
         idx_t = idx # initial timestep in demo
         key = self.dataset_keys[idx_demo]
-        # print(f"key: {key}")
         demo = self.dataset_root[f"data/{key}"] # demo_idx
-        # turn h5py._hl.dataset.Dataset into numpy array
         obs_len = len(demo["obs/{}".format(self.obs_keys[0])][0])
         key_len = len(self.obs_keys)   
         obs_t = None # (pred_horizon, key_len*obs_len)
+        
         # for each observation modality, store pred_horizon steps in the future
-
+        # to turn h5py._hl.dataset.Dataset into numpy array
         for i, obs_key in enumerate(self.obs_keys):
             if i == 0:
                 obs_t = torch.tensor(demo[f"obs/{obs_key}"][idx_t:idx_t+self.pred_horizon, :], dtype=torch.float32)
@@ -81,7 +79,6 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         obs_t = obs_t.flatten()
 
         act_t = torch.tensor(demo["actions"][idx_t:idx_t+self.pred_horizon], dtype=torch.float32)
-        print(f"act_t: {act_t.shape}")
         act_t = act_t.flatten()
 
         obs_t = torch.tensor(obs_t, dtype=torch.float32)

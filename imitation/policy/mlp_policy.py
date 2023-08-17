@@ -57,10 +57,9 @@ class MLPPolicy(BasePolicy):
         
 
     def get_action(self, obs):
-        
-        obs = torch.tensor([obs], dtype=torch.float32).to(self.device)[:,:3]
+        obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
         action = self.model.forward(obs).detach().cpu().numpy()
-        return action[0]
+        return action
 
     def train(self, dataset, num_epochs, model_path):
         '''Train the policy on the given dataset for the given number of epochs.
@@ -96,7 +95,7 @@ class MLPPolicy(BasePolicy):
             for epoch in pbar:
                 for nbatch in self.dataloader:
                     nobs = nbatch['obs'].to(self.device).float()
-                    action = nbatch['action'].to(self.device).float()[:,:3] # TODO remove [:,:3] (change structure of dataset)
+                    action = nbatch['action'].to(self.device).float()
                     pred = self.model(nobs)
                     loss = loss_fn(pred, action)
                     optimizer.zero_grad()
