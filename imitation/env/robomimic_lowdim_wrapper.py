@@ -3,15 +3,16 @@ import gymnasium as gym
 import numpy as np
 
 import robosuite as suite
+from robosuite.controllers import load_controller_config
 from robosuite.environments.manipulation.lift import Lift
 from robosuite.wrappers.gym_wrapper import GymWrapper
-
 
 class RobomimicLowdimWrapper(gym.Env):
     def __init__(self,
                  max_steps=5000,
                  task="Lift"
                  ):
+        controller_config = load_controller_config(default_controller="OSC_POSE")
         self.env = GymWrapper(
             suite.make(
                 task,
@@ -22,6 +23,7 @@ class RobomimicLowdimWrapper(gym.Env):
                 reward_shaping=True,  # use dense rewards
                 control_freq=20,  # control should happen fast enough so that simulation looks smooth
                 horizon=max_steps,  # long horizon so we can sample high rewards
+                controller_configs=controller_config,
             )
         )
         self.env.reset()
@@ -36,10 +38,7 @@ class RobomimicLowdimWrapper(gym.Env):
     
 
     def step(self, action):
-        print(f"action: {action}")
-        action = [*action, 0] # fix gripper action
         obs, reward, done, _, info = self.env.step(action)
-        print(f"obs: {obs}")
         return obs[:19], reward, done, info
     
     def render(self):
