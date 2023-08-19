@@ -10,10 +10,14 @@ action_horizon: 1
 
 
 # Training parameters
-num_epochs: 2000
+num_epochs: 1000
 model_path: ./weights/lift_mlp_last.pt
 
-obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
+train:
+  loss:
+    _target_: torch.nn.MSELoss
+
+obs_keys: &obs_keys ['robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
 
 
 env_runner: 
@@ -40,7 +44,7 @@ policy:
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
-  # ckpt_path: None
+  ckpt_path: ${model_path}
 
 
 agent:

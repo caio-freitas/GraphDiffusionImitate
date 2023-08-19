@@ -1,13 +1,11 @@
 import logging
+import time
 from typing import Dict
 
 import gymnasium as gym
 
 from imitation.agent.base_agent import BaseAgent
-from imitation.env.pybullet.se2_envs.robot_se2_wrapper import \
-    RobotSe2EnvWrapper
 from imitation.env_runner.base_runner import BaseRunner
-from imitation.policy.base_policy import BasePolicy
 
 log = logging.getLogger(__name__)
 
@@ -30,13 +28,14 @@ class RobomimicEnvRunner(BaseRunner):
         for i in range(n_steps):
             self.env.render()
             actions = agent.act(self.obs)
-            for i in range(self.action_horizon):
+            for j in range(self.action_horizon):
                 # Make sure the action is always [[...]]
-                action = actions[i] 
+                action = actions[j] 
                 if done:
                     break
-                log.info(f"action: {action}")
                 self.obs, reward, done, info = self.env.step(action)
-
+                self.env.render()
+                time.sleep(1/30) # TODO parametrize
+                i += 1
         self.env.close()
 

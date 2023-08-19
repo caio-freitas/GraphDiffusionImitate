@@ -40,7 +40,6 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         '''
         Returns item (timestep in demo) from dataset
         '''
-        idx=0 # TODO: remove this, just for overfitting
         idx_demo = 0
         # find which demo idx is in, using self.pred_horizon steps in the future
         while idx + self.pred_horizon > len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]):

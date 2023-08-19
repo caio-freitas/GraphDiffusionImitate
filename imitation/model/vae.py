@@ -9,17 +9,20 @@ class VAE(nn.Module):
     def __init__(self,
                  input_dim, # output_dim = input_dim
                  hidden_dims=[64, 32, 16],
+                 activation=nn.ReLU(),
+                 output_activation=nn.Identity(),
                  latent_dim=2
                  ):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
+        self.activation = activation
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, self.hidden_dims[0]),
             nn.ReLU(),
             *[nn.Sequential(
                 nn.Linear(self.hidden_dims[i], self.hidden_dims[i+1]),
-                nn.ReLU()
+                activation
                 ) for i in range(len(hidden_dims)-1)
             ]
         )
@@ -31,11 +34,11 @@ class VAE(nn.Module):
             nn.Linear(self.latent_dim, self.hidden_dims[-1]),
             *[nn.Sequential(
                 nn.Linear(self.hidden_dims[-i], self.hidden_dims[-i-1]),
-                nn.ReLU()
+                activation
                 ) for i in range(1, len(hidden_dims))
             ],
             nn.Linear(self.hidden_dims[0], input_dim),
-            nn.Identity()
+            output_activation
         )
 
     def reparameterization(self, mean, var):

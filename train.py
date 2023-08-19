@@ -4,15 +4,21 @@ Training:
 python train.py --config-name=example
 """
 import logging
+import os
 import pathlib
 
 import hydra
+import wandb
+
 from imitation.env_runner.kitchen_pose_runner import KitchenPoseRunner
 from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver("eval", eval)
+
+os.environ["WANDB_DISABLED"] = "false"
+
 
 @hydra.main(
         version_base=None,
@@ -31,7 +37,24 @@ def train(cfg: DictConfig) -> None:
             policy.load_nets(cfg.policy.ckpt_path)
     except:
         log.error("cfg.policy.ckpt_path doesn't exist")
+    
+    wandb.init(
+        project="lift",
+        name="larger_vae_overfit",
+        # track hyperparameters and run metadata
+        config={
+            "policy": cfg.policy,
+            "n_epochs": cfg.num_epochs,
+            "hidden_dims": policy.model.hidden_dims,
+            "activation": cfg.policy.model.activation,
+            "output_activation": cfg.policy.model.output_activation,
+            "episodes": len(policy.dataset),
+            "batch_size": policy.dataloader.batch_size,
+            "env": runner.env.__class__.__name__,
+        }
+    )
     # train policy
+
     policy.train(dataset=policy.dataset,
                  num_epochs=cfg.num_epochs,
                  model_path=cfg.model_path)

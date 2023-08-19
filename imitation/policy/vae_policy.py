@@ -78,7 +78,6 @@ class VAEPolicy(BasePolicy):
         if latent is None:
             latent = torch.randn(1, self.model.latent_dim).to(self.device)
         action = self.model.decode(latent)
-        log.info(f"action_space: {self.env.action_space.shape}")
         action = torch.reshape(action, (self.pred_horizon, self.action_dim)) # TODO remove gripper dim
         return action.detach().cpu().numpy()
 
@@ -98,23 +97,7 @@ class VAEPolicy(BasePolicy):
         '''
         
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-
-
-        wandb.init(
-            project="vae_policy",
-            # track hyperparameters and run metadata
-            config={
-            "architecture": "VAE",
-            "n_epochs": num_epochs,
-            "lr": optimizer.param_groups[0]['lr'],
-            "hidden_dims": self.model.hidden_dims,
-            "loss": "ELBO",
-            "episodes": len(self.dataset),
-            "batch_size": self.dataloader.batch_size,
-            "env": self.env.__class__.__name__,
-            }
-        )
-
+        
         # visualize data in batch
         batch = next(iter(self.dataloader))
         log.info(f"batch['obs'].shape:{batch['obs'].shape}")

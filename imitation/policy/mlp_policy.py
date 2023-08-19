@@ -10,11 +10,8 @@ import wandb
 import os
 from tqdm.auto import tqdm
 
-os.environ["WANDB_DISABLED"] = "true"
-
 
 log = logging.getLogger(__name__)
-
 
 
 class MLPPolicy(BasePolicy):
@@ -57,8 +54,9 @@ class MLPPolicy(BasePolicy):
         
 
     def get_action(self, obs):
+        log.info(f"obs: {obs}")
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
-        action = self.model.forward(obs).detach().cpu().numpy()
+        action = self.model(obs).detach().cpu().numpy()
         return action
 
     def train(self, dataset, num_epochs, model_path):
@@ -67,24 +65,6 @@ class MLPPolicy(BasePolicy):
 
         loss_fn = nn.MSELoss() # TODO change to abs loss
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-
-
-        wandb.init(
-            project="mlp_policy",
-            # track hyperparameters and run metadata
-            config={
-            "architecture": "MLP",
-            "n_epochs": num_epochs,
-            "lr": optimizer.param_groups[0]['lr'],
-            "hidden_dims": self.model.hidden_dims,
-            "activation": self.model.activation,
-            "output_activation": self.model.output_activation,
-            "loss": loss_fn,
-            "episodes": len(self.dataset),
-            "batch_size": self.dataloader.batch_size,
-            "env": self.env.__class__.__name__,
-            }
-        )
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
@@ -103,7 +83,6 @@ class MLPPolicy(BasePolicy):
                     optimizer.step()
                 wandb.log({"epoch": epoch, "loss": loss.item()})
 
-                log.info(f'Epoch: {epoch}, Loss: {loss.item()}')
                 # save model
                 torch.save(self.model.state_dict(), model_path)
                 pbar.set_description(f"Epoch: {epoch}, Loss: {loss.item()}")

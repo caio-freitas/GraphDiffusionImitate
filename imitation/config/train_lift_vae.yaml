@@ -6,13 +6,13 @@ obs_dim: 19
 action_dim: 7
 pred_horizon: 16
 
-
+obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
 
 # Training parameters
 num_epochs: 100
-model_path: ./weights/lift_vae_overfit.pt
+model_path: ./weights/lift_vae_overfit_larger.pt
 
-obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
+    
 
 
 env_runner: 
@@ -21,7 +21,6 @@ env_runner:
   action_horizon: ${pred_horizon}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-    max_steps: ${max_steps}
     task: "Lift"
 
 policy:
@@ -31,15 +30,19 @@ policy:
     _target_: imitation.model.vae.VAE
     # input is action_dim*obs_horizon
     input_dim: ${eval:'${action_dim}*${pred_horizon}'}
-    hidden_dims: [64, 32, 16, 8]
+    hidden_dims: [128, 128, 64, 32, 16, 8]
     latent_dim: 4
+    activation:
+      _target_: torch.nn.LeakyReLU
+    output_activation:
+      _target_: torch.nn.Identity
   env: ${env_runner.env}
   dataset:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
-  ckpt_path: ./weights/lift_vae_overfit.pt
+  ckpt_path: ${model_path}
 
 
 agent:
