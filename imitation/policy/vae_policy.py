@@ -66,7 +66,7 @@ class VAEPolicy(BasePolicy):
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
         self.model.load_state_dict(torch.load(ckpt_path))
-        
+
 
     def get_action(self, obs, latent=None):
         ''' 
@@ -77,9 +77,31 @@ class VAEPolicy(BasePolicy):
         '''
         if latent is None:
             latent = torch.randn(1, self.model.latent_dim).to(self.device)
+        else:
+            latent = torch.tensor(latent)
+            latent = latent.type(torch.FloatTensor)
+            latent = latent.to(self.device)
+            # print(f"latent: {latent}")
         action = self.model.decode(latent)
         action = torch.reshape(action, (self.pred_horizon, self.action_dim)) # TODO remove gripper dim
         return action.detach().cpu().numpy()
+
+    def get_latent_space_dist(self):
+        '''Get latent space distribution from dataset'''
+        # set dataloader batch size to 1
+        # self.dataloader.batch_size = 1
+        latents = []
+        with tqdm(self.dataloader) as pbar:
+            for nbatch in pbar:
+                action = nbatch['action'].to(self.device).float()
+                # get first action
+                action = action[0]
+                # print(f"action: {action}")
+                latent = self.model.encode(action)
+                # print(f"latent: {latent}")
+                latents.append(latent[0].detach().cpu().numpy())
+
+        return latents
 
 
     def elbo_loss(self, x, x_hat, mean, logvar):
@@ -95,9 +117,9 @@ class VAEPolicy(BasePolicy):
     def train(self, dataset, num_epochs, model_path):
         '''Train the Variation Autoencoder Model on the given dataset for the given number of epochs.
         '''
-        
+
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-        
+
         # visualize data in batch
         batch = next(iter(self.dataloader))
         log.info(f"batch['obs'].shape:{batch['obs'].shape}")
@@ -122,5 +144,5 @@ class VAEPolicy(BasePolicy):
                 pbar.set_description(f"Epoch: {epoch}, Loss: {loss.item()}")
 
         wandb.finish()
-        
+
         torch.save(self.model.state_dict(), model_path + f'{num_epochs}_ep.pt')
