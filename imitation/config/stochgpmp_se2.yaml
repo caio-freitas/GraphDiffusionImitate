@@ -5,10 +5,10 @@ output_dir: ./output
 obs_horizon: 1
 
 num_particles_per_goal: 10
-num_samples: 128
+num_samples: 64  # usually 64 samples is good enough for robot arm manipulation tasks
 num_obst: 2
 traj_len: 64
-dt: 0.05
+dt: 0.02   # this dt is very sensitive, 0.02 is good for 64 steps, then we fixed this and tuned for other params
 start_pose: [1.0, 0.0, 0.0]
 start_quat: [0.0, 0.0, 0.0, 1.0]
 target_pose: [0.0, 1.0, 0.0] # target_rot fixed
@@ -22,9 +22,9 @@ obstacles: [[[0.5, 0.5, 0.1, 0.1], [-0.5, -0.5, 0.1, 0.1]]]
 sigma_self: 0.001
 sigma_coll: 0.00001
 sigma_goal: 0.0007
-sigma_goal_prior: 0.001
+sigma_goal_prior: 0.01  # this joint space goal prior is usually just a suggestion. We set this cost scaling lower than the others so that task space costs are more relevant.
 sigma_start: 0.001
-sigma_gp: 0.07
+sigma_gp: 0.07  # this gp prior is very sensitive, usually ranging from 0.05 - 0.1 is already good smoothness. There is a trade off between smoothness and collision avoidance prior, we should strive for balancing contribution of these two priors. 
 
 
 stochgpmp_params:
@@ -34,12 +34,12 @@ stochgpmp_params:
   opt_iters: 1 # keep 1 for visualization
   temperature: 1.
   step_size: 0.5
-  sigma_start_init: 0.0001
-  sigma_goal_init: 0.0001
-  sigma_gp_init: 50
-  sigma_start_sample: 0.0001
-  sigma_goal_sample: 0.0001
-  sigma_gp_sample: 2
+  sigma_start_init: 0.001
+  sigma_goal_init: 0.001
+  sigma_gp_init: 5 # keep this less than 10! too noisy initialization degrade performance a lot, but a high enough variance is good for exploration
+  sigma_start_sample: 0.001
+  sigma_goal_sample: 0.001
+  sigma_gp_sample: 2  # keep this less than 5! update should not be too noisy, but good enough for exploration
   seed: ${seed}
   # tensor_args: {device: cpu, dtype: float64}
 
