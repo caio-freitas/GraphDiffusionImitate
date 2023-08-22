@@ -38,6 +38,4 @@ jobs:
         run: conda init --all -v  # Use the '--all' flag to initialize all shells
 
       - name: Run test.py
-        run: |
-          source activate imitation
-          python test.py --config-name=test_random_policy
+        run: conda run -n imitation python test.py --config-name=test_random_policy
