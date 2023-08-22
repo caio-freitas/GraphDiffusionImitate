@@ -30,6 +30,9 @@ class RobomimicEnvRunner(BaseRunner):
             actions = agent.act(self.obs)
             for j in range(self.action_horizon):
                 # Make sure the action is always [[...]]
+                if len(actions.shape) == 1:
+                    log.warning("Action shape is 1D, adding batch dimension")
+                    actions = actions.reshape(1, -1)
                 action = actions[j] 
                 if done:
                     break
