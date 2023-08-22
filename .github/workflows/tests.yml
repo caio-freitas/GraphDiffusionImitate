@@ -39,5 +39,5 @@ jobs:
 
       - name: Run test.py
         run: |
-          conda activate imitation
+          source activate imitation
           python test.py --config-name=test_random_policy
