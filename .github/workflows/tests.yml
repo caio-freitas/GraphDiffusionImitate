@@ -19,6 +19,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v2
 
+      # cache Conda packages to speed up workflow
+      - name: Cache Conda packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.conda/pkgs
+          key: conda-${{ runner.os }}-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            conda-${{ runner.os }}-
+
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v2  # You can use 'setup-conda' if needed
         with:
