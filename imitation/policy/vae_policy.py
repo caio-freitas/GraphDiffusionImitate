@@ -111,7 +111,7 @@ class VAEPolicy(BasePolicy):
         reconstruction_loss = nn.functional.mse_loss(x_hat, x)
 
         KLD = - 0.5 * torch.sum(1+ logvar - mean.pow(2) - logvar.exp())
-
+        wandb.log({"KLD": KLD.item(), "reconstruction_loss": reconstruction_loss.item()})
         return reconstruction_loss + KLD
 
     def train(self, dataset, num_epochs, model_path):
