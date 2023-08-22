@@ -10,7 +10,7 @@ obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_grip
 
 # Training parameters
 num_epochs: 100
-model_path: ./weights/lift_vae_overfit_larger.pt
+model_path: ./weights/lift_vae.pt
 
     
 
@@ -30,8 +30,8 @@ policy:
     _target_: imitation.model.vae.VAE
     # input is action_dim*obs_horizon
     input_dim: ${eval:'${action_dim}*${pred_horizon}'}
-    hidden_dims: [128, 128, 64, 32, 16, 8]
-    latent_dim: 4
+    hidden_dims: [256, 128, 64]
+    latent_dim: 32
     activation:
       _target_: torch.nn.LeakyReLU
     output_activation:
@@ -42,7 +42,7 @@ policy:
     dataset_path: ./data/lift_low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
-  ckpt_path: ${model_path}
+  # ckpt_path: ${model_path}
 
 
 agent:
