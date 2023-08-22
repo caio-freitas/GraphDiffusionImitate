@@ -1,0 +1,32 @@
+name: run tests
+
+on:
+  push:
+    branches:
+      - master
+      - workflow # for testing only
+
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  run-tests:
+    name: Test random policy
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v2  # You can use 'setup-conda' if needed
+        with:
+          activate-environment: imitation  # Replace with your Conda environment name
+          environment-file: conda_environment.yaml  # Specify the environment file if you have one
+
+
+      - name: Run test.py
+        run: |
+          source activate imitation
+          python test.py --config-name=test_random_policy
