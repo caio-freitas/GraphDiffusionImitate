@@ -25,9 +25,10 @@ jobs:
           activate-environment: imitation  # Replace with your Conda environment name
           environment-file: conda_environment.yaml  # Specify the environment file if you have one
 
+      - name: Initialize Conda (non-interactive)
+        run: conda init --all -v  # Use the '--all' flag to initialize all shells
 
       - name: Run test.py
         run: |
-          conda init bash
           conda activate imitation
           python test.py --config-name=test_random_policy
