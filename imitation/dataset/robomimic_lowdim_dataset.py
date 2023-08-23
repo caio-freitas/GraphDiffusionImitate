@@ -24,9 +24,10 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
               pass
         self.obs_keys = obs_keys
 
-        # inds = np.argsort([int(elem[5:]) for elem in self.dataset_keys])
-        # self.demos = [self.dataset_keys[i] for i in inds]
-
+        stats = dict()
+        for key in self.obs_keys:
+            stats[key] = self.get_data_stats(self.dataset_root[f"data/{self.dataset_keys[0]}/obs/{key}"][:])
+        self.stats = stats
 
 
     def __len__(self):
