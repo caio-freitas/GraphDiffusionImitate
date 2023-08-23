@@ -39,15 +39,12 @@ def train(cfg: DictConfig) -> None:
         log.error("cfg.policy.ckpt_path doesn't exist")
     
     wandb.init(
-        project="lift",
-        name="larger_vae_overfit",
+        project="se2",
+        name="mlp_overfit",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
             "n_epochs": cfg.num_epochs,
-            "hidden_dims": policy.model.hidden_dims,
-            "activation": cfg.policy.model.activation,
-            "output_activation": cfg.policy.model.output_activation,
             "episodes": len(policy.dataset),
             "batch_size": policy.dataloader.batch_size,
             "env": runner.env.__class__.__name__,
