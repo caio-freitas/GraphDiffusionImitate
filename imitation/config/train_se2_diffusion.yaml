@@ -2,12 +2,14 @@ num_episodes: 2
 output_dir: ./output
 
 # Environment
-obs_dim: 5
-action_dim: 2
+obs_dim: 6
+action_dim: 6
 pred_horizon: 16
 obs_horizon: 2
 action_horizon: 8
-max_steps: 200
+
+obs_keys: &obs_keys ['joint_values', 'joint_velocities']
+
 
 # Training parameters
 num_epochs: 100
@@ -17,7 +19,11 @@ model_path: ./se2_diffusion_policy.pt
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
-
+  env:
+    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
+    num_obs: 2
+    start_pose: [1.0, 0.0, 0.0]
+    target_pose: [0.0, 1.0, 0.0]
 
 
 policy:
@@ -31,11 +37,13 @@ policy:
   dataset:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/trajs.hdf5
+    obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
     obs_horizon: ${obs_horizon}
     action_horizon: ${action_horizon}
+
   # ckpt_path: 
 
 
 agent:
-  _target_: imitation.agent.pusht_agent.PushTAgent
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

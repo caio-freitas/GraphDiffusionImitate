@@ -131,6 +131,7 @@ class VAEPolicy(BasePolicy):
             for epoch in pbar:
                 for nbatch in self.dataloader:
                     action = nbatch['action'].to(self.device).float()
+                    action = action.flatten(start_dim=1)
                     x_hat, mean, log_var = self.model(action)
                     loss = self.elbo_loss(action, x_hat, mean, log_var)
                     optimizer.zero_grad()

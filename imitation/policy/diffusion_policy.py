@@ -61,6 +61,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=self.action_dim,
             global_cond_dim=self.obs_dim*self.obs_horizon,
+            diffusion_step_embed_dim=256,
             kernel_size=5
         )
 
@@ -107,8 +108,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
-        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
-        log.info(f"batch['action'].shape: {batch['action'].shape}")
+        log.info(f"Dataset stats: {self.stats}")
 
     def get_action(self, obs_seq):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
@@ -147,9 +147,14 @@ class DiffusionUnet1DPolicy(BasePolicy):
         naction = naction[0]
         action_pred = unnormalize_data(naction, stats=self.stats['action'])
 
-        # action here is an array with length action_horizon
-        return action_pred
+        # action here is an array with length pred_horizon
 
+        # only take action_horizon number of actions
+        start = self.obs_horizon - 1
+        end = start + self.action_horizon
+        action = action_pred[start:end,:]
+        # (action_horizon, action_dim)
+        return action # TODO limit this in runner
 
     def train(self, 
               dataset=None, 
