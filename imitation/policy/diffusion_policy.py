@@ -223,6 +223,10 @@ class DiffusionUnet1DPolicy(BasePolicy):
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
 
+                        # guarantees it to be float32
+                        noisy_actions = noisy_actions.float()
+                        obs_cond = obs_cond.float()       
+
                         # predict the noise residual
                         noise_pred = self.noise_pred_net(
                             noisy_actions, timesteps, global_cond=obs_cond)
