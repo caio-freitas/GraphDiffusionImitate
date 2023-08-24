@@ -3,7 +3,6 @@ from torch import nn
 
 from imitation.policy.base_policy import BasePolicy
 from imitation.model.mlp import MLPNet
-from imitation.dataset.pusht_state_dataset import PushTStateDataset
 
 import logging
 import wandb
@@ -18,12 +17,7 @@ class MLPPolicy(BasePolicy):
     def __init__(self,
                     env,
                     model: nn.Module,
-                    dataset = PushTStateDataset(
-                        dataset_path='./pusht_cchi_v7_replay.zarr.zip',
-                        pred_horizon=1,
-                        obs_horizon=1,
-                        action_horizon=1,
-                    ),
+                    dataset,
                     ckpt_path=None):
         super().__init__(env)
         self.env = env # TODO remove
@@ -54,7 +48,6 @@ class MLPPolicy(BasePolicy):
         
 
     def get_action(self, obs):
-        log.info(f"obs: {obs}")
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
         action = self.model(obs).detach().cpu().numpy()
         return action
