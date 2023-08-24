@@ -14,6 +14,7 @@ class RobomimicEnvRunner(BaseRunner):
                 env,
                 output_dir,
                 action_horizon=1,
+                obs_horizon=1,
                 render=True,
                 fps=30) -> None:
         super().__init__(output_dir)
