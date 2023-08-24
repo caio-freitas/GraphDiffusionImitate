@@ -27,14 +27,13 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         except:
               pass
         self.obs_keys = obs_keys
-
-        stats = dict()
-        for key in self.obs_keys:
-            stats[key] = self.get_data_stats(self.dataset_root[f"data/{self.dataset_keys[0]}/obs/{key}"][:])
-        self.stats = stats
         self.indices = []
         self.data_at_indices = []
         self.create_sample_indices()
+
+        self.stats = {}
+        self.stats["obs"] = self.get_data_stats("obs")
+        self.stats["action"] = self.get_data_stats("action")
         
     def create_sample_indices(self):
         '''
@@ -74,16 +73,18 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         '''
         return self.data_at_indices[idx]
 
-    def get_data_stats(self, data):
+    def get_data_stats(self, key):
         '''
         Returns min and max of data
         Used for normalizing data 
         '''
-        data = data.reshape(-1,data.shape[-1])
-        stats = {
-            'min': np.min(data, axis=0),
-            'max': np.max(data, axis=0)
+        data = []
+        for d in tqdm(self.data_at_indices):
+            data.append(d[key])
+        data = np.concatenate(data, axis=0)
+        return {
+            "min": np.min(data, axis=0),
+            "max": np.max(data, axis=0)
         }
-        return stats
 
         
