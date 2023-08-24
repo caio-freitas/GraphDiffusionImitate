@@ -8,6 +8,7 @@ import torch.nn as nn
 from tqdm.auto import tqdm
 from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+import wandb
 
 from imitation.model.diffusion_policy.conditional_unet1d import \
     ConditionalUnet1D
@@ -61,6 +62,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=self.action_dim,
             global_cond_dim=self.obs_dim*self.obs_horizon,
+            diffusion_step_embed_dim=256,
             kernel_size=5
         )
 
@@ -77,8 +79,13 @@ class DiffusionUnet1DPolicy(BasePolicy):
         
 
         self._init_stats()
+        self.load_nets(self.ckpt_path)
 
     def load_nets(self, ckpt_path):
+        if ckpt_path is None:
+            log.info('No pretrained weights given. ')
+            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+            return
         if not os.path.isfile(ckpt_path):
             log.error(f"Pretrained weights not found at {ckpt_path}. ")
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
@@ -107,8 +114,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
-        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
-        log.info(f"batch['action'].shape: {batch['action'].shape}")
+        log.info(f"Dataset stats: {self.stats}")
 
     def get_action(self, obs_seq):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
@@ -147,9 +153,14 @@ class DiffusionUnet1DPolicy(BasePolicy):
         naction = naction[0]
         action_pred = unnormalize_data(naction, stats=self.stats['action'])
 
-        # action here is an array with length action_horizon
-        return action_pred
+        # action here is an array with length pred_horizon
 
+        # only take action_horizon number of actions
+        start = self.obs_horizon - 1
+        end = start + self.action_horizon
+        action = action_pred[start:end,:]
+        # (action_horizon, action_dim)
+        return action # TODO limit this in runner
 
     def train(self, 
               dataset=None, 
@@ -171,7 +182,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         #     power=0.75)
 
         # Standard ADAM optimizer
-        # Note that EMA parametesr are not optimized
+        # Note that EMA parameters are not optimized
         self.noise_pred_net.to(self.device)
         optimizer = torch.optim.AdamW(
             params=self.noise_pred_net.parameters(),
@@ -218,12 +229,17 @@ class DiffusionUnet1DPolicy(BasePolicy):
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
 
+                        # guarantees it to be float32
+                        noisy_actions = noisy_actions.float()
+                        obs_cond = obs_cond.float()       
+
                         # predict the noise residual
                         noise_pred = self.noise_pred_net(
                             noisy_actions, timesteps, global_cond=obs_cond)
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)
+                        wandb.log({'noise_pred_loss': loss})
 
                         # optimize
                         loss.backward()
@@ -244,6 +260,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
                         epoch_loss.append(loss_cpu)
                         tepoch.set_postfix(loss=loss_cpu)
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
+                wandb.log({'epoch_loss': np.mean(epoch_loss)})
                 # save model checkpoint
                 torch.save(self.noise_pred_net.state_dict(), model_path)
 

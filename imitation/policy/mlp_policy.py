@@ -75,7 +75,10 @@ class MLPPolicy(BasePolicy):
             for epoch in pbar:
                 for nbatch in self.dataloader:
                     nobs = nbatch['obs'].to(self.device).float()
+                    nobs = nobs.flatten(start_dim=1)
                     action = nbatch['action'].to(self.device).float()
+                    action = action.flatten(start_dim=1)
+                        
                     pred = self.model(nobs)
                     loss = loss_fn(pred, action)
                     optimizer.zero_grad()

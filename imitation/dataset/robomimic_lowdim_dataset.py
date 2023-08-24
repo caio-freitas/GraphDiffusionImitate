@@ -12,9 +12,13 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
     def __init__(self, 
                  dataset_path,
                  obs_keys,
-                 pred_horizon=1):
+                 pred_horizon=1,
+                 obs_horizon=1,
+                 action_horizon=1):
         super().__init__()
         self.pred_horizon = pred_horizon
+        self.obs_horizon = obs_horizon
+        self.action_horizon = action_horizon
         self.dataset_path = dataset_path
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
@@ -23,83 +27,64 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         except:
               pass
         self.obs_keys = obs_keys
+        self.indices = []
+        self.data_at_indices = []
+        self.create_sample_indices()
 
-        # inds = np.argsort([int(elem[5:]) for elem in self.dataset_keys])
-        # self.demos = [self.dataset_keys[i] for i in inds]
-
+        self.stats = {}
+        self.stats["obs"] = self.get_data_stats("obs")
+        self.stats["action"] = self.get_data_stats("action")
+        
+    def create_sample_indices(self):
+        '''
+        Creates indices for sampling from dataset
+        Should return all possible idx values that enables sampling of the following:
+        |                idx                    |
+        |-- obs_horizon --|-- action_horizon ---|
+        |------------ pred_horizon -------------|
+        '''
+        idx_global = 0
+        for key in tqdm(self.dataset_keys):
+            episode_length = len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"])
+            for idx in range(episode_length):
+                if idx + self.pred_horizon - self.obs_horizon > episode_length:
+                    continue
+                if idx - self.obs_horizon < 0:
+                    continue
+                self.indices.append(idx_global + idx)
+                data_obs_keys = []
+                for obs_key in self.obs_keys:
+                    data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx-self.obs_horizon:idx+self.pred_horizon - self.obs_horizon, :])
+                data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
+                self.data_at_indices.append({
+                    "obs": data_obs_keys,
+                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.action_horizon, :]
+                })
+            idx_global += episode_length
+        self.indices = np.array(self.indices)
 
 
     def __len__(self):
-        # accounts for different length for each demo, with different names
-        # and considers pred_horizon
-        return sum(
-            [len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"]) for key in self.dataset_keys]
-        ) - self.pred_horizon*len(self.dataset_keys)
+        return len(self.indices) - 1
 
     def __getitem__(self, idx):
         '''
         Returns item (timestep in demo) from dataset
         '''
-        idx_demo = 0
-        # find which demo idx is in, using self.pred_horizon steps in the future
-        while idx + self.pred_horizon > len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]):
-            if idx <= 0 or idx_demo == len(self.dataset_keys):
-                print("idx out of bounds")
-                print(f"idx: {idx}, idx_demo: {idx_demo}")
-                
-                return None
-            idx -= min(len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]), idx)
-            # the data will be repeated for all idx in the range len(demos) - self.pred_horizon
-            idx_demo += 1
+        return self.data_at_indices[idx]
 
-            
-        assert idx_demo < len(self.dataset_keys), f"idx_demo: {idx_demo}, len(self.dataset_keys): {len(self.dataset_keys)}"
-        assert idx <= len(self.dataset_root[f"data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}"]), f"idx: {idx}, len(self.dataset_root[f'data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}']): {len(self.dataset_root[f'data/{self.dataset_keys[idx_demo]}/obs/{self.obs_keys[0]}'])}"
-        
-        idx_t = idx # initial timestep in demo
-        key = self.dataset_keys[idx_demo]
-        demo = self.dataset_root[f"data/{key}"] # demo_idx
-        obs_len = len(demo["obs/{}".format(self.obs_keys[0])][0])
-        key_len = len(self.obs_keys)   
-        obs_t = None # (pred_horizon, key_len*obs_len)
-        
-        # for each observation modality, store pred_horizon steps in the future
-        # to turn h5py._hl.dataset.Dataset into numpy array
-        for i, obs_key in enumerate(self.obs_keys):
-            if i == 0:
-                obs_t = torch.tensor(demo[f"obs/{obs_key}"][idx_t:idx_t+self.pred_horizon, :], dtype=torch.float32)
-                continue
-            obs_t = torch.cat(
-                (obs_t,
-                torch.tensor(demo[f"obs/{obs_key}"][idx_t:idx_t+self.pred_horizon, :], dtype=torch.float32)),
-                dim=-1                
-                )
-
-        obs_t = obs_t.flatten()
-
-        act_t = torch.tensor(demo["actions"][idx_t:idx_t+self.pred_horizon], dtype=torch.float32)
-        act_t = act_t.flatten()
-
-        obs_t = torch.tensor(obs_t, dtype=torch.float32)
-
-        data_dict = {
-            "obs": obs_t ,
-            "action": act_t,
-        }
-        
-        return data_dict
-
-    def get_data_stats(self, data):
+    def get_data_stats(self, key):
         '''
         Returns min and max of data
         Used for normalizing data 
         '''
-        data = data.reshape(-1,data.shape[-1])
-        stats = {
-            'min': np.min(data, axis=0),
-            'max': np.max(data, axis=0)
+        data = []
+        for d in tqdm(self.data_at_indices):
+            data.append(d[key])
+        data = np.concatenate(data, axis=0)
+        return {
+            "min": np.min(data, axis=0),
+            "max": np.max(data, axis=0)
         }
-        return stats
-    
 
         
