@@ -32,7 +32,8 @@ class RobomimicGymWrapper(GymWrapper):
 class RobomimicLowdimWrapper(gym.Env):
     def __init__(self,
                  max_steps=5000,
-                 task="Lift"
+                 task="Lift",
+                 has_renderer=True
                  ):
         controller_config = load_controller_config(default_controller="OSC_POSE")
         self.env = RobomimicGymWrapper(
@@ -41,9 +42,9 @@ class RobomimicLowdimWrapper(gym.Env):
                 robots="Panda",  # use Panda robot
                 use_camera_obs=False,  # do not use pixel observations
                 has_offscreen_renderer=False,  # not needed since not using pixel obs
-                has_renderer=True,  # make sure we can render to the screen
+                has_renderer=has_renderer,  # make sure we can render to the screen
                 reward_shaping=True,  # use dense rewards
-                control_freq=20,  # control should happen fast enough so that simulation looks smooth
+                control_freq=30,  # control should happen fast enough so that simulation looks smooth
                 horizon=max_steps,  # long horizon so we can sample high rewards
                 controller_configs=controller_config,
             ),
@@ -79,6 +80,11 @@ class RobomimicLowdimWrapper(gym.Env):
 
     def step(self, action):
         obs, reward, done, sla, info = self.env.step(action)
+        if reward == 1:
+            done = True
+            info = {"success": True}
+        else:
+            info = {"success": False}
         obs = self._robosuite_obs_to_robomimic_obs(obs)
         return obs, reward, done, info
     
