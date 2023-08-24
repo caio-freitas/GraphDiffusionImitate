@@ -3,7 +3,7 @@ import time
 from typing import Dict
 
 import gymnasium as gym
-
+import collections
 from imitation.agent.base_agent import BaseAgent
 from imitation.env_runner.base_runner import BaseRunner
 
@@ -19,9 +19,14 @@ class RobomimicEnvRunner(BaseRunner):
         super().__init__(output_dir)
         self.env = env
         self.action_horizon = action_horizon
+        self.obs_horizon = obs_horizon
         self.render = render
         self.fps = fps
-        self.obs = self.env.reset()
+        
+        # keep a queue of last obs_horizon steps of observations
+        obs = self.env.reset()
+        self.obs_deque = collections.deque(
+            [obs] * self.obs_horizon, maxlen=self.obs_horizon)
 
     def reset(self) -> None:
         self.obs = self.env.reset()
@@ -33,6 +38,7 @@ class RobomimicEnvRunner(BaseRunner):
         rewards = []
         for i in range(n_steps):
             actions = agent.act(self.obs)
+            
             for j in range(self.action_horizon):
                 # Make sure the action is always [[...]]
                 if len(actions.shape) == 1:
@@ -41,11 +47,11 @@ class RobomimicEnvRunner(BaseRunner):
                 action = actions[j] 
                 if done:
                     break
-                self.obs, reward, done, info = self.env.step(action)
-                rewards.append(reward)
-                if self.render:
-                    self.env.render()
-                    time.sleep(1/self.fps)
+                obs, reward, done, info = self.env.step(action)
+                self.obs_deque.append(obs)
+                
+                self.env.render()
+                time.sleep(1/self.fps)
                 i += 1
         self.env.close()
         return rewards, info

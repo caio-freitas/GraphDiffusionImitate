@@ -3,7 +3,7 @@ output_dir: ./output
 
 # Environment
 obs_dim: 6
-action_dim: 3
+action_dim: 6
 pred_horizon: 1
 obs_horizon: 1
 action_horizon: 1
@@ -40,7 +40,7 @@ policy:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
     dataset_path: ./data/trajs.hdf5
     obs_keys: *obs_keys
-  ckpt_path: ./weights/se2_mlp_test.pt
+  # ckpt_path: ./weights/se2_mlp_test.pt
 
 
 agent:

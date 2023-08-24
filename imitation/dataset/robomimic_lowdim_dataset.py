@@ -40,25 +40,25 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         Creates indices for sampling from dataset
         Should return all possible idx values that enables sampling of the following:
         |                idx                    |
-        |-- obs_horizon --|-- action_horizon ---|
-        |------------ pred_horizon -------------|
+        |-- obs_horizon --|-- action_horizon ---| * Replanning 
+                          |------------ pred_horizon -------------|
         '''
         idx_global = 0
         for key in tqdm(self.dataset_keys):
             episode_length = len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"])
             for idx in range(episode_length):
-                if idx + self.pred_horizon - self.obs_horizon > episode_length:
+                if idx + self.pred_horizon > episode_length:
                     continue
                 if idx - self.obs_horizon < 0:
                     continue
                 self.indices.append(idx_global + idx)
                 data_obs_keys = []
                 for obs_key in self.obs_keys:
-                    data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx-self.obs_horizon:idx+self.pred_horizon - self.obs_horizon, :])
+                    data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx-self.obs_horizon:idx+self.pred_horizon, :])
                 data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
                 self.data_at_indices.append({
                     "obs": data_obs_keys,
-                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.action_horizon, :]
+                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.pred_horizon, :]
                 })
             idx_global += episode_length
         self.indices = np.array(self.indices)
