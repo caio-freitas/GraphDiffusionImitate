@@ -8,6 +8,7 @@ import torch.nn as nn
 from tqdm.auto import tqdm
 from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+import wandb
 
 from imitation.model.diffusion_policy.conditional_unet1d import \
     ConditionalUnet1D
@@ -78,8 +79,13 @@ class DiffusionUnet1DPolicy(BasePolicy):
         
 
         self._init_stats()
+        self.load_nets(self.ckpt_path)
 
     def load_nets(self, ckpt_path):
+        if ckpt_path is None:
+            log.info('No pretrained weights given. ')
+            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+            return
         if not os.path.isfile(ckpt_path):
             log.error(f"Pretrained weights not found at {ckpt_path}. ")
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
@@ -176,7 +182,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         #     power=0.75)
 
         # Standard ADAM optimizer
-        # Note that EMA parametesr are not optimized
+        # Note that EMA parameters are not optimized
         self.noise_pred_net.to(self.device)
         optimizer = torch.optim.AdamW(
             params=self.noise_pred_net.parameters(),
@@ -233,6 +239,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)
+                        wandb.log({'noise_pred_loss': loss})
 
                         # optimize
                         loss.backward()
@@ -253,6 +260,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
                         epoch_loss.append(loss_cpu)
                         tepoch.set_postfix(loss=loss_cpu)
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
+                wandb.log({'epoch_loss': np.mean(epoch_loss)})
                 # save model checkpoint
                 torch.save(self.noise_pred_net.state_dict(), model_path)
 
