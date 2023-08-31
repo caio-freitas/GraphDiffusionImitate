@@ -51,8 +51,9 @@ class RobomimicEnvRunner(BaseRunner):
                 obs, reward, done, info = self.env.step(action)
                 self.obs_deque.append(obs)
                 
-                self.env.render()
-                time.sleep(1/self.fps)
+                if self.render:
+                    self.env.render()
+                    time.sleep(1/self.fps)
                 i += 1
         self.env.close()
         return rewards, info
