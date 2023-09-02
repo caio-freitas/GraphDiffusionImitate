@@ -54,7 +54,6 @@ class MLPPolicy(BasePolicy):
         
 
     def get_action(self, obs):
-        log.info(f"obs: {obs}")
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
         action = self.model(obs).detach().cpu().numpy()
         return action
