@@ -1,0 +1,56 @@
+num_episodes: 1
+output_dir: ./output
+
+# Environment
+obs_dim: 60
+action_dim: 9
+pred_horizon: 4
+obs_horizon: 1
+action_horizon: 1
+n_obs_steps: ${obs_horizon}
+n_action_steps: ${action_horizon}
+
+model_path: ./weights/kitchen_diffusion_last.pt
+
+max_steps: 5000
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
+
+
+
+policy:
+  _target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy
+  obs_dim: ${obs_dim}
+  action_dim: ${action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  num_diffusion_iters: 100
+  # Diffusion Policy Dataset
+  dataset:
+    _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
+    dataset_dir: ../diffusion_policy/data/kitchen/
+    horizon: ${pred_horizon}
+    pad_before: ${eval:'${n_obs_steps}-1'}
+    pad_after: ${eval:'${n_action_steps}-1'}
+    seed: 42
+    val_ratio: 0.02
+  # Relay Policy Dataset
+  # dataset:
+  #   _target_: diffusion_policy.dataset.kitchen_mjl_lowdim_dataset.KitchenMjlLowdimDataset
+  #   dataset_dir: ./data/kitchen_demos_multitask
+  #   horizon: ${pred_horizon}
+  #   pad_before: ${eval:'${n_obs_steps}-1'}
+  #   pad_after: ${eval:'${n_action_steps}-1'}
+  #   robot_noise_ratio: 0.0
+  #   seed: 42
+  #   val_ratio: 0.02
+  ckpt_path: ${model_path}
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
