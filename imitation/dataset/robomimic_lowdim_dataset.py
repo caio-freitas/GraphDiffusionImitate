@@ -54,7 +54,7 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                 self.indices.append(idx_global + idx)
                 data_obs_keys = []
                 for obs_key in self.obs_keys:
-                    data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx-self.obs_horizon:idx+self.pred_horizon, :])
+                    data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx:idx+self.pred_horizon, :])
                 data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
                 self.data_at_indices.append({
                     "obs": data_obs_keys,
