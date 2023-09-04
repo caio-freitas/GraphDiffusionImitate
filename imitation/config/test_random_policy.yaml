@@ -7,9 +7,7 @@ env_runner:
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
   env:
-    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-
-
+    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
 policy:
   _target_: imitation.policy.random_policy.RandomPolicy
 

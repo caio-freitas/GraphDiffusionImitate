@@ -1,34 +1,54 @@
-import gymnasium as gym
+import gymnasium
+import gym
+import numpy as np
 
 class KitchenPoseWrapper(gym.Wrapper):
     '''
     Wrapper for FrankaKitchen-v1 environment with joint values and end effector position as observations
     '''
     def __init__(self):
-        self.observation_space = gym.spaces.Box(low=-1, high=1, shape=(10,))
-        self.action_space = gym.spaces.Box(low=-1, high=1, shape=(7,))
-        self.env = gym.make(
+        self.env = gymnasium.make(
             'FrankaKitchen-v1',
-            tasks_to_complete=['microwave', 'kettle'],
+            tasks_to_complete=['microwave'],
             render_mode='human'
-            )
+        )
+        self.action_space = self.env.action_space
+        self.observation_space = self.env.observation_space
+
+    def _get_obs(self, obs):
+        obs = obs[0]['observation']
+        # 'qp' and 'obj_qp'
+        qp = obs[0:9] 
+        # Skip 9 to 18 because they are velocities
+        obj_qp = obs[18:39]
+        return np.concatenate((qp, obj_qp, np.zeros(30)))
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        # According to https://robotics.farama.org/envs/franka_kitchen/franka_kitchen/
+        all = self.env.step(action)
+        obs = self._get_obs(all)
+
+        reward = all[1]
+        done = all[2]
+        # TODO check if "done" is in 2 or 3
+        info = all[4]
         return obs, reward, done, info
 
-    def reset(self):
-        return self.env.reset()
 
-    def render(self, mode='human'):
-        return self.env.render(mode=mode)
+    def reset(self):
+        all = self.env.reset()
+        obs = self._get_obs(all)
+        return obs
+    
+    def render(self):
+        return self.env.render()
 
     def close(self):
         return self.env.close()
 
     def seed(self, seed=None):
         return self.env.seed(seed=seed)
-    
+
 
 class KitchenImageWrapper(gym.Wrapper):
     '''
