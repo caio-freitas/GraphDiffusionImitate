@@ -63,14 +63,17 @@ class RobomimicLowdimWrapper(gym.Env):
         * Won't work if parameter obs_keys is changed!
           according to https://robosuite.ai/docs/modules/environments.html
         '''
-        # Skip 7  - sin of joint angles
-        # Skip 7  - cos of joint angles
-        # Skip 7  - joint velocities
+        # 7  - sin of joint angles
+        robot_joint_sin = obs[0:7]
+        # 7  - cos of joint angles
+        robot_joint_cos = obs[7:14]
+        # 7  - joint velocities
+        robot_joint_vel = obs[14:21]
         eef_pose = obs[21:24]
         eef_quat = obs[24:28]
         gripper_pose = obs[28:30]
         objects = obs[-10:]
-        return [*eef_pose, *eef_quat, *gripper_pose, *objects]
+        return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
     
     def reset(self):
         obs, _ =  self.env.reset()
