@@ -4,7 +4,6 @@ import numpy as np
 
 import robosuite as suite
 from robosuite.controllers import load_controller_config
-from robosuite.environments.manipulation.lift import Lift
 from robosuite.wrappers.gym_wrapper import GymWrapper
 
 
@@ -72,7 +71,8 @@ class RobomimicLowdimWrapper(gym.Env):
         eef_pose = obs[21:24]
         eef_quat = obs[24:28]
         gripper_pose = obs[28:30]
-        objects = obs[-10:]
+        # TODO find out what 30 - 32 is
+        objects = obs[32:]
         return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
     
     def reset(self):
