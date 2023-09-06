@@ -31,13 +31,15 @@ class RobomimicGymWrapper(GymWrapper):
 class RobomimicLowdimWrapper(gym.Env):
     def __init__(self,
                  max_steps=5000,
-                 task="Lift"
+                 task="Lift",
+                 robots=["Panda"],
                  ):
         controller_config = load_controller_config(default_controller="OSC_POSE")
+        robots = [*robots] # gambiarra to make it work with param list
         self.env = RobomimicGymWrapper(
             suite.make(
                 task,
-                robots="Panda",  # use Panda robot
+                robots=robots,
                 use_camera_obs=False,  # do not use pixel observations
                 has_offscreen_renderer=False,  # not needed since not using pixel obs
                 has_renderer=True,  # make sure we can render to the screen
