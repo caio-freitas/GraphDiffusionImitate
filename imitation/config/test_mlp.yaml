@@ -1,51 +1,29 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+
 num_episodes: 5
+max_steps: 5000
 output_dir: ./output
 
-obs_dim: 5
-action_dim: 2
-pred_horizon: 1
-obs_horizon: 1
-action_horizon: 1
-max_steps: 200
-
-env_runner: 
-  _target_: imitation.env_runner.pusht_diffusion_runner.PushtDiffusionRunner
-  output_dir: ${output_dir}
-  obs_dim: ${obs_dim}
-  action_dim: ${action_dim}
-  pred_horizon: ${pred_horizon}
-  obs_horizon: ${obs_horizon}
-  action_horizon: ${action_horizon}
-  max_steps: ${max_steps}
+model_path: ./weights/${task.task_name}_mlp_last.pt
 
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
   model:
     _target_: imitation.model.mlp.MLPNet
-    input_dim: ${obs_dim}
-    output_dim: ${action_dim}
-    hidden_dims: [256, 256, 128, 32, 128, 256]
+    input_dim: ${task.obs_dim}
+    output_dim: ${task.action_dim}
+    hidden_dims: [256, 256, 256, 256]
     activation:
-      _target_: torch.nn.ReLU
+      _target_: torch.nn.LeakyReLU
     output_activation: 
       _target_: torch.nn.Identity
-  env:
-    _target_: imitation.env.pusht_env.PushtEnv
-    obs_dim: ${obs_dim}
-    action_dim: ${action_dim}
-    pred_horizon: ${pred_horizon}
-    obs_horizon: ${obs_horizon}
-    action_horizon: ${action_horizon}
-    max_steps: ${max_steps}
-  dataset:
-    _target_: imitation.dataset.pusht_state_dataset.PushTStateDataset
-    dataset_path: ./pusht_cchi_v7_replay.zarr.zip
-    pred_horizon: ${pred_horizon}
-    obs_horizon: ${obs_horizon}
-    action_horizon: ${action_horizon}
-  ckpt_path: ./weights/mlp_last.pt1000_ep.pt
+  env: ${task.env_runner.env}
+  dataset: ${task.dataset}
+  ckpt_path: ${model_path}
 
 
 agent:
-  _target_: imitation.agent.pusht_agent.PushTAgent
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

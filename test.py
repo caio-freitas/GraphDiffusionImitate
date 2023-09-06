@@ -22,7 +22,7 @@ def test(cfg):
     print(OmegaConf.to_yaml(cfg))
     log.info("Running test...")
     # instanciate environment runner from cfg file
-    runner = hydra.utils.instantiate(cfg.env_runner)
+    runner = hydra.utils.instantiate(cfg.task.env_runner)
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy, env=runner.env)
     # instanciate agent from policy

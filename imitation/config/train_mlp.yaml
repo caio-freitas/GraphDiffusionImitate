@@ -1,17 +1,15 @@
-num_episodes: 2
+defaults:
+  - _self_
+  - task: lift_lowdim
+
 output_dir: ./output
 
-# Environment
-obs_dim: 40
-action_dim: 7
 pred_horizon: 1
-obs_horizon: 1
-action_horizon: 1
-
 
 # Training parameters
 num_epochs: 1000
-model_path: ./weights/lift_mlp_allstates_last.pt
+# add task.task_name to model_path
+model_path: ./weights/${task.task_name}_mlp_last.pt
 
 train:
   loss:
@@ -30,19 +28,15 @@ policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
   model:
     _target_: imitation.model.mlp.MLPNet
-    input_dim: ${obs_dim}
-    output_dim: ${action_dim}
+    input_dim: ${task.obs_dim}
+    output_dim: ${task.action_dim}
     hidden_dims: [256, 256, 256, 256]
     activation:
       _target_: torch.nn.LeakyReLU
     output_activation: 
       _target_: torch.nn.Identity
-  env: ${env_runner.env}
-  dataset:
-    _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
-    dataset_path: ./data/lift/ph/low_dim_v141.hdf5
-    obs_keys: *obs_keys
-    pred_horizon: ${pred_horizon}
+  env: ${task.env_runner.env}
+  dataset: ${task.dataset}
   # ckpt_path: ${model_path}
 
 
