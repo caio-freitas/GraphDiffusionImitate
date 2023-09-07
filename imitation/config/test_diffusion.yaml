@@ -12,8 +12,7 @@ obs_horizon: 1
 action_horizon: 1
 
 
-# model_path: ./weights/${task.task_name}_diffusion_last.pt
-model_path: ./weights/lift_diffusion_policy.pt
+model_path: ./weights/${task.task_name}_diffusion_last.pt
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
