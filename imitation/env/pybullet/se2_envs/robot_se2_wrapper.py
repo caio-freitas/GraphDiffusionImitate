@@ -78,6 +78,8 @@ class RobotSe2EnvWrapper(gym.Env):
 
     def reset(self):
         [robot, obstacles, grasp_obj] = self.env.reset(self.start_joints)
+        # transform tuple in list
+        robot = np.concatenate(robot)
         return robot
 
     def step(self, action):
@@ -87,7 +89,8 @@ class RobotSe2EnvWrapper(gym.Env):
         done = torch.norm(self.target_pose - pose) < 0.1
         reward = -torch.norm(self.target_pose - pose)
         info = {}
-        observation = robot
+        observation = np.concatenate(robot)
+        print(f"observation: {observation}")
         time.sleep(0.01)
         return observation, reward, done, info
     
