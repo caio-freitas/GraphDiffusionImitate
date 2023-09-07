@@ -38,7 +38,7 @@ class RobomimicEnvRunner(BaseRunner):
         info = {}
         rewards = []
         for i in range(n_steps):
-            actions = agent.act(self.obs)
+            actions = agent.act(self.obs_deque)
             
             for j in range(self.action_horizon):
                 # Make sure the action is always [[...]]
