@@ -37,6 +37,7 @@ class RobomimicLowdimWrapper(gym.Env):
                  ):
         controller_config = load_controller_config(default_controller="OSC_POSE")
         robots = [*robots] # gambiarra to make it work with robots list
+
         self.env = RobomimicGymWrapper(
             suite.make(
                 task,
