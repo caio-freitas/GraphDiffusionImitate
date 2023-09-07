@@ -13,8 +13,8 @@ class RobomimicEnvRunner(BaseRunner):
     def __init__(self,
                 env,
                 output_dir,
-                action_horizon=1,
-                obs_horizon=1,
+                action_horizon,
+                obs_horizon,
                 render=True,
                 fps=30) -> None:
         super().__init__(output_dir)
@@ -38,7 +38,7 @@ class RobomimicEnvRunner(BaseRunner):
         info = {}
         rewards = []
         for i in range(n_steps):
-            actions = agent.act(self.obs)
+            actions = agent.act(self.obs_deque)
             
             for j in range(self.action_horizon):
                 # Make sure the action is always [[...]]

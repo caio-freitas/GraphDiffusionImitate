@@ -18,7 +18,6 @@ train:
   loss:
     _target_: torch.nn.MSELoss
 
-obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
 
 env_runner: ${task.env_runner}
 
@@ -35,7 +34,7 @@ policy:
       _target_: torch.nn.Identity
   env: ${task.env_runner.env}
   dataset: ${task.dataset}
-  ckpt_path: ${model_path}
+  # ckpt_path: ${model_path}
 
 
 agent:

@@ -16,7 +16,8 @@ obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joi
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
-  action_horizon: ${task.pred_horizon}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${max_steps}

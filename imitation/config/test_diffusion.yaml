@@ -7,20 +7,14 @@ max_steps: 5000
 output_dir: ./output
 
 
-pred_horizon: 4
-obs_horizon: 1
-action_horizon: 1
+pred_horizon: 16
+obs_horizon: 2
+action_horizon: 8
 
 
 model_path: ./weights/${task.task_name}_diffusion_last.pt
 
-env_runner: 
-  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
-  output_dir: ${output_dir}
-  env:
-    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
-
-
+env_runner: ${task.env_runner}
 
 policy:
   _target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy

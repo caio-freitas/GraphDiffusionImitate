@@ -19,11 +19,10 @@ from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 log = logging.getLogger(__name__)
 
 def normalize_data(data, stats):
-    # nomalize to [0,1]
-    ndata = (data - stats['min']) / (stats['max'] - stats['min'])
-    # normalize to [-1, 1]
-    ndata = ndata * 2 - 1
-    return ndata
+    for obs in data:
+        obs = (obs - stats['min']) / (stats['max'] - stats['min'])
+        obs = obs * 2 - 1
+    return data
 
 def unnormalize_data(ndata, stats):
     ndata = (ndata + 1) / 2
@@ -119,6 +118,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
     def get_action(self, obs_seq):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         nobs = normalize_data(obs_seq, stats=self.stats['obs'])
+        # transform deques to numpy arrays
+        nobs = np.array(nobs)
+        
         # device transfer
         nobs = torch.from_numpy(nobs).to(self.device, dtype=torch.float32)
         with torch.no_grad():
