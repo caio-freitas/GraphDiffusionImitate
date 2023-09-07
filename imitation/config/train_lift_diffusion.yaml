@@ -1,4 +1,3 @@
-num_episodes: 2
 output_dir: ./output
 
 # Environment
@@ -34,7 +33,7 @@ policy:
   num_diffusion_iters: 100
   dataset:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
-    dataset_path: ./data/lift/mh_low_dim_v141.hdf5
+    dataset_path: ./data/lift/ph/low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
     obs_horizon: ${obs_horizon}
