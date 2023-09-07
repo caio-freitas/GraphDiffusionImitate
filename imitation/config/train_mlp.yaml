@@ -2,6 +2,8 @@ defaults:
   - _self_
   - task: lift_lowdim
 
+render: False
+
 output_dir: ./output
 
 pred_horizon: 1

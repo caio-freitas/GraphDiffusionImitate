@@ -2,6 +2,8 @@ defaults:
   - _self_
   - task: kitchen_lowdim
 
+render: True
+
 num_episodes: 1
 max_steps: 5000
 output_dir: ./output

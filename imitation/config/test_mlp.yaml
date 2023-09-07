@@ -2,6 +2,8 @@ defaults:
   - _self_
   - task: lift_lowdim
 
+render: True
+
 num_episodes: 5
 max_steps: 5000
 output_dir: ./output
