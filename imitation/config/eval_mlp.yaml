@@ -1,0 +1,40 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+
+render: True
+
+num_episodes: 20
+max_steps: 500
+output_dir: ./output
+
+
+pred_horizon: 1
+action_horizon: 1
+obs_horizon: 1
+
+model_path: ./weights/${task.task_name}_mlp_last.pt
+
+obs_keys: &obs_keys ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos']
+
+
+env_runner: ${task.env_runner}
+
+policy:
+  _target_: imitation.policy.mlp_policy.MLPPolicy
+  model:
+    _target_: imitation.model.mlp.MLPNet
+    input_dim: ${task.obs_dim}
+    output_dim: ${task.action_dim}
+    hidden_dims: [256, 256, 256, 256]
+    activation:
+      _target_: torch.nn.LeakyReLU
+    output_activation: 
+      _target_: torch.nn.Identity
+  env: ${task.env_runner.env}
+  dataset: ${task.dataset}
+  ckpt_path: ${model_path}
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
