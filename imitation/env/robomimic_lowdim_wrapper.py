@@ -50,6 +50,7 @@ class RobomimicLowdimWrapper(gym.Env):
             ),
             keys = [
                 "robot0_proprio-state",
+                # "robot1_proprio-state", # TODO add robot1 proprio-state to observations
                 "object-state"
             ]
         )
@@ -73,7 +74,7 @@ class RobomimicLowdimWrapper(gym.Env):
         eef_pose = obs[21:24]
         eef_quat = obs[24:28]
         gripper_pose = obs[28:30]
-        # TODO find out what 30 - 32 is
+        # ignore 2 - gripper joint velocities
         objects = obs[32:]
         return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
     

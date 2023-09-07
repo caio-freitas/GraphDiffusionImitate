@@ -5,9 +5,12 @@ defaults:
 output_dir: ./output
 
 pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
 
 # Training parameters
 num_epochs: 1000
+max_steps: 5000
 # add task.task_name to model_path
 model_path: ./weights/${task.task_name}_mlp_last.pt
 
@@ -17,12 +20,7 @@ train:
 
 obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
 
-env_runner: 
-  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
-  output_dir: ${output_dir}
-  env:
-    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-    task: "Lift"
+env_runner: ${task.env_runner}
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
@@ -37,7 +35,7 @@ policy:
       _target_: torch.nn.Identity
   env: ${task.env_runner.env}
   dataset: ${task.dataset}
-  # ckpt_path: ${model_path}
+  ckpt_path: ${model_path}
 
 
 agent:
