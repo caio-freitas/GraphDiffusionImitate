@@ -12,13 +12,15 @@ n_action_steps: ${action_horizon}
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
   env:
     _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
 
 
 # dataset:
 #   _target_: diffusion_policy.dataset.kitchen_mjl_lowdim_dataset.KitchenMjlLowdimDataset
-#   dataset_dir: ./data/kitchen_demos_multitask
+#   dataset_dir: ./data/kitchen/kitchen_demos_multitask
 #   horizon: ${pred_horizon}
 #   pad_before: ${eval:'${task.n_obs_steps}-1'}
 #   pad_after: ${eval:'${task.n_action_steps}-1'}
@@ -28,7 +30,7 @@ env_runner:
 #   val_ratio: 0.02
 dataset:
   _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
-  dataset_dir: ../diffusion_policy/data/kitchen/
+  dataset_dir: ./data/kitchen/
   horizon: ${pred_horizon}
   pad_before: ${eval:'${task.n_obs_steps}-1'}
   pad_after: ${eval:'${task.n_action_steps}-1'}
