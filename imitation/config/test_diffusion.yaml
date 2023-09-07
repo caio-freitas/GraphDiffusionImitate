@@ -1,0 +1,39 @@
+defaults:
+  - _self_
+  - task: kitchen_lowdim
+
+num_episodes: 1
+max_steps: 5000
+output_dir: ./output
+
+
+pred_horizon: 4
+obs_horizon: 1
+action_horizon: 1
+
+
+# model_path: ./weights/${task.task_name}_diffusion_last.pt
+model_path: ./weights/lift_diffusion_policy.pt
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
+
+
+
+policy:
+  _target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy
+  obs_dim: ${task.obs_dim}
+  action_dim: ${task.action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  num_diffusion_iters: 100
+  dataset: ${task.dataset}
+  ckpt_path: ${model_path}
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

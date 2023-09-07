@@ -5,12 +5,9 @@ dataset_path: &dataset_path ../diffusion_policy/data/kitchen/
 
 obs_dim: 60
 action_dim: 9
-pred_horizon: 1
-obs_horizon: 1
-action_horizon: 1
 
-n_obs_steps: ${task.obs_horizon}
-n_action_steps: ${task.action_horizon}
+n_obs_steps: ${obs_horizon}
+n_action_steps: ${action_horizon}
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
@@ -32,7 +29,7 @@ env_runner:
 dataset:
   _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
   dataset_dir: ../diffusion_policy/data/kitchen/
-  horizon: ${task.pred_horizon}
+  horizon: ${pred_horizon}
   pad_before: ${eval:'${task.n_obs_steps}-1'}
   pad_after: ${eval:'${task.n_action_steps}-1'}
   seed: 42
