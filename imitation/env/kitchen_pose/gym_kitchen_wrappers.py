@@ -6,11 +6,12 @@ class KitchenPoseWrapper(gym.Wrapper):
     '''
     Wrapper for FrankaKitchen-v1 environment with joint values and end effector position as observations
     '''
-    def __init__(self):
+    def __init__(self, max_steps=5000, render=True):
         self.env = gymnasium.make(
             'FrankaKitchen-v1',
             tasks_to_complete=['microwave'],
-            render_mode='human'
+            render_mode='human' if render else 'rgb_array',
+            max_episode_steps=max_steps
         )
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
@@ -25,6 +26,7 @@ class KitchenPoseWrapper(gym.Wrapper):
 
     def step(self, action):
         # According to https://robotics.farama.org/envs/franka_kitchen/franka_kitchen/
+
         all = self.env.step(action)
         obs = self._get_obs(all)
 
@@ -32,6 +34,8 @@ class KitchenPoseWrapper(gym.Wrapper):
         done = all[2]
         # TODO check if "done" is in 2 or 3
         info = all[4]
+        info["success"] = done
+        print(f"info: {info}, done: {done}")
         return obs, reward, done, info
 
 

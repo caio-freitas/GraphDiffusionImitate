@@ -55,5 +55,4 @@ class RobomimicEnvRunner(BaseRunner):
                     self.env.render()
                     time.sleep(1/self.fps)
                 i += 1
-        self.env.close()
         return rewards, info

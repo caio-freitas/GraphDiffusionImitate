@@ -11,8 +11,10 @@ dependencies:
   - pytorch==2.0.0
   - torchvision==0.15.1
   - pip:
+    - Cython==0.29.35
     - pytorchvideo
     - gymnasium==0.28.1
+    - gymnasium-robotics
     - gym
     - robomimic
     - diffusers
