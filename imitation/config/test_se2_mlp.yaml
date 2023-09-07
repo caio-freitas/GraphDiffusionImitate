@@ -16,7 +16,7 @@ env_runner:
   output_dir: ${output_dir}
   env:
     _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
-    num_obs: 2
+    num_obs: 2 # obstacles
     start_pose: [1.0, 0.0, 0.0] # TODO use this!
     target_pose: [0.0, 1.0, 0.0]
 

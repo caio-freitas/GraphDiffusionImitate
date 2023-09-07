@@ -39,7 +39,7 @@ policy:
   env: ${env_runner.env}
   dataset:
     _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
-    dataset_path: ./data/lift_low_dim_v141.hdf5
+    dataset_path: ./data/lift/ph/low_dim_v141.hdf5
     obs_keys: *obs_keys
     pred_horizon: ${pred_horizon}
   # ckpt_path: ${model_path}

@@ -3,7 +3,6 @@ from torch import nn
 
 from imitation.policy.base_policy import BasePolicy
 from imitation.model.mlp import MLPNet
-from imitation.dataset.pusht_state_dataset import PushTStateDataset
 
 import logging
 import wandb
