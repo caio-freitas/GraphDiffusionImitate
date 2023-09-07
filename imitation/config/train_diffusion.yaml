@@ -6,9 +6,9 @@ output_dir: ./output
 max_steps: 5000
 
 
-pred_horizon: 4
-obs_horizon: 1
-action_horizon: 1
+pred_horizon: 16
+obs_horizon: 2
+action_horizon: 8
 
 
 obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
