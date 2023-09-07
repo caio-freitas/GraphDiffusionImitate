@@ -1,0 +1,36 @@
+
+task_name: &task_name kitchen
+dataset_path: &dataset_path ../diffusion_policy/data/kitchen/
+
+
+obs_dim: 60
+action_dim: 9
+
+n_obs_steps: ${obs_horizon}
+n_action_steps: ${action_horizon}
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
+
+
+# dataset:
+#   _target_: diffusion_policy.dataset.kitchen_mjl_lowdim_dataset.KitchenMjlLowdimDataset
+#   dataset_dir: ./data/kitchen_demos_multitask
+#   horizon: ${pred_horizon}
+#   pad_before: ${eval:'${task.n_obs_steps}-1'}
+#   pad_after: ${eval:'${task.n_action_steps}-1'}
+#   abs_action: true
+#   robot_noise_ratio: 0.1
+#   seed: 42
+#   val_ratio: 0.02
+dataset:
+  _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
+  dataset_dir: ../diffusion_policy/data/kitchen/
+  horizon: ${pred_horizon}
+  pad_before: ${eval:'${task.n_obs_steps}-1'}
+  pad_after: ${eval:'${task.n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.02

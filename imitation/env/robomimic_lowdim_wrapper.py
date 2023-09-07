@@ -4,7 +4,6 @@ import numpy as np
 
 import robosuite as suite
 from robosuite.controllers import load_controller_config
-from robosuite.environments.manipulation.lift import Lift
 from robosuite.wrappers.gym_wrapper import GymWrapper
 
 
@@ -32,13 +31,15 @@ class RobomimicGymWrapper(GymWrapper):
 class RobomimicLowdimWrapper(gym.Env):
     def __init__(self,
                  max_steps=5000,
-                 task="Lift"
+                 task="Lift",
+                 robots=["Panda"],
                  ):
         controller_config = load_controller_config(default_controller="OSC_POSE")
+        robots = [*robots] # gambiarra to make it work with param list
         self.env = RobomimicGymWrapper(
             suite.make(
                 task,
-                robots="Panda",  # use Panda robot
+                robots=robots,
                 use_camera_obs=False,  # do not use pixel observations
                 has_offscreen_renderer=False,  # not needed since not using pixel obs
                 has_renderer=True,  # make sure we can render to the screen
@@ -49,6 +50,7 @@ class RobomimicLowdimWrapper(gym.Env):
             ),
             keys = [
                 "robot0_proprio-state",
+                # "robot1_proprio-state", # TODO add robot1 proprio-state to observations
                 "object-state"
             ]
         )
@@ -63,14 +65,18 @@ class RobomimicLowdimWrapper(gym.Env):
         * Won't work if parameter obs_keys is changed!
           according to https://robosuite.ai/docs/modules/environments.html
         '''
-        # Skip 7  - sin of joint angles
-        # Skip 7  - cos of joint angles
-        # Skip 7  - joint velocities
+        # 7  - sin of joint angles
+        robot_joint_sin = obs[0:7]
+        # 7  - cos of joint angles
+        robot_joint_cos = obs[7:14]
+        # 7  - joint velocities
+        robot_joint_vel = obs[14:21]
         eef_pose = obs[21:24]
         eef_quat = obs[24:28]
         gripper_pose = obs[28:30]
-        objects = obs[-10:]
-        return [*eef_pose, *eef_quat, *gripper_pose, *objects]
+        # ignore 2 - gripper joint velocities
+        objects = obs[32:]
+        return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
     
     def reset(self):
         obs, _ =  self.env.reset()

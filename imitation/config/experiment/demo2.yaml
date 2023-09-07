@@ -1,7 +1,0 @@
-name: demo2
-seed: 0
-n_steps: 50
-n_episodes: 2
-env_runner: "KitchenPoseRunner"
-
-output_dir: "output/demo"
