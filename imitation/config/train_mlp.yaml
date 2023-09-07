@@ -2,17 +2,25 @@ defaults:
   - _self_
   - task: lift_lowdim
 
-num_episodes: 5
-max_steps: 5000
 output_dir: ./output
 
 pred_horizon: 1
 obs_horizon: 1
 action_horizon: 1
 
-
+# Training parameters
+num_epochs: 1000
+max_steps: 5000
+# add task.task_name to model_path
 model_path: ./weights/${task.task_name}_mlp_last.pt
 
+train:
+  loss:
+    _target_: torch.nn.MSELoss
+
+obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
+
+env_runner: ${task.env_runner}
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy

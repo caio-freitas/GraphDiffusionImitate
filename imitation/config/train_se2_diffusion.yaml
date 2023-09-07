@@ -13,7 +13,7 @@ obs_keys: &obs_keys ['joint_values', 'joint_velocities']
 
 # Training parameters
 num_epochs: 100
-model_path: ./se2_diffusion_policy.pt
+model_path: ./weights/se2_diffusion_policy.pt
 
 
 env_runner: 
@@ -41,8 +41,7 @@ policy:
     pred_horizon: ${pred_horizon}
     obs_horizon: ${obs_horizon}
     action_horizon: ${action_horizon}
-
-  # ckpt_path: 
+  ckpt_path: ${model_path}
 
 
 agent:

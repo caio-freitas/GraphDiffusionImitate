@@ -1,0 +1,38 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+
+output_dir: ./output
+max_steps: 5000
+
+
+pred_horizon: 4
+obs_horizon: 1
+action_horizon: 1
+
+
+obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
+
+
+# Training parameters
+num_epochs: 100
+model_path: ./weights/${task.task_name}_mlp_last.pt
+
+
+env_runner: ${task.env_runner}
+
+
+policy:
+  _target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy
+  obs_dim: ${task.obs_dim}
+  action_dim: ${task.action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  num_diffusion_iters: 100
+  dataset: ${task.dataset}
+  # ckpt_path: ${model_path}
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
