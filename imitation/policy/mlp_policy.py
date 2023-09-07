@@ -18,12 +18,7 @@ class MLPPolicy(BasePolicy):
     def __init__(self,
                     env,
                     model: nn.Module,
-                    dataset = PushTStateDataset(
-                        dataset_path='./pusht_cchi_v7_replay.zarr.zip',
-                        pred_horizon=1,
-                        obs_horizon=1,
-                        action_horizon=1,
-                    ),
+                    dataset,
                     ckpt_path=None):
         super().__init__(env)
         self.env = env # TODO remove
