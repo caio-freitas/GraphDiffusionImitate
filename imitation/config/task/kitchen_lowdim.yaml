@@ -27,7 +27,7 @@ env_runner:
 #   pad_after: ${eval:'${task.n_action_steps}-1'}
 #   abs_action: true
 #   robot_noise_ratio: 0.1
-#   seed: 42
+#   seed: ${seed}
 #   val_ratio: 0.02
 dataset:
   _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
@@ -35,5 +35,5 @@ dataset:
   horizon: ${pred_horizon}
   pad_before: ${eval:'${task.n_obs_steps}-1'}
   pad_after: ${eval:'${task.n_action_steps}-1'}
-  seed: 42
+  seed: ${seed}
   val_ratio: 0.02

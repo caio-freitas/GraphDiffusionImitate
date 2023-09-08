@@ -167,13 +167,20 @@ class DiffusionUnet1DPolicy(BasePolicy):
     def train(self, 
               dataset=None, 
               num_epochs=100,
-              model_path="last.pt"):
+              model_path="last.pt",
+              seed=0):
         '''
         Trains the noise prediction network, using self.dataset
         Resulting in the self.ema_noise_pred_net object.
         '''
         log.info('Training noise prediction network.')
             
+        # set seed
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+
+
         # Exponential Moving Average
         # accelerates training and improves stability
         # holds a copy of the model weights

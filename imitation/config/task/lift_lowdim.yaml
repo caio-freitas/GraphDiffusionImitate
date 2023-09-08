@@ -26,3 +26,5 @@ dataset:
   dataset_path: ${task.dataset_path}
   obs_keys: *obs_keys
   pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}

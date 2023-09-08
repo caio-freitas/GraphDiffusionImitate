@@ -15,6 +15,7 @@ action_horizon: 8
 
 # Training parameters
 num_epochs: 100
+seed: 0
 model_path: ./weights/${task.task_name}_diffusion_last.pt
 
 

@@ -18,12 +18,22 @@ class MLPPolicy(BasePolicy):
                     env,
                     model: nn.Module,
                     dataset,
+                    obs_dim: int,
+                    action_dim: int,
+                    pred_horizon: int,
+                    obs_horizon: int,
+                    action_horizon: int,
                     ckpt_path=None):
         super().__init__(env)
         self.env = env # TODO remove
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cpu")
         self.dataset = dataset
+        self.obs_dim = obs_dim
+        self.action_dim = action_dim
+        self.pred_horizon = pred_horizon
+        self.obs_horizon = obs_horizon
+        self.action_horizon = action_horizon
         self.model = model
         # load model from ckpt
         if ckpt_path is not None:
@@ -37,7 +47,7 @@ class MLPPolicy(BasePolicy):
             # accelerate cpu-gpu transfer
             pin_memory=True,
             # don't kill worker process afte each epoch
-            persistent_workers=True
+            persistent_workers=True,
         )
 
         self.ckpt_path = ckpt_path
@@ -50,11 +60,18 @@ class MLPPolicy(BasePolicy):
     def get_action(self, obs):
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
         action = self.model(obs).detach().cpu().numpy()
+        # reshape action to be pred_horizon x action_dim
+        action = action.reshape(self.pred_horizon, self.action_dim)
         return action
 
-    def train(self, dataset, num_epochs, model_path):
+    def train(self, dataset, num_epochs, model_path, seed=0):
         '''Train the policy on the given dataset for the given number of epochs.
         Usinf self.model.forward() to get the action for the given observation.'''
+
+        # set seed
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
 
         loss_fn = nn.MSELoss() # TODO change to abs loss
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)

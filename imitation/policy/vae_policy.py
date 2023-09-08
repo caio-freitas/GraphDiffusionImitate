@@ -114,9 +114,15 @@ class VAEPolicy(BasePolicy):
         wandb.log({"KLD": KLD.item(), "reconstruction_loss": reconstruction_loss.item()})
         return reconstruction_loss + KLD
 
-    def train(self, dataset, num_epochs, model_path):
+    def train(self, dataset, num_epochs, model_path, seed=0):
         '''Train the Variation Autoencoder Model on the given dataset for the given number of epochs.
         '''
+
+        # set seed
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
