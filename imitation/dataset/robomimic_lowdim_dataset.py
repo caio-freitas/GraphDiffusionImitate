@@ -3,6 +3,10 @@ import torch
 import numpy as np
 import h5py
 from tqdm import tqdm
+import os
+import logging
+
+log = logging.getLogger(__name__)
 
 class RobomimicLowdimDataset(torch.utils.data.Dataset):
     '''
@@ -29,7 +33,15 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         self.obs_keys = obs_keys
         self.indices = []
         self.data_at_indices = []
-        self.create_sample_indices()
+        # if indices file exists, load it
+        if os.path.exists(dataset_path.replace(".hdf5", "_indices.npy")):
+            self.indices = np.load(dataset_path.replace(".hdf5", "_indices.npy"))
+            self.data_at_indices = np.load(dataset_path.replace(".hdf5", "_data_at_indices.npy"), allow_pickle=True)
+        else:
+            self.create_sample_indices()
+            # keeps sample indices in memory, so that it doesn't need to be reloaded
+            np.save(dataset_path.replace(".hdf5", "_indices.npy"), self.indices)
+            np.save(dataset_path.replace(".hdf5", "_data_at_indices.npy"), self.data_at_indices)
 
         self.stats = {}
         self.stats["obs"] = self.get_data_stats("obs")
