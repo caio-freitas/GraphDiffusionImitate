@@ -22,6 +22,11 @@ env_runner: ${task.env_runner}
 
 policy:
   _target_: imitation.policy.mlp_policy.MLPPolicy
+  obs_dim: ${task.obs_dim}
+  action_dim: ${task.action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
   model:
     _target_: imitation.model.mlp.MLPNet
     input_dim: ${task.obs_dim}
@@ -35,6 +40,7 @@ policy:
   dataset: ${task.dataset}
   ckpt_path: ${model_path}
 
+seed: 0
 
 agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
