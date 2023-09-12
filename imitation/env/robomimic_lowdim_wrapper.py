@@ -36,12 +36,14 @@ class RobomimicLowdimWrapper(gym.Env):
                  robots=["Panda"],
                  ):
         controller_config = load_controller_config(default_controller="OSC_POSE")
-        robots = [*robots] # gambiarra to make it work with robots list
-
+        self.robots = [*robots] # gambiarra to make it work with robots list
+        keys = [ "robot0_proprio-state", 
+                *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
+                "object-state"]
         self.env = RobomimicGymWrapper(
             suite.make(
                 task,
-                robots=robots,
+                robots=self.robots,
                 use_camera_obs=False,  # do not use pixel observations
                 has_offscreen_renderer=False,  # not needed since not using pixel obs
                 has_renderer=has_renderer,  # make sure we can render to the screen
@@ -50,11 +52,7 @@ class RobomimicLowdimWrapper(gym.Env):
                 horizon=max_steps,  # long horizon so we can sample high rewards
                 controller_configs=controller_config,
             ),
-            keys = [
-                "robot0_proprio-state",
-                # "robot1_proprio-state", # TODO add robot1 proprio-state to observations
-                "object-state"
-            ]
+            keys = keys
         )
         self.env.reset()
         self.action_space = self.env.action_space
@@ -67,19 +65,27 @@ class RobomimicLowdimWrapper(gym.Env):
         * Won't work if parameter obs_keys is changed!
           according to https://robosuite.ai/docs/modules/environments.html
         '''
-        # 7  - sin of joint angles
-        robot_joint_sin = obs[0:7]
-        # 7  - cos of joint angles
-        robot_joint_cos = obs[7:14]
-        # 7  - joint velocities
-        robot_joint_vel = obs[14:21]
-        eef_pose = obs[21:24]
-        eef_quat = obs[24:28]
-        gripper_pose = obs[28:30]
-        # ignore 2 - gripper joint velocities
-        objects = obs[32:]
-        return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
-    
+        final_obs = []
+        for i in range(len(self.robots)):
+            j = i*32
+            # 7  - sin of joint angles
+            robot_joint_sin = obs[j:j + 7]
+            # 7  - cos of joint angles
+            robot_joint_cos = obs[j + 7:j + 14]
+            # 7  - joint velocities
+            robot_joint_vel = obs[j + 14:j + 21]
+            eef_pose = obs[j + 21:j + 24]
+            eef_quat = obs[j + 24:j + 28]
+            gripper_pose = obs[j + 28:j + 30]
+            # Skip 2  - gripper joint velocities
+            robot_i = [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose]
+            final_obs = [*final_obs, *robot_i]
+        
+        objects = obs[32*len(self.robots):]
+        return [*final_obs, *objects]
+        # return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
+        
+
     def reset(self):
         obs, _ =  self.env.reset()
         return self._robosuite_obs_to_robomimic_obs(obs)

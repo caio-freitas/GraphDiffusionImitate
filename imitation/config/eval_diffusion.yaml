@@ -29,6 +29,7 @@ policy:
   dataset: ${task.dataset}
   ckpt_path: ${model_path}
 
+seed: 0
 
 agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

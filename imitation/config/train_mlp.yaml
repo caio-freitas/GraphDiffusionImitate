@@ -6,16 +6,16 @@ render: False
 
 output_dir: ./output
 
-pred_horizon: 16
-obs_horizon: 2
-action_horizon: 16
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
 
 # Training parameters
 num_epochs: 1000
 seed: 0
 max_steps: 5000
 # add task.task_name to model_path
-model_path: ./weights/${task.task_name}_mlp_last2.pt
+model_path: ./weights/${task.task_name}_mlp_last.pt
 
 train:
   loss:

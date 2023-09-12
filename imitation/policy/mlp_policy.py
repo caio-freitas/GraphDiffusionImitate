@@ -26,15 +26,15 @@ class MLPPolicy(BasePolicy):
                     ckpt_path=None):
         super().__init__(env)
         self.env = env # TODO remove
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cpu")
         self.dataset = dataset
         self.obs_dim = obs_dim
         self.action_dim = action_dim
         self.pred_horizon = pred_horizon
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
-        self.model = model
+        self.model = model.to(self.device)
         # load model from ckpt
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
