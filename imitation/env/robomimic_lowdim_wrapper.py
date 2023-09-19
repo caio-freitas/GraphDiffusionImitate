@@ -35,7 +35,7 @@ class RobomimicLowdimWrapper(gym.Env):
                  has_renderer=True,
                  robots=["Panda"],
                  ):
-        controller_config = load_controller_config(default_controller="OSC_POSE")
+        controller_config = load_controller_config(default_controller="JOINT_POSITION") # TODO change action space so that it works with JOINT_POSITION
         self.robots = [*robots] # gambiarra to make it work with robots list
         keys = [ "robot0_proprio-state", 
                 *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
@@ -83,7 +83,6 @@ class RobomimicLowdimWrapper(gym.Env):
         
         objects = obs[32*len(self.robots):]
         return [*final_obs, *objects]
-        # return [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose, *objects]
         
 
     def reset(self):
