@@ -78,8 +78,8 @@ class MLPPolicy(BasePolicy):
 
         # visualize data in batch
         batch = next(iter(self.dataloader))
-        log.info(f"batch['obs'].shape:{batch['obs']}")
-        log.info(f"batch['action'].shape: {batch['action']}")
+        log.info(f"batch['obs'].shape:{batch['obs'].shape}")
+        log.info(f"batch['action'].shape: {batch['action'].shape}")
 
         with tqdm(range(num_epochs)) as pbar:
             for epoch in pbar:
