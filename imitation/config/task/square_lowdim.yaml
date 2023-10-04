@@ -9,6 +9,7 @@ action_dim: 7
 
 
 obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
+action_keys: &action_keys ['robot0_joint_pos', 'robot0_gripper_qpos']
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
@@ -20,6 +21,7 @@ env_runner:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${max_steps}
     task: "NutAssemblySquare"
+    robots: ["Panda"]
 
 dataset:
   _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset

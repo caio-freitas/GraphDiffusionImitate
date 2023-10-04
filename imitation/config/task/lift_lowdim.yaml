@@ -5,10 +5,12 @@ dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_di
 
 
 obs_dim: 40
-action_dim: 7
+action_dim: 9
 
 
 obs_keys: &obs_keys ['robot0_joint_pos_sin', 'robot0_joint_pos_cos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
+action_keys: &action_keys ['robot0_joint_pos', 'robot0_gripper_qpos']
+
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
@@ -20,11 +22,12 @@ env_runner:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${max_steps}
     task: "Lift"
-
+    robots: ["Panda"]
 dataset:
   _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
   dataset_path: ${task.dataset_path}
   obs_keys: *obs_keys
+  action_keys: *action_keys
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
   action_horizon: ${action_horizon}

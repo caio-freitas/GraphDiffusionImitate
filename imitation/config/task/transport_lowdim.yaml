@@ -22,6 +22,9 @@ obs_keys: &obs_keys ['robot0_joint_pos_sin',
                     'robot1_gripper_qpos',
                     'object']
 robots: &robots ["Panda", "Panda"]
+action_keys: &action_keys ['robot0_joint_pos', 'robot0_gripper_qpos', 'robot1_joint_pos', 'robot1_gripper_qpos']
+
+
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner

@@ -16,6 +16,7 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
     def __init__(self, 
                  dataset_path,
                  obs_keys,
+                 action_keys,
                  pred_horizon=1,
                  obs_horizon=1,
                  action_horizon=1):
@@ -31,9 +32,11 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         except:
               pass
         self.obs_keys = obs_keys
+        self.action_keys = action_keys
         self.indices = []
         self.data_at_indices = []
         # if indices file exists, load it
+        # TODO add dataset params to filename, so that it doesn't load wrong indices
         if os.path.exists(dataset_path.replace(".hdf5", "_indices.npy")):
             self.indices = np.load(dataset_path.replace(".hdf5", "_indices.npy"))
             self.data_at_indices = np.load(dataset_path.replace(".hdf5", "_data_at_indices.npy"), allow_pickle=True)
@@ -67,10 +70,14 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                 data_obs_keys = []
                 for obs_key in self.obs_keys:
                     data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx - self.obs_horizon:idx, :])
+                data_action_keys = []
+                for action_key in self.action_keys:
+                    data_action_keys.append(self.dataset_root[f"data/{key}/obs/{action_key}"][idx:idx+self.pred_horizon, :])
                 data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
+                data_action_keys = np.concatenate(data_action_keys, axis=-1)
                 self.data_at_indices.append({
                     "obs": data_obs_keys,
-                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.pred_horizon, :]
+                    "action": data_action_keys
                 })
             idx_global += episode_length
         self.indices = np.array(self.indices)
