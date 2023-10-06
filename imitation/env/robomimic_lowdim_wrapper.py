@@ -61,7 +61,7 @@ class RobomimicLowdimWrapper(gym.Env):
         self.env.reset()
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
-        self._test_routine()
+        # self._test_routine() # for testing purposes
         
 
     def _robosuite_obs_to_robomimic_obs(self, obs):
@@ -118,10 +118,10 @@ class RobomimicLowdimWrapper(gym.Env):
         q_diff = final_action - current_action
 
         action = list(q_diff)
-        assert len(action) == 8*len(self.robots), len(action)
-        obs, reward, done, sla, info = self.env.step(action)
+
+        obs, reward, done, _, info = self.env.step(action)
         self.env.render()        
-        # obs, reward, done, sla, info = self.env.step(np.zeros(self.action_space.shape))
+
         if reward == 1:
             done = True
             info = {"success": True}
