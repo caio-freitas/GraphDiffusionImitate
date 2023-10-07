@@ -22,7 +22,8 @@ obs_keys: &obs_keys ['robot0_joint_pos_sin',
                     'robot1_gripper_qpos',
                     'object']
 robots: &robots ["Panda", "Panda"]
-action_keys: &action_keys ['robot0_joint_pos', 'robot0_gripper_qpos', 'robot1_joint_pos', 'robot1_gripper_qpos']
+action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel', 'robot1_joint_vel', 'robot1_gripper_qvel']
+
 
 
 
