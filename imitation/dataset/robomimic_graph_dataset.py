@@ -1,6 +1,7 @@
 
 from typing import Callable, Optional
 from torch_geometric.data import Dataset, Data, InMemoryDataset
+from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
 import logging
 import h5py
 import os.path as osp
@@ -31,7 +32,21 @@ class RobomimicGraphDataset(InMemoryDataset):
             self.dataset_keys.remove("mask")
         except:
             pass
+
+        self.robot_fk = DifferentiableFrankaPanda()
+
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
+
+    def _calculate_joints_positions(self, joints):
+        q = torch.tensor([joints]).to("cpu")
+        print(q)
+        q.requires_grad_(True)
+        data = self.robot_fk.compute_forward_kinematics_all_links(q)
+        data.shape
+        joint_positions = []
+        for i in range(7):
+            joint_positions.append(data[:, :3, 3].detach().numpy())
+        return torch.tensor(joint_positions)
 
     @property
     def raw_file_names(self):
@@ -43,8 +58,12 @@ class RobomimicGraphDataset(InMemoryDataset):
     
     def _get_node_feats(self, data, idx):
         node_feats = []
+        joint_positions = self._calculate_joints_positions([*data["robot0_joint_vel"][idx], *data["robot0_gripper_qpos"][idx]])
+        
         for obs_key in self.obs_keys:
             node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx]))
+        for node in range(len(node_feats.shape[0])):
+            node_feats.append(joint_positions[node])
             # TODO all node features must be of same length
 
         # result must be of shape (num_nodes, num_node_feats)
