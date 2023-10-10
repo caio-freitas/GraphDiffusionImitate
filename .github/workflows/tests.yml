@@ -38,7 +38,7 @@ jobs:
         run: conda init --all -v  # Use the '--all' flag to initialize all shells
 
       - name: Setup robosuite macros
-        run: conda activate imitation & python ~/work/GraphDiffusionImitate/GraphDiffusionImitate/src/robosuite/robosuite/scripts/setup_macros.py
+        run: conda init --all -v & conda activate imitation & python ~/work/GraphDiffusionImitate/GraphDiffusionImitate/src/robosuite/robosuite/scripts/setup_macros.py
 
       - name: Run test.py
-        run: conda run -n imitation python test.py --config-name=test_random_policy
+        run:  conda init --all -v & conda run -n imitation python test.py --config-name=test_random_policy
