@@ -39,13 +39,13 @@ class RobomimicGraphDataset(InMemoryDataset):
 
     def _calculate_joints_positions(self, joints):
         q = torch.tensor([joints]).to("cpu")
-        print(q)
         q.requires_grad_(True)
         data = self.robot_fk.compute_forward_kinematics_all_links(q)
-        data.shape
+        data = data[0]
         joint_positions = []
         for i in range(7):
-            joint_positions.append(data[:, :3, 3].detach().numpy())
+            joint_positions.append(data[i, :3, 3].detach().numpy())
+
         return torch.tensor(joint_positions)
 
     @property
@@ -59,15 +59,14 @@ class RobomimicGraphDataset(InMemoryDataset):
     def _get_node_feats(self, data, idx):
         node_feats = []
         joint_positions = self._calculate_joints_positions([*data["robot0_joint_vel"][idx], *data["robot0_gripper_qpos"][idx]])
-        
         for obs_key in self.obs_keys:
-            node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx]))
-        for node in range(len(node_feats.shape[0])):
-            node_feats.append(joint_positions[node])
+            node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx][0]))
+        for dim in range(3):
+            node_feats.append(joint_positions[:,dim])
             # TODO all node features must be of same length
 
         # result must be of shape (num_nodes, num_node_feats)
-        return torch.stack(node_feats, dim=1)[0]
+        return torch.stack(node_feats, dim=1)
 
 
     def _get_edge_index(self):
