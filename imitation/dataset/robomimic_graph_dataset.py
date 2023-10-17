@@ -16,6 +16,8 @@ class RobomimicGraphDataset(InMemoryDataset):
                  dataset_path,
                  obs_keys,
                  action_keys,
+                 object_state_sizes,
+                 object_state_keys,
                  pred_horizon=1,
                  obs_horizon=1,
                  action_horizon=1):
@@ -24,6 +26,8 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.pred_horizon = pred_horizon        #|
         self.obs_horizon = obs_horizon          #|} FIXED TO 1 in the graph dataset
         self.action_horizon = action_horizon    #|
+        self.object_state_sizes = object_state_sizes
+        self.object_state_keys = object_state_keys
         self._processed_dir = dataset_path.replace(".hdf5", "_processed")
 
         self.dataset_root = h5py.File(dataset_path, 'r')
@@ -43,6 +47,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         data = self.robot_fk.compute_forward_kinematics_all_links(q)
         data = data[0]
         joint_positions = []
+        # TODO add joint_quaternions
         for i in range(7):
             joint_positions.append(data[i, :3, 3].detach().numpy())
 
@@ -63,17 +68,30 @@ class RobomimicGraphDataset(InMemoryDataset):
             node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx][0]))
         for dim in range(3):
             node_feats.append(joint_positions[:,dim])
-            # TODO all node features must be of same length
+            # all node features must be of same length
+        NUM_OBJECTS = len(self.object_state_keys) # TODO this won't work with quaternions
+        i = 0
+        # create tensor of same dimension as node_feats
+        obj_state_tensor = torch.zeros((NUM_OBJECTS,len(node_feats)))
+        for object in range(NUM_OBJECTS):
+            for obj_state in self.object_state_sizes:
+                if obj_state["name"] in self.object_state_keys:
+                    obj_state_tensor[object,i:i + obj_state["size"]] = torch.from_numpy(data["object"][idx - self.obs_horizon:idx][0][i:i + obj_state["size"]])
+                i += obj_state["size"]
+
+        node_feats = torch.stack(node_feats, dim=1)
+        node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
 
         # result must be of shape (num_nodes, num_node_feats)
-        return torch.stack(node_feats, dim=1)
+        return node_feats
+    
 
 
     def _get_edge_index(self):
         # Adjacency matrix must be converted to COO format
         # for now, all nodes connected to next node
         edge_index = []
-        for idx in range(6):
+        for idx in range(7): # TODO connectivity of objects to robot
             edge_index.append([idx, idx+1])
 
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
@@ -84,7 +102,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         for action_key in self.action_keys:
             actions.append(torch.tensor(data[action_key][idx:idx + self.pred_horizon]))
         
-        return torch.stack(actions, dim=1)
+        return torch.stack(actions, dim=-1)
 
     def process(self):
         idx_global = 0
@@ -98,7 +116,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats = self._get_node_feats(data_raw, idx)
                 y = self._get_y(data_raw, idx)
 
-                data  = Data(x=np.transpose(node_feats),
+                data  = Data(x=node_feats,
                              edge_index=edge_index,
                              y=y)
                 # if self.pre_filter is not None and not self.pre_filter(data):
