@@ -40,7 +40,6 @@ class DiffusionOrderingNetwork(nn.Module):
         l_t = len(permutations[0])
         # pes = [torch.zeros(length, self.d_model) for length in lengths]
         pes = torch.split(torch.zeros((sum(lengths), self.d_model), device=self.device), lengths)
-        # print(pes[0].device)
         position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
         div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float, device=self.device) *
                               -(math.log(10000.0) / self.d_model)))
@@ -80,10 +79,8 @@ class DenoisingNetwork(nn.Module):
         super(DenoisingNetwork, self).__init__()
 
         self.embedding_layer = nn.Embedding(num_embeddings=num_node_types, embedding_dim=node_feature_dim)
-
-        print(node_feature_dim, num_node_types, num_edge_types, num_layers, out_channels)
-
-        self.GAT = GAT(
+        
+        self.gat = GAT(
             in_channels=node_feature_dim,
             out_channels=node_feature_dim,
             hidden_channels=num_heads * 16,
@@ -108,7 +105,7 @@ class DenoisingNetwork(nn.Module):
 
         h = self.embedding_layer(data.x.squeeze().long())
 
-        h = self.GAT(h, data.edge_index.long())
+        h = self.gat(h, data.edge_index.long())
 
         # TODO check if default attention mechanism is used
 

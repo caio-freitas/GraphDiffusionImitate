@@ -31,7 +31,7 @@ denoising_net = DenoisingNetwork(
 
 wandb.init(
         project="ARGD",
-        group=f"v0.9",
+        group=f"v1.0.1",
         name=f"denoising_and_ordering",
         # track hyperparameters and run metadata
         config={
@@ -48,12 +48,13 @@ grapharm = GraphARM(
     diffusion_ordering_network=diff_ord_net
 )
 
+batch_size = 5
 # train loop
-for epoch in range(10):
+for epoch in range(100):
     print(f"Epoch {epoch}")
     grapharm.train_step(
-        train_data=dataset[:10*epoch],
-        val_data=dataset[10*epoch:10*(epoch+1)],
+        train_data=dataset[epoch*batch_size:(epoch + 1)*batch_size],
+        val_data=dataset[(epoch + 1)*batch_size:batch_size*(epoch + 2)],
         M=4
     )
     grapharm.save_model()

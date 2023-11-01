@@ -77,6 +77,9 @@ class GraphARM(nn.Module):
             val_data,
             M = 4, # number of diffusion trajectories to be created for each graph
         ):
+        
+        self.denoising_optimizer.zero_grad()
+        self.ordering_optimizer.zero_grad()
 
         self.denoising_network.train()
         self.diffusion_ordering_network.eval()
@@ -104,16 +107,15 @@ class GraphARM(nn.Module):
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
                         n_i = G_t.x.shape[0]
                         # TODO check this. G_t isn't even being used. 
-                        loss = loss - (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M
+                        loss = - (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M
+                        # backprop (accumulated gradients)
+                        loss.backward()
                         pbar.set_description(f"Loss: {loss.item():.4f}")
         
-        # backprop
-        loss.backward()
-        # update parameters
+        # update parameters using accumulated gradients
         self.denoising_optimizer.step()
         
         # log loss
-        
         wandb.log({"loss": loss.item()})
 
 
@@ -144,14 +146,13 @@ class GraphARM(nn.Module):
                         r = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
-                        reward = reward - w_k*r/M
+                        reward = - w_k*r/M
+                        reward.backward()
                         pbar.set_description(f"Reward: {reward.item():.4f}")
 
         
         wandb.log({"reward": reward.item()})
         # update parameters (REINFORCE algorithm)
-        self.ordering_optimizer.zero_grad()
-        reward.backward()
         self.ordering_optimizer.step()
         
 
