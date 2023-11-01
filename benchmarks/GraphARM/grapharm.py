@@ -38,8 +38,7 @@ class GraphARM(nn.Module):
         for i in range(p.x.shape[0]):
             # use diffusion ordering network to get probabilities
             sigma_t_dist = self.diffusion_ordering_network(p, i)
-            # sample from categorical distribution to get node to mask
-            # TODO only on the samples that are not masked
+            # sample (only unmasked nodes) from categorical distribution to get node to mask
             unmasked = ~self.masker.is_masked(p)
             sigma_t = torch.distributions.Categorical(probs=sigma_t_dist[unmasked].flatten()).sample()
             
@@ -106,6 +105,7 @@ class GraphARM(nn.Module):
                         n_i = G_t.x.shape[0]
                         # TODO check this. G_t isn't even being used. 
                         loss = loss - (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M
+                        pbar.set_description(f"Loss: {loss.item():.4f}")
         
         # backprop
         loss.backward()
@@ -113,7 +113,7 @@ class GraphARM(nn.Module):
         self.denoising_optimizer.step()
         
         # log loss
-        pbar.set_description(f"Loss: {loss.item()%10:.4f}")
+        
         wandb.log({"loss": loss.item()})
 
 
@@ -145,6 +145,7 @@ class GraphARM(nn.Module):
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
                         reward = reward - w_k*r/M
+                        pbar.set_description(f"Reward: {reward.item():.4f}")
 
         
         wandb.log({"reward": reward.item()})
@@ -152,7 +153,7 @@ class GraphARM(nn.Module):
         self.ordering_optimizer.zero_grad()
         reward.backward()
         self.ordering_optimizer.step()
-        pbar.set_description(f"Reward: {reward.item()%10:.4f}")
+        
 
 
     def save_model(self):
