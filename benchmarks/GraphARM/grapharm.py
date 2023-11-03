@@ -7,7 +7,7 @@ import torch.nn as nn
 from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwork
 from benchmarks.GraphARM.utils import NodeMasking
 
-EPSILON = 1e-8
+EPSILON = 1e-10
 
 
 class GraphARM(nn.Module):
@@ -99,6 +99,7 @@ class GraphARM(nn.Module):
         self.denoising_network.train()
         self.diffusion_ordering_network.eval()
         loss = torch.tensor(0.0, requires_grad=True)
+        acc_loss = 0.0
         with tqdm(train_data) as pbar:
             for graph in pbar:
                 n_i = graph.x.shape[0]
@@ -122,19 +123,28 @@ class GraphARM(nn.Module):
                         # sample node type
                         node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
 
-                        # calculate loss
-                        p_O_v =  node_type_probs[node][node_type] + EPSILON # TODO add edges
+                        # sample edge type
+                        new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
+
+                       
+                        # probability of new connections
+                        p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
+                        p_edges = torch.prod(p_new_edges)
+
+                        # calculate loss                     
+                        p_O_v =  p_edges*node_type_probs[node][node_type] + EPSILON
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
-                        loss = loss + (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M # cumulative, to join (k) from all previously denoised nodes
+                        loss = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M # cumulative, to join (k) from all previously denoised nodes
+                        acc_loss += loss.item()
                         # backprop (accumulated gradients)
-                        loss.backward(retain_graph=True)
+                        loss.backward()
                         pbar.set_description(f"Loss: {loss.item():.4f}")
         
         # update parameters using accumulated gradients
         self.denoising_optimizer.step()
         
         # log loss
-        wandb.log({"loss": loss.item()})
+        wandb.log({"loss": acc_loss})
 
 
         # validation batch (for diffusion ordering network)
@@ -142,6 +152,7 @@ class GraphARM(nn.Module):
         self.diffusion_ordering_network.train()
 
         reward = torch.tensor(0.0, requires_grad=True)
+        acc_reward = 0.0
         with tqdm(val_data) as pbar:
             for graph in pbar:
                 # preprocess graph
@@ -163,20 +174,28 @@ class GraphARM(nn.Module):
                         # sample node type
                         node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
 
+                        # sample edge type
+                        new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
+
+                        # probability of new connections
+                        p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
+                        p_edges = torch.prod(p_new_edges)
+
                         # calculate reward (VLB)                        
-                        p_O_v =  node_type_probs[node][node_type] + EPSILON # TODO add edges
+                        p_O_v =  p_edges*node_type_probs[node][node_type] + EPSILON
 
                         r = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
                         reward = w_k*r/M
+                        acc_reward += reward.item()
                         pbar.set_description(f"Reward: {reward.item():.4f}")
 
                         reward.backward()
                         
 
         
-        wandb.log({"reward": reward.item()})
+        wandb.log({"reward": acc_reward})
         # update parameters (REINFORCE algorithm)
         self.ordering_optimizer.step()
         

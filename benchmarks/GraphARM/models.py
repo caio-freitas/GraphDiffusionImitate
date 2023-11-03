@@ -29,6 +29,7 @@ class DiffusionOrderingNetwork(nn.Module):
             num_layers=num_layers,
             dropout=0,
             heads=num_heads,
+            residual=True
         )
 
 
@@ -52,7 +53,10 @@ class DiffusionOrderingNetwork(nn.Module):
         return pes
 
     def forward(self, G, p=None):
-        h = self.gat(G.x.float(), G.edge_index.long())
+
+        h = self.embedding(G.x.squeeze().long())
+
+        h = self.gat(h, G.edge_index.long(), edge_attr=G.edge_attr.long())
 
         # TODO augment node features with positional encodings
         # if p is not None:
@@ -105,7 +109,7 @@ class DenoisingNetwork(nn.Module):
 
         h = self.embedding_layer(data.x.squeeze().long())
 
-        h = self.gat(h, data.edge_index.long())
+        h = self.gat(h, data.edge_index.long(), edge_attr=data.edge_attr.long())
 
         # TODO check if default attention mechanism is used
 
