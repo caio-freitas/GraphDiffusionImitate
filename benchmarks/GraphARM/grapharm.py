@@ -7,7 +7,6 @@ import torch.nn as nn
 from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwork
 from benchmarks.GraphARM.utils import NodeMasking
 
-
 EPSILON = 1e-8
 
 
@@ -71,6 +70,14 @@ class GraphARM(nn.Module):
             diffusion_trajectories.append(diffusion_trajectory)
         return diffusion_trajectories
 
+    def preprocess(self, graph):
+        '''
+        Preprocesses graph to be used by the denoising network.
+        '''
+        graph = graph.clone()
+        graph = self.masker.fully_connect(graph)
+        return graph
+
     def train_step(
             self,
             train_data,
@@ -86,6 +93,8 @@ class GraphARM(nn.Module):
         loss = torch.tensor(0.0, requires_grad=True)
         with tqdm(train_data) as pbar:
             for graph in pbar:
+                # preprocess graph
+                graph = self.preprocess(graph)
                 diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
                 # predictions & loss
                 for diffusion_trajectory in diffusion_trajectories:
@@ -126,6 +135,9 @@ class GraphARM(nn.Module):
         reward = torch.tensor(0.0, requires_grad=True)
         with tqdm(val_data) as pbar:
             for graph in pbar:
+                # preprocess graph
+                graph = self.preprocess(graph)
+
                 n_i = graph.x.shape[0]
                 
                 diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
