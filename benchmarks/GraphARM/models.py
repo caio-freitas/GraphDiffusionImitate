@@ -19,6 +19,9 @@ class DiffusionOrderingNetwork(nn.Module):
                  num_heads=6):
         super(DiffusionOrderingNetwork, self).__init__()
 
+        num_node_types += 1 # add one for masked node type
+        num_edge_types += 2 # add one for masked edge type and one for empty edge type
+
         # add positional encodings into node features
         self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=node_feature_dim)
 
@@ -81,6 +84,9 @@ class DenoisingNetwork(nn.Module):
                  out_channels,
                  num_heads=8):
         super(DenoisingNetwork, self).__init__()
+        
+        num_node_types += 1 # add one for masked node type
+        num_edge_types += 2 # add one for masked edge type and one for empty edge type
 
         self.embedding_layer = nn.Embedding(num_embeddings=num_node_types, embedding_dim=node_feature_dim)
         
