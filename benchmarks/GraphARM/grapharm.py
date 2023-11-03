@@ -164,14 +164,16 @@ class GraphARM(nn.Module):
                         node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
 
                         # calculate reward (VLB)                        
-                        p_O_v =  node_type_probs[node_type] + EPSILON # TODO add edges
+                        p_O_v =  node_type_probs[node][node_type] + EPSILON # TODO add edges
 
                         r = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
                         reward = w_k*r/M
-                        reward.backward()
                         pbar.set_description(f"Reward: {reward.item():.4f}")
+
+                        reward.backward()
+                        
 
         
         wandb.log({"reward": reward.item()})
