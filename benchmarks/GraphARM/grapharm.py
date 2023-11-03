@@ -48,6 +48,14 @@ class GraphARM(nn.Module):
             p = self.masker.mask_node(p, sigma_t)
         return node_order
 
+    def uniform_node_decay_ordering(self, datapoint):
+        '''
+        Samples next node from uniform distribution 
+        '''
+        p = datapoint.clone()
+        return torch.randperm(p.x.shape[0]).tolist()
+
+
     def generate_diffusion_trajectories(self, graph, M):
         '''
         Generates M diffusion trajectories for a given graph,
@@ -93,16 +101,16 @@ class GraphARM(nn.Module):
         loss = torch.tensor(0.0, requires_grad=True)
         with tqdm(train_data) as pbar:
             for graph in pbar:
+                n_i = graph.x.shape[0]
                 # preprocess graph
                 graph = self.preprocess(graph)
                 diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
                 # predictions & loss
                 for diffusion_trajectory in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    # optimizer.zero_grad()
-                    node_order = self.node_decay_ordering(G_0) # TODO check. This isn't available when sampling
-                    for t in range(1, len(diffusion_trajectory)-1):
-                        node = node_order[len(diffusion_trajectory)-t-1]
+                    node_order = self.uniform_node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
+                    for t in range(len(node_order)-1, 0, -1):
+                        node = node_order[t]
                         G_t = diffusion_trajectory[t].clone()
                         G_tplus1 = diffusion_trajectory[t+1].clone()
                         G_pred = G_tplus1.clone()
@@ -111,14 +119,15 @@ class GraphARM(nn.Module):
                         # predict node type
                         node_type_probs, edge_type_probs = self.denoising_network(G_pred)
                         
+                        # sample node type
+                        node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
+
                         # calculate loss
-                        p_O_v =  node_type_probs[node].mean() + EPSILON # TODO add edges (joint probability)
+                        p_O_v =  node_type_probs[node][node_type] + EPSILON # TODO add edges
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
-                        n_i = G_t.x.shape[0]
-                        # TODO check this. G_t isn't even being used. 
-                        loss = - (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M
+                        loss = loss + (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M # cumulative, to join (k) from all previously denoised nodes
                         # backprop (accumulated gradients)
-                        loss.backward()
+                        loss.backward(retain_graph=True)
                         pbar.set_description(f"Loss: {loss.item():.4f}")
         
         # update parameters using accumulated gradients
@@ -144,21 +153,23 @@ class GraphARM(nn.Module):
 
                 for diffusion_trajectory in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    node_order = self.node_decay_ordering(G_0)
-                    for t in range(len(diffusion_trajectory)-1):
-                        node = node_order[G_0.x.shape[0] - t - 1]
+                    node_order = self.uniform_node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
+                    for t in range(len(node_order)-1, 0, -1):
+                        node = node_order[t]
                         G_tplus1 = diffusion_trajectory[t+1]
                         # predict node type
                         node_type_probs, edge_type_probs = self.denoising_network(G_tplus1)
 
-                        # calculate reward (VLB)                        
-                        p_O_v =  node_type_probs[node].mean() + EPSILON # TODO add edges (joint probability)
+                        # sample node type
+                        node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
 
-                        # reward -= torch.log(O_v)*n_i/(len(diffusion_trajectory)-1)
+                        # calculate reward (VLB)                        
+                        p_O_v =  node_type_probs[node_type] + EPSILON # TODO add edges
+
                         r = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
-                        reward = - w_k*r/M
+                        reward = w_k*r/M
                         reward.backward()
                         pbar.set_description(f"Reward: {reward.item():.4f}")
 
