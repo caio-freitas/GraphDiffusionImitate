@@ -78,6 +78,7 @@ class DiffusionOrderingNetwork(nn.Module):
 class DenoisingNetwork(nn.Module):
     def __init__(self,
                  node_feature_dim,
+                 edge_feature_dim,
                  num_node_types,
                  num_edge_types,
                  num_layers,
@@ -100,10 +101,10 @@ class DenoisingNetwork(nn.Module):
         )
 
         # Node type prediction
-        self.node_type_prediction = nn.Linear(node_feature_dim, num_node_types) # Use only element of the new node
+        self.node_type_prediction = nn.Linear(node_feature_dim, node_feature_dim) # Use only element of the new node
         
         # Edge type prediction
-        self.edge_type_prediction = nn.Linear(node_feature_dim, num_edge_types) # Use all elements (connections to other nodes)
+        self.edge_type_prediction = nn.Linear(edge_feature_dim, edge_feature_dim) # Use all elements (connections to other nodes)
 
     def forward(self, data):
 
@@ -112,9 +113,10 @@ class DenoisingNetwork(nn.Module):
         new_node_type: type of new node to be unmasked
         new_edge_type: types of new edges from previous nodes to the one to be unmasked
         '''
-
+        # [num_nodes, node_feature_dim]
         h = self.embedding_layer(data.x.squeeze().long())
 
+        # [num_nodes, node_feature_dim]
         h = self.gat(h, data.edge_index.long(), edge_attr=data.edge_attr.long())
 
         # TODO check if default attention mechanism is used
@@ -122,12 +124,12 @@ class DenoisingNetwork(nn.Module):
         # Node type prediction
         node_type_logits = self.node_type_prediction(h)
         # Applying softmax for the multinomial distribution
-        node_type_probs = F.softmax(node_type_logits, dim=-1)
+        node_type_probs = F.softmax(node_type_logits, dim=0)
 
         # Edge type prediction
         edge_type_logits = self.edge_type_prediction(h)
         # Applying softmax for the multinomial distribution
-        edge_type_probs = F.softmax(edge_type_logits, dim=-1)
+        edge_type_probs = F.softmax(edge_type_logits, dim=0)
         
         return node_type_probs, edge_type_probs
     

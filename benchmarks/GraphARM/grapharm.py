@@ -109,7 +109,7 @@ class GraphARM(nn.Module):
                 # predictions & loss
                 for diffusion_trajectory in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    node_order = self.uniform_node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
+                    node_order = self.node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
                     for t in range(len(node_order)-1, 0, -1):
                         node = node_order[t]
                         G_t = diffusion_trajectory[t].clone()
@@ -121,18 +121,17 @@ class GraphARM(nn.Module):
                         node_type_probs, edge_type_probs = self.denoising_network(G_pred)
                         
                         # sample node type
-                        node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
+                        node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
 
                         # sample edge type
                         new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
                        
                         # probability of new connections
-                        p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
-                        p_edges = torch.prod(p_new_edges)
+                        p_edges = torch.prod(edge_type_probs[new_connections])
 
                         # calculate loss                     
-                        p_O_v =  p_edges*node_type_probs[node][node_type] + EPSILON
+                        p_O_v =  p_edges*node_type_probs[node_type] + EPSILON
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
                         loss = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M # cumulative, to join (k) from all previously denoised nodes
                         acc_loss += loss.item()
@@ -164,7 +163,7 @@ class GraphARM(nn.Module):
 
                 for diffusion_trajectory in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    node_order = self.uniform_node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
+                    node_order = self.node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
                     for t in range(len(node_order)-1, 0, -1):
                         node = node_order[t]
                         G_tplus1 = diffusion_trajectory[t+1]
@@ -172,23 +171,22 @@ class GraphARM(nn.Module):
                         node_type_probs, edge_type_probs = self.denoising_network(G_tplus1)
 
                         # sample node type
-                        node_type = torch.distributions.Categorical(probs=node_type_probs[node]).sample()
+                        node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
 
                         # sample edge type
                         new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
                         # probability of new connections
-                        p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
-                        p_edges = torch.prod(p_new_edges)
+                        p_edges = torch.prod(edge_type_probs[new_connections])
 
                         # calculate reward (VLB)                        
-                        p_O_v =  p_edges*node_type_probs[node][node_type] + EPSILON
+                        p_O_v =  p_edges*node_type_probs[node_type] + EPSILON
 
                         r = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
                         reward = w_k*r/M
-                        acc_reward += reward.item()
+                        acc_reward -= reward.item()
                         pbar.set_description(f"Reward: {reward.item():.4f}")
 
                         reward.backward()
@@ -202,5 +200,9 @@ class GraphARM(nn.Module):
 
 
     def save_model(self):
-        torch.save(self.denoising_network.state_dict(), "denoising_network.pt")
-        torch.save(self.diffusion_ordering_network.state_dict(), "diffusion_ordering_network.pt")
+        torch.save(self.denoising_network.state_dict(), "denoising_network_overfit.pt")
+        torch.save(self.diffusion_ordering_network.state_dict(), "diffusion_ordering_network_overfit.pt")
+
+    def load_model(self):
+        self.denoising_network.load_state_dict(torch.load("denoising_network_overfit.pt"))
+        self.diffusion_ordering_network.load_state_dict(torch.load("diffusion_ordering_network_overfit.pt"))
