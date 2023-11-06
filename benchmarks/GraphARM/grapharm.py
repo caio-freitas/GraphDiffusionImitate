@@ -34,7 +34,7 @@ class GraphARM(nn.Module):
 
 
     def node_decay_ordering(self, datapoint):
-        p = datapoint.clone()
+        p = datapoint.clone().to(self.device)
         node_order = []
         for i in range(p.x.shape[0]):
             # use diffusion ordering network to get probabilities
