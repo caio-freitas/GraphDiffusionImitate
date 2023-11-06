@@ -63,7 +63,7 @@ class GraphARM(nn.Module):
         Generates M diffusion trajectories for a given graph,
         using the node decay ordering mechanism.
         '''
-        original_data = graph.clone()
+        original_data = graph.clone().to(self.device)
         diffusion_trajectories = []
         for m in range(M):
             node_order = self.node_decay_ordering(graph)
