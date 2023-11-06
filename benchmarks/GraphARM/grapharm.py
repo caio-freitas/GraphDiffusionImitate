@@ -18,12 +18,14 @@ class GraphARM(nn.Module):
     def __init__(self,
                  dataset,
                  denoising_network,
-                 diffusion_ordering_network,):
+                 diffusion_ordering_network,
+                 device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         super(GraphARM, self).__init__()
-
+        self.device = device
         self.diffusion_ordering_network = diffusion_ordering_network
-
+        self.diffusion_ordering_network.to(device)
         self.denoising_network = denoising_network
+        self.denoising_network.to(device)
         self.masker = NodeMasking(dataset)
 
 

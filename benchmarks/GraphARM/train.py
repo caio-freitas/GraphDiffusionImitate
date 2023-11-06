@@ -32,7 +32,7 @@ denoising_net = DenoisingNetwork(
 
 wandb.init(
         project="ARGD",
-        group=f"v1.2.2_overfit",
+        group=f"v1.2.3",
         name=f"nodes_and_edges",
         # track hyperparameters and run metadata
         config={
@@ -42,11 +42,14 @@ wandb.init(
         }
     )
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device {device}")
 
 grapharm = GraphARM(
     dataset=dataset,
     denoising_network=denoising_net,
-    diffusion_ordering_network=diff_ord_net
+    diffusion_ordering_network=diff_ord_net,
+    device=device
 )
 
 batch_size = 5
