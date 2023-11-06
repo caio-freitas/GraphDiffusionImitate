@@ -72,7 +72,7 @@ class GraphARM(nn.Module):
             diffusion_trajectory = [original_data]
             masked_data = graph.clone()
             for node in node_order:
-                masked_data = masked_data.clone()
+                masked_data = masked_data.clone().to(self.device)
                 
                 masked_data = self.masker.mask_node(masked_data, node)
                 diffusion_trajectory.append(masked_data)
