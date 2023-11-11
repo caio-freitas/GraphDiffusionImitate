@@ -104,7 +104,7 @@ class DenoisingNetwork(nn.Module):
         self.node_type_prediction = nn.Linear(node_feature_dim, node_feature_dim) # Use only element of the new node
         
         # Edge type prediction
-        self.edge_type_prediction = nn.Linear(edge_feature_dim, edge_feature_dim) # Use all elements (connections to other nodes)
+        self.edge_type_prediction = nn.Linear(node_feature_dim, num_edge_types) # Use all elements (connections to other nodes)
 
     def forward(self, data):
 
@@ -129,7 +129,7 @@ class DenoisingNetwork(nn.Module):
         # Edge type prediction
         edge_type_logits = self.edge_type_prediction(h)
         # Applying softmax for the multinomial distribution
-        edge_type_probs = F.softmax(edge_type_logits, dim=0)
+        edge_type_probs = F.softmax(edge_type_logits, dim=1)
         
         return node_type_probs, edge_type_probs
     

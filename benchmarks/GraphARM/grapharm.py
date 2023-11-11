@@ -113,33 +113,38 @@ class GraphARM(nn.Module):
                     G_0 = diffusion_trajectory[0]
                     node_order = self.node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
                     for t in range(len(node_order)-1, 0, -1):
-                        node = node_order[t]
-                        G_t = diffusion_trajectory[t].clone()
-                        G_tplus1 = diffusion_trajectory[t+1].clone()
-                        G_pred = G_tplus1.clone()
-                        
+                        for k in range(t):
+                            node = node_order[k]
+                            G_t = diffusion_trajectory[t].clone()
+                            G_tplus1 = diffusion_trajectory[t+1].clone()
+                            G_pred = G_tplus1.clone()
+                            
 
-                        # predict node type
-                        node_type_probs, edge_type_probs = self.denoising_network(G_pred)
-                        
-                        # sample node type
-                        node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
+                            # predict node type
+                            node_type_probs, edge_type_probs = self.denoising_network(G_pred)
+                            
+                            # sample node type
+                            node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
 
-                        # sample edge type
-                        new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
-                       
-                        # probability of new connections
-                        p_edges = torch.prod(edge_type_probs[new_connections])
+                            # sample edge type
+                            new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
-                        # calculate loss                     
-                        p_O_v =  p_edges*node_type_probs[node_type] + EPSILON
-                        w_k = self.diffusion_ordering_network(G_tplus1)[node]
-                        loss = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M # cumulative, to join (k) from all previously denoised nodes
-                        acc_loss += loss.item()
-                        # backprop (accumulated gradients)
-                        loss.backward()
-                        pbar.set_description(f"Loss: {loss.item():.4f}")
+                            # filter to only connections to previously denoised nodes
+                            new_connections = torch.index_select(new_connections, 0, torch.tensor(node_order[t:]).to(self.device))
+
+                            # probability of new connections
+                            p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
+                            p_edges = torch.prod(p_new_edges)
+
+                            # calculate loss                     
+                            p_O_v =  p_edges*node_type_probs[node_type] + EPSILON
+                            w_k = self.diffusion_ordering_network(G_tplus1)[node]
+                            loss = (n_i/(len(diffusion_trajectory)-1))*torch.log(p_O_v)*w_k/M # cumulative, to join (k) from all previously denoised nodes
+                            acc_loss += loss.item()
+                            # backprop (accumulated gradients)
+                            loss.backward()
+                            pbar.set_description(f"Loss: {loss.item():.4f}")
         
         # update parameters using accumulated gradients
         self.denoising_optimizer.step()
@@ -200,11 +205,29 @@ class GraphARM(nn.Module):
         self.ordering_optimizer.step()
         
 
+    def predict(self, graph, node, temperature=1.0):
+        '''
+        Predicts the value of a node in a graph as well as it's connection to all previously denoised nodes.
+        '''
+        with torch.no_grad():
+
+            node_type_probs, edge_type_probs = self.denoising_network(graph)
+            
+            # sample node type
+            node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
+
+            # sample edge type
+            new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
+
+        return node_type, new_connections
+
 
     def save_model(self):
         torch.save(self.denoising_network.state_dict(), "denoising_network_overfit.pt")
         torch.save(self.diffusion_ordering_network.state_dict(), "diffusion_ordering_network_overfit.pt")
 
-    def load_model(self):
-        self.denoising_network.load_state_dict(torch.load("denoising_network_overfit.pt"))
-        self.diffusion_ordering_network.load_state_dict(torch.load("diffusion_ordering_network_overfit.pt"))
+    def load_model(self,
+                   denoising_network_path="denoising_network_overfit.pt",
+                   diffusion_ordering_network_path="diffusion_ordering_network_overfit.pt"):
+        self.denoising_network.load_state_dict(torch.load(denoising_network_path))
+        self.diffusion_ordering_network.load_state_dict(torch.load(diffusion_ordering_network_path))
