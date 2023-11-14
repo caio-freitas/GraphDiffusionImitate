@@ -131,11 +131,15 @@ class GraphARM(nn.Module):
                             new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
                             # filter to only connections to previously denoised nodes
-                            new_connections = torch.index_select(new_connections, 0, torch.tensor(node_order[t:]).to(self.device))
+                            if len(node_order[t:]) == 0:
+                                p_edges = torch.tensor(1.0).to(self.device) # no new connections on first diffusion step
+                            else:
+                                new_connections = torch.index_select(new_connections, 0, torch.tensor(node_order[t:]).to(self.device))
 
-                            # probability of new connections
-                            p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
-                            p_edges = torch.prod(p_new_edges)
+
+                                # probability of new connections
+                                p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
+                                p_edges = torch.prod(p_new_edges)
 
                             # calculate loss                     
                             p_O_v =  p_edges*node_type_probs[node_type] + EPSILON
@@ -183,8 +187,17 @@ class GraphARM(nn.Module):
                         # sample edge type
                         new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
-                        # probability of new connections
-                        p_edges = torch.prod(edge_type_probs[new_connections])
+                        # filter to only connections to previously denoised nodes
+                        
+                        if len(node_order[t:]) == 0:
+                            p_edges = torch.tensor(1.0).to(self.device) # no new connections on first diffusion step
+                        else:
+                            new_connections = torch.index_select(new_connections, 0, torch.tensor(node_order[t:]).to(self.device))
+
+                            # probability of new connections
+                            p_new_edges = torch.gather(edge_type_probs, 1, new_connections)
+                            p_edges = torch.prod(p_new_edges)
+
 
                         # calculate reward (VLB)                        
                         p_O_v =  p_edges*node_type_probs[node_type] + EPSILON
@@ -205,12 +218,12 @@ class GraphARM(nn.Module):
         self.ordering_optimizer.step()
         
 
-    def predict(self, graph, node, temperature=1.0):
+    def predict_node(self, graph, node):
         '''
         Predicts the value of a node in a graph as well as it's connection to all previously denoised nodes.
         '''
         with torch.no_grad():
-
+            # predict node type
             node_type_probs, edge_type_probs = self.denoising_network(graph)
             
             # sample node type
@@ -218,6 +231,13 @@ class GraphARM(nn.Module):
 
             # sample edge type
             new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
+
+            denoised_nodes = self.masker.get_denoised_nodes(graph)
+            # filter to only connections to previously denoised nodes
+            if len(denoised_nodes) == 0:
+                new_connections = torch.tensor([]).to(self.device)
+            else:
+                new_connections = torch.index_select(new_connections, 0, torch.tensor(denoised_nodes).to(self.device))
 
         return node_type, new_connections
 

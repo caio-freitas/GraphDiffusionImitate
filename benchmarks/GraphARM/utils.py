@@ -9,7 +9,7 @@ class NodeMasking:
     def __init__(self, dataset):
         self.dataset = dataset
         self.NODE_MASK = dataset.x.unique().shape[0]
-        self.EDGE_MASK = 0
+        self.EDGE_MASK = dataset.edge_attr.unique().shape[0]
         self.EMPTY_EDGE_MASK = -1
 
 
@@ -43,7 +43,23 @@ class NodeMasking:
         datapoint.edge_attr[datapoint.edge_index[1] == selected_node] = self.EDGE_MASK
         return datapoint
     
-    def fully_connect(self, graph):
+    def demask_node(self, graph, selected_node, node_type, connections_types):
+        '''
+        Demasking node mechanism
+        1. Unmasked node (x = node_type)
+        2. Connected to all other nodes in graph by unmasked edges (edge_attr = connections_types)
+        '''
+        # demask node
+        graph = graph.clone()
+        graph.x[selected_node] = node_type
+        # demask edge_attr
+        for i, connection in enumerate(connections_types):
+            if self.is_masked(graph, node=i):
+                graph.edge_attr[graph.edge_index[0] == selected_node] = connection
+                graph.edge_attr[graph.edge_index[1] == selected_node] = connection
+
+        return graph
+    def fully_connect(self, graph, keep_original_edges=True):
         '''
         Fully connect graph with edge attribute value
         '''
@@ -55,9 +71,34 @@ class NodeMasking:
         
         fully_connected.edge_attr = fully_connected.edge_attr.long()
 
-        # restore values of original edges
-        for edge_attr, edge_index in zip(graph.edge_attr, graph.edge_index.T):
-            fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1]] = edge_attr
+        if keep_original_edges:
+            # restore values of original edges
+            for edge_attr, edge_index in zip(graph.edge_attr, graph.edge_index.T):
+                fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1]] = edge_attr
 
         fully_connected.edge_index = torch.nonzero(adjacency_matrix).T
         return fully_connected
+    
+    def generate_fully_masked(self, like):
+        '''
+        Generates a fully masked graph like the one provided
+        '''
+        
+        n_nodes = like.x.shape[0]
+
+        fully_masked = like.clone()
+        fully_masked.x = torch.ones(n_nodes) * self.NODE_MASK
+        fully_masked = self.fully_connect(fully_masked, keep_original_edges=False)
+        return fully_masked
+    
+
+    def get_denoised_nodes(self, graph):
+        '''
+        Returns a list of nodes that are denoised
+        '''
+        denoised_nodes = []
+        for node in range(graph.x.shape[0]):
+            if not self.is_masked(graph, node):
+                denoised_nodes.append(node)
+
+        return denoised_nodes
