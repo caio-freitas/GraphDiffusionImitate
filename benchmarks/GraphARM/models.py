@@ -101,7 +101,7 @@ class DenoisingNetwork(nn.Module):
         )
 
         # Node type prediction
-        self.node_type_prediction = nn.Linear(node_feature_dim, node_feature_dim) # Use only element of the new node
+        self.node_type_prediction = nn.Linear(node_feature_dim, num_node_types) # Use only element of the new node
         
         # Edge type prediction
         self.edge_type_prediction = nn.Linear(node_feature_dim, num_edge_types) # Use all elements (connections to other nodes)

@@ -4,6 +4,7 @@ import torch
 from torch import nn
 import math
 import wandb
+import os
 
 from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwork
 from benchmarks.GraphARM.utils import NodeMasking
@@ -32,8 +33,8 @@ denoising_net = DenoisingNetwork(
 
 wandb.init(
         project="ARGD",
-        group=f"v1.2.3",
-        name=f"nodes_and_edges",
+        group=f"v1.3.0",
+        name=f"ZINC",
         # track hyperparameters and run metadata
         config={
             "policy": "train",
@@ -41,6 +42,9 @@ wandb.init(
             "batch_size": 1,
         }
     )
+
+os.environ["WANDB_DISABLED"] = "false"
+torch.autograd.set_detect_anomaly(True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device {device}")
@@ -57,9 +61,9 @@ try:
     grapharm.load_model()
     print("Loaded model")
 except:
-    pass
+    print ("No model to load")
 # train loop
-for epoch in range(500):
+for epoch in range(2000):
     print(f"Epoch {epoch}")
     grapharm.train_step(
         train_data=dataset[2*epoch*batch_size:(2*epoch + 1)*batch_size],
