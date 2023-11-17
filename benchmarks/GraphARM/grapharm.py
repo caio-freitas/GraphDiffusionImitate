@@ -6,8 +6,7 @@ import torch.nn as nn
 
 from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwork
 from benchmarks.GraphARM.utils import NodeMasking
-
-EPSILON = 1e-20
+from benchmarks.GraphARM.loss import step_loss, step_reward
 
 
 class GraphARM(nn.Module):
@@ -122,17 +121,11 @@ class GraphARM(nn.Module):
 
                             # predict node type
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred)
-                            
-                            edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))# filter to only connections to previously denoised nodes
-                            # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
-                            original_edge_types = torch.index_select(G_t.edge_attr, 0, torch.tensor(node_order[t:]).to(self.device))
-                            # calculate probability of edge type
-                            p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1) - 1)  # avoid log(0)
-                            log_p_edges = torch.sum(torch.log(p_edges))
-                            # calculate loss                     
-                            log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_t.x[node]])
                             w_k = self.diffusion_ordering_network(G_pred)[node]
-                            loss = (n_i/(len(diffusion_trajectory)-1))*log_p_O_v*w_k/M # cumulative, to join (k) from all previously denoised nodes
+                            # calculate loss
+                            loss = self.step_loss(G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
+                            wandb.log({"step_loss": loss.item()})
+
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
                             loss.backward()
@@ -169,24 +162,13 @@ class GraphARM(nn.Module):
                         G_tplus1 = diffusion_trajectory[t+1].clone()
                         # predict node type
                         node_type_probs, edge_type_probs = self.denoising_network(G_tplus1)
-
-
-                        edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))# filter to only connections to previously denoised nodes
-                        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
-                        original_edge_types = torch.index_select(G_t.edge_attr, 0, torch.tensor(node_order[t:]).to(self.device))
-                        # calculate probability of edge type
-                        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1) - 1)
-                        log_p_edges = torch.sum(torch.log(p_edges))
-
-                        # calculate reward (VLB)                        
-                        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_t.x[node]]) + EPSILON
-
-                        r = (n_i/(len(diffusion_trajectory)-1))*log_p_O_v
                         w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
-                        reward = w_k*r/M
-                        acc_reward -= reward.item()
+                        # calculate reward
+                        reward = self.step_reward(G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M)
+                        acc_reward += reward.item()
                         pbar.set_description(f"Reward: {reward.item():.4f}")
+                        wandb.log({"step_reward": reward.item()})
 
                         reward.backward()
                         
@@ -196,6 +178,35 @@ class GraphARM(nn.Module):
         # update parameters (REINFORCE algorithm)
         self.ordering_optimizer.step()
         
+
+
+    def step_loss(self, G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
+        T = G_t.x.shape[0]
+        n_i = len(node_order[t:])
+        edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))  # filter to only connections to previously denoised nodes
+        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
+        original_edge_types = torch.index_select(G_t.edge_attr, 0, torch.tensor(node_order[t:]).to(self.device))
+        # calculate probability of edge type
+        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1) - 1)  # avoid log(0)
+        log_p_edges = torch.sum(torch.log(p_edges))
+        # calculate loss                     
+        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_t.x[node]])
+        loss = -(n_i/T)*log_p_O_v*w_k/M # cumulative, to join (k) from all previously denoised nodes
+        return loss
+
+    def step_reward(self, G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
+        T = G_t.x.shape[0]
+        n_i = len(node_order[t:])
+        edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))  # filter to only connections to previously denoised nodes
+        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
+        original_edge_types = torch.index_select(G_t.edge_attr, 0, torch.tensor(node_order[t:]).to(self.device))
+        # calculate probability of edge type
+        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1) - 1)
+        log_p_edges = torch.sum(torch.log(p_edges))
+        # calculate reward (VLB)                        
+        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_t.x[node]])
+        reward = (n_i/T)*log_p_O_v*w_k/M
+        return reward
 
     def predict_node(self, graph, node):
         '''
@@ -211,13 +222,6 @@ class GraphARM(nn.Module):
             # sample edge type
             new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
 
-            denoised_nodes = self.masker.get_denoised_nodes(graph)
-            # filter to only connections to previously denoised nodes
-            if len(denoised_nodes) == 0:
-                new_connections = torch.tensor([]).to(self.device)
-            else:
-                new_connections = torch.index_select(new_connections, 0, torch.tensor(denoised_nodes).to(self.device))
-
         return node_type, new_connections
 
 
@@ -228,5 +232,5 @@ class GraphARM(nn.Module):
     def load_model(self,
                    denoising_network_path="denoising_network_overfit.pt",
                    diffusion_ordering_network_path="diffusion_ordering_network_overfit.pt"):
-        self.denoising_network.load_state_dict(torch.load(denoising_network_path))
-        self.diffusion_ordering_network.load_state_dict(torch.load(diffusion_ordering_network_path))
+        self.denoising_network.load_state_dict(torch.load(denoising_network_path, map_location=self.device ))
+        self.diffusion_ordering_network.load_state_dict(torch.load(diffusion_ordering_network_path, map_location=self.device))
