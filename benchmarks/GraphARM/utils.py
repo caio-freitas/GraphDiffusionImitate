@@ -54,10 +54,9 @@ class NodeMasking:
         graph.x[selected_node] = node_type
         # demask edge_attr
         for i, connection in enumerate(connections_types):
-            if self.is_masked(graph, node=i):
-                graph.edge_attr[graph.edge_index[0] == selected_node] = connection
-                graph.edge_attr[graph.edge_index[1] == selected_node] = connection
-
+            if not self.is_masked(graph, node=i):
+                graph.edge_attr[torch.logical_and(graph.edge_index[0] == i, graph.edge_index[1] == selected_node)] = connection
+                
         return graph
     def fully_connect(self, graph, keep_original_edges=True):
         '''
