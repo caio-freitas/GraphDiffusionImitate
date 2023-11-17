@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwork
 from benchmarks.GraphARM.utils import NodeMasking
-from benchmarks.GraphARM.loss import step_loss, step_reward
 
 
 class GraphARM(nn.Module):
