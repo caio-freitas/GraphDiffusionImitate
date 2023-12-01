@@ -101,10 +101,20 @@ class DenoisingNetwork(nn.Module):
         )
 
         # Node type prediction
-        self.node_type_prediction = nn.Linear(node_feature_dim, num_node_types) # Use only element of the new node
-        
+        # self.node_type_prediction = nn.Linear(node_feature_dim, num_node_types - 1) # Use only element of the new node, except for masked node type
+        self.node_type_prediction = nn.Sequential(
+            nn.Linear(node_feature_dim, node_feature_dim),
+            nn.ReLU(),
+            nn.Linear(node_feature_dim, num_node_types - 1)
+        )
+
         # Edge type prediction
-        self.edge_type_prediction = nn.Linear(node_feature_dim, num_edge_types) # Use all elements (connections to other nodes)
+        # self.edge_type_prediction = nn.Linear(node_feature_dim, num_edge_types - 1) # Use all elements (connections to other nodes), except for masked edge type 
+        self.edge_type_prediction = nn.Sequential(
+            nn.Linear(node_feature_dim, node_feature_dim),
+            nn.ReLU(),
+            nn.Linear(node_feature_dim, num_edge_types - 1)
+        )
 
     def forward(self, data):
 
@@ -114,20 +124,21 @@ class DenoisingNetwork(nn.Module):
         new_edge_type: types of new edges from previous nodes to the one to be unmasked
         '''
         # [num_nodes, node_feature_dim]
-        h = self.embedding_layer(data.x.squeeze().long())
+        h_v = self.embedding_layer(data.x.squeeze().long())
 
         # [num_nodes, node_feature_dim]
-        h = self.gat(h, data.edge_index.long(), edge_attr=data.edge_attr.long())
+        h_v = self.gat(h_v, data.edge_index.long(), edge_attr=data.edge_attr.long())
 
         # TODO check if default attention mechanism is used
 
         # Node type prediction
-        node_type_logits = self.node_type_prediction(h)
+        node_type_logits = self.node_type_prediction(h_v)
         # Applying softmax for the multinomial distribution
-        node_type_probs = F.softmax(node_type_logits, dim=0)
+        node_type_probs = F.softmax(node_type_logits, dim=1)
 
         # Edge type prediction
-        edge_type_logits = self.edge_type_prediction(h)
+        edge_type_logits = self.edge_type_prediction(h_v)
+
         # Applying softmax for the multinomial distribution
         edge_type_probs = F.softmax(edge_type_logits, dim=1)
         

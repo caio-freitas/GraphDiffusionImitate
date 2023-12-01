@@ -9,8 +9,8 @@ class NodeMasking:
     def __init__(self, dataset):
         self.dataset = dataset
         self.NODE_MASK = dataset.x.unique().shape[0]
-        self.EDGE_MASK = dataset.edge_attr.unique().shape[0]
-        self.EMPTY_EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
+        self.EMPTY_EDGE_MASK = dataset.edge_attr.unique().shape[0] 
+        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
 
 
     def is_masked(self, datapoint, node=None):
