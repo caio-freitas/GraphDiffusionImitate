@@ -3,7 +3,9 @@ from torch import nn
 from torch_geometric.nn import GAT
 from torch_geometric.utils import add_self_loops, degree
 from torch.nn import functional as F
+from torch.nn import Linear, ReLU
 import math
+from torch_geometric.nn import MessagePassing
 
 class DiffusionOrderingNetwork(nn.Module):
     '''
@@ -73,74 +75,96 @@ class DiffusionOrderingNetwork(nn.Module):
         return h # outputs probabilities for a categorical distribution over nodes
     
     
+class MPLayer(MessagePassing):
+    '''
+    Custom message passing layer for the GraphARM model
+    '''
+    def __init__(self, in_channels, out_channels):
+        super().__init__(aggr='sum') #  "Max" aggregation.
+        self.f = nn.Sequential(Linear(3 * in_channels, out_channels),
+                       nn.ReLU(),
+                       Linear(out_channels, out_channels)) # MLP for message construction
+        self.g = nn.Sequential(Linear(3 * in_channels, out_channels),
+                          nn.ReLU(),
+                          Linear(out_channels, out_channels)) # MLP for attention coefficients
+        
+        self.gru = nn.GRU(2*out_channels, out_channels)
+        
+    def forward(self, x, edge_index, edge_attr):
+        # x has shape [N, in_channels]
+        # edge_index has shape [2, E]
+
+        # edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        out, _ = self.gru(torch.cat([x, out], dim=-1)) # discard final hidden state
+        return out
+
+    def message(self, x_i, x_j, edge_attr):
+        # x_i has shape [E, in_channels]
+        # x_j has shape [E, in_channels]
+
+        h_vi = x_i
+        h_vj = x_j
+        h_eij = edge_attr
+
+        m_ij = self.f(torch.cat([h_vi, h_vj, h_eij], dim=-1))
+        a_ij = self.g(torch.cat([h_vi, h_vj, h_eij], dim=-1))
+        return m_ij * a_ij
 
 
 class DenoisingNetwork(nn.Module):
     def __init__(self,
-                 node_feature_dim,
-                 edge_feature_dim,
-                 num_node_types,
-                 num_edge_types,
-                 num_layers,
-                 out_channels,
-                 num_heads=8):
-        super(DenoisingNetwork, self).__init__()
+                node_feature_dim,
+                edge_feature_dim,
+                num_node_types,
+                num_edge_types,
+                out_channels,
+                num_layers=5,
+                hidden_dim=256,
+                K=4):
+        super().__init__()
+        K = num_edge_types # TODO remove this line
+        self.num_layers = num_layers
+        self.node_embedding = Linear(node_feature_dim, hidden_dim)
+        self.edge_embedding = Linear(edge_feature_dim, hidden_dim)
+
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            self.layers.append(MPLayer(hidden_dim, hidden_dim))
+
+        self.mlp_alpha = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
+                                       nn.ReLU(),
+                                       Linear(hidden_dim, K))
         
-        num_node_types += 1 # add one for masked node type
-        num_edge_types += 2 # add one for masked edge type and one for empty edge type
+        self.node_pred_layer = Linear(2*hidden_dim, num_node_types)
+        self.edge_pred_layer = Linear(2*hidden_dim, num_edge_types) # TODO check if this works for h_i, h_j
 
-        self.embedding_layer = nn.Embedding(num_embeddings=num_node_types, embedding_dim=node_feature_dim)
+
         
-        self.gat = GAT(
-            in_channels=node_feature_dim,
-            out_channels=node_feature_dim,
-            hidden_channels=num_heads * 16,
-            num_layers=num_layers,
-            dropout=0,
-            heads=num_heads,
-        )
-
-        # Node type prediction
-        # self.node_type_prediction = nn.Linear(node_feature_dim, num_node_types - 1) # Use only element of the new node, except for masked node type
-        self.node_type_prediction = nn.Sequential(
-            nn.Linear(node_feature_dim, node_feature_dim),
-            nn.ReLU(),
-            nn.Linear(node_feature_dim, num_node_types - 1)
-        )
-
-        # Edge type prediction
-        # self.edge_type_prediction = nn.Linear(node_feature_dim, num_edge_types - 1) # Use all elements (connections to other nodes), except for masked edge type 
-        self.edge_type_prediction = nn.Sequential(
-            nn.Linear(node_feature_dim, node_feature_dim),
-            nn.ReLU(),
-            nn.Linear(node_feature_dim, num_edge_types - 1)
-        )
-
-    def forward(self, data):
-
-        '''
-        Outputs: 
-        new_node_type: type of new node to be unmasked
-        new_edge_type: types of new edges from previous nodes to the one to be unmasked
-        '''
-        # [num_nodes, node_feature_dim]
-        h_v = self.embedding_layer(data.x.squeeze().long())
-
-        # [num_nodes, node_feature_dim]
-        h_v = self.gat(h_v, data.edge_index.long(), edge_attr=data.edge_attr.long())
-
-        # TODO check if default attention mechanism is used
-
-        # Node type prediction
-        node_type_logits = self.node_type_prediction(h_v)
-        # Applying softmax for the multinomial distribution
-        node_type_probs = F.softmax(node_type_logits, dim=1)
-
-        # Edge type prediction
-        edge_type_logits = self.edge_type_prediction(h_v)
-
-        # Applying softmax for the multinomial distribution
-        edge_type_probs = F.softmax(edge_type_logits, dim=1)
+    def forward(self, x, edge_index, edge_attr):
+        h_v = self.node_embedding(x)
+        h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
         
-        return node_type_probs, edge_type_probs
-    
+        for l in range(self.num_layers):
+            h_v = self.layers[l](h_v, edge_index, h_e)
+
+
+        # graph-level embedding, from average pooling layer
+        graph_embedding = torch.mean(h_v, dim=0)
+
+        # repeat graph embedding to have the same shape as h_v
+        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+
+        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
+
+        
+        # edge prediction follows a mixture of multinomial distribution, with
+        # the Softmax(sum(mlp_alpha([graph_embedding, h_vi, h_vj])))
+        alphas = F.softmax(torch.sum(self.mlp_alpha(torch.cat([graph_embedding, h_v], dim=1)), dim=0, keepdim=True), dim=1)
+
+        p_v = F.softmax(node_pred, dim=0)
+        # TODO use alphas as below
+        # p_e = torch.sum(alphas * F.softmax(self.edge_pred_layer(torch.cat([graph_embedding, h_v], dim=1)), dim=0), dim=1, keepdim=True)
+        p_e = F.softmax(self.edge_pred_layer(torch.cat([graph_embedding, h_v], dim=1)), dim=0)
+        p_v = F.softmax(node_pred, dim=0)
+        return p_v, p_e

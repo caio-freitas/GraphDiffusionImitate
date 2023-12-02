@@ -31,8 +31,8 @@ class GraphARM(nn.Module):
         self.masker = NodeMasking(dataset)
 
 
-        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-2, betas=(0.9, 0.999))
-        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-1, betas=(0.9, 0.999))
+        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-4, betas=(0.9, 0.999))
+        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-4, betas=(0.9, 0.999))
 
 
     def node_decay_ordering(self, datapoint):
@@ -128,7 +128,7 @@ class GraphARM(nn.Module):
 
                             # predict node type
                             # logger.debug(f"Denoising node: {node}")
-                            node_type_probs, edge_type_probs = self.denoising_network(G_pred)
+                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float())
                             # logger.debug(f"Node type probs: {node_type_probs}")
                             # logger.debug(f"Edge type probs: {edge_type_probs}")
                             w_k = self.diffusion_ordering_network(G_pred)[node]
