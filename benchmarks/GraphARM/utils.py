@@ -8,9 +8,9 @@ def random_node_decay_ordering(datapoint):
 class NodeMasking:
     def __init__(self, dataset):
         self.dataset = dataset
-        self.NODE_MASK = dataset.x.unique().shape[0]
-        self.EMPTY_EDGE_MASK = dataset.edge_attr.unique().shape[0] 
-        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
+        self.NODE_MASK = dataset.x.unique().shape[0] + 1
+        self.EMPTY_EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
+        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 2
 
 
     def is_masked(self, datapoint, node=None):
@@ -86,7 +86,7 @@ class NodeMasking:
         n_nodes = like.x.shape[0]
 
         fully_masked = like.clone()
-        fully_masked.x = torch.ones(n_nodes) * self.NODE_MASK
+        fully_masked.x = torch.ones(n_nodes, 1) * self.NODE_MASK
         fully_masked = self.fully_connect(fully_masked, keep_original_edges=False)
         return fully_masked
     

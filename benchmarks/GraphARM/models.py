@@ -121,9 +121,10 @@ class DenoisingNetwork(nn.Module):
                 out_channels,
                 num_layers=5,
                 hidden_dim=256,
-                K=4):
+                K=20):
         super().__init__()
-        K = num_edge_types # TODO remove this line
+        num_edge_types += 1 # add one for empty edge type
+        self.K = K
         self.num_layers = num_layers
         self.node_embedding = Linear(node_feature_dim, hidden_dim)
         self.edge_embedding = Linear(edge_feature_dim, hidden_dim)
@@ -134,10 +135,10 @@ class DenoisingNetwork(nn.Module):
 
         self.mlp_alpha = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
                                        nn.ReLU(),
-                                       Linear(hidden_dim, K))
+                                       Linear(hidden_dim, self.K))
         
         self.node_pred_layer = Linear(2*hidden_dim, num_node_types)
-        self.edge_pred_layer = Linear(2*hidden_dim, num_edge_types) # TODO check if this works for h_i, h_j
+        self.edge_pred_layer = Linear(hidden_dim, num_edge_types*K)
 
 
         
@@ -162,9 +163,9 @@ class DenoisingNetwork(nn.Module):
         # the Softmax(sum(mlp_alpha([graph_embedding, h_vi, h_vj])))
         alphas = F.softmax(torch.sum(self.mlp_alpha(torch.cat([graph_embedding, h_v], dim=1)), dim=0, keepdim=True), dim=1)
 
-        p_v = F.softmax(node_pred, dim=0)
-        # TODO use alphas as below
-        # p_e = torch.sum(alphas * F.softmax(self.edge_pred_layer(torch.cat([graph_embedding, h_v], dim=1)), dim=0), dim=1, keepdim=True)
-        p_e = F.softmax(self.edge_pred_layer(torch.cat([graph_embedding, h_v], dim=1)), dim=0)
-        p_v = F.softmax(node_pred, dim=0)
+        p_v = F.softmax(node_pred, dim=1)
+        log_theta = self.edge_pred_layer(h_v)
+        log_theta = log_theta.view(h_v.shape[0], -1, self.K) # h_v.shape[0] is the number of steps (nodes) (block size)
+        p_e = torch.sum(alphas * F.softmax(log_theta, dim=1), dim=-1)
+
         return p_v, p_e

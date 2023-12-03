@@ -31,8 +31,8 @@ class GraphARM(nn.Module):
         self.masker = NodeMasking(dataset)
 
 
-        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-4, betas=(0.9, 0.999))
-        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-4, betas=(0.9, 0.999))
+        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-3, betas=(0.9, 0.999))
+        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-2, betas=(0.9, 0.999))
 
 
     def node_decay_ordering(self, datapoint):
@@ -134,7 +134,7 @@ class GraphARM(nn.Module):
                             w_k = self.diffusion_ordering_network(G_pred)[node]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
-                            loss = self.step_loss(G_k, node_type_probs, edge_type_probs, w_k, node, node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
+                            loss = self.step_loss(G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
                             wandb.log({"step_loss": loss.item()})
 
                             acc_loss += loss.item()
@@ -191,22 +191,20 @@ class GraphARM(nn.Module):
         
 
 
-    def step_loss(self, G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
-        T = G_t.x.shape[0]
+    def step_loss(self, G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
+        T = G_0.x.shape[0]
         n_i = len(node_order[t:])
         edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))  # filter to only connections to previously denoised nodes
         # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
-        edge_attrs_matrix = G_t.edge_attr.reshape(T, T)
+        edge_attrs_matrix = G_0.edge_attr.reshape(T, T)
         original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
         # calculate probability of edge type
-        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1) - 1)  # remove 1 to account for masked edge type
+        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
         log_p_edges = torch.sum(torch.log(p_edges))
-        # logger.debug(f"Target node prob: {node_type_probs[node, G_t.x[node]]}")
-        wandb.log({"target_node_type_prob": node_type_probs[node, G_t.x[node]].item()})
-        # logger.debug(f"Target edges log probs: {log_p_edges}")
+        wandb.log({"target_node_type_prob": node_type_probs[node, G_0.x[node]].item()})
         wandb.log({"target_edges_log_prob": log_p_edges})
         # calculate loss
-        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_t.x[node]])
+        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_0.x[node]])
         loss = -(n_i/T)*log_p_O_v*w_k/M # cumulative, to join (k) from all previously denoised nodes
         return loss
 
@@ -224,20 +222,22 @@ class GraphARM(nn.Module):
         reward = (n_i/T)*log_p_O_v*w_k/M
         return reward
 
-    def predict_node(self, graph, node):
+    def predict_node(self, graph, previously_denoised_nodes):
         '''
         Predicts the value of a node in a graph as well as it's connection to all previously denoised nodes.
         '''
         with torch.no_grad():
             # predict node type
-            node_type_probs, edge_type_probs = self.denoising_network(graph)
+            node_type_probs, edge_type_probs = self.denoising_network(graph.x, graph.edge_index, graph.edge_attr)
             
             # sample node type
-            node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
-
+            # node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
+            node_type = torch.argmax(node_type_probs.squeeze(), dim=1)
             # sample edge type
-            new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
-
+            # new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
+            new_connections = torch.argmax(edge_type_probs, dim=1)
+            # filter to only connections to previously denoised nodes
+            new_connections = new_connections[previously_denoised_nodes]
         return node_type, new_connections
 
 
