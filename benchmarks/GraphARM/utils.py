@@ -8,10 +8,33 @@ def random_node_decay_ordering(datapoint):
 class NodeMasking:
     def __init__(self, dataset):
         self.dataset = dataset
-        self.NODE_MASK = dataset.x.unique().shape[0] + 1
-        self.EMPTY_EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
-        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 2
+        self.node_type_to_idx = {node_type.item(): idx for idx, node_type in enumerate(dataset.x.unique())}
+        self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset.edge_attr.unique())}
+        self.NODE_MASK = dataset.x.unique().shape[0]
+        self.EMPTY_EDGE = dataset.edge_attr.unique().shape[0]
+        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
+        # add masks to node and edge types
+        self.node_type_to_idx[self.NODE_MASK] = self.NODE_MASK
+        self.edge_type_to_idx[self.EMPTY_EDGE] = self.EMPTY_EDGE
+        self.edge_type_to_idx[self.EDGE_MASK] = self.EDGE_MASK
 
+    def idxify(self, datapoint):
+        '''
+        Converts node and edge types to indices
+        '''
+        datapoint = datapoint.clone()
+        datapoint.x = torch.tensor([self.node_type_to_idx[node_type.item()] for node_type in datapoint.x]).reshape(-1, 1)
+        datapoint.edge_attr = torch.tensor([self.edge_type_to_idx[edge_type.item()] for edge_type in datapoint.edge_attr])
+        return datapoint
+    
+    def deidxify(self, datapoint):
+        '''
+        Converts node and edge indices to types
+        '''
+        datapoint = datapoint.clone()
+        datapoint.x = torch.tensor([list(self.node_type_to_idx.keys())[node_idx] for node_idx in datapoint.x])
+        datapoint.edge_attr = torch.tensor([list(self.edge_type_to_idx.keys())[edge_idx] for edge_idx in datapoint.edge_attr])
+        return datapoint
 
     def is_masked(self, datapoint, node=None):
         '''
@@ -66,7 +89,7 @@ class NodeMasking:
         adjacency_matrix[adjacency_matrix == 0] = 1
 
         fully_connected = graph.clone()
-        fully_connected.edge_attr = torch.ones(fully_connected.x.shape[0]**2) * self.EMPTY_EDGE_MASK
+        fully_connected.edge_attr = torch.ones(fully_connected.x.shape[0]**2) * self.EMPTY_EDGE
         
         fully_connected.edge_attr = fully_connected.edge_attr.long()
 
@@ -86,7 +109,7 @@ class NodeMasking:
         n_nodes = like.x.shape[0]
 
         fully_masked = like.clone()
-        fully_masked.x = torch.ones(n_nodes, 1) * self.NODE_MASK
+        fully_masked.x = torch.ones(n_nodes, 1, dtype=torch.int32) * self.NODE_MASK
         fully_masked = self.fully_connect(fully_masked, keep_original_edges=False)
         return fully_masked
     
