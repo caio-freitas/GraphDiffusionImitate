@@ -23,6 +23,7 @@ class DiffusionOrderingNetwork(nn.Module):
 
         num_node_types += 1 # add one for masked node type
         num_edge_types += 2 # add one for masked edge type and one for empty edge type
+        
 
         # add positional encodings into node features
         self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=node_feature_dim)
@@ -137,12 +138,21 @@ class DenoisingNetwork(nn.Module):
                                        nn.ReLU(),
                                        Linear(hidden_dim, self.K))
         
-        self.node_pred_layer = Linear(2*hidden_dim, num_node_types)
-        self.edge_pred_layer = Linear(hidden_dim, num_edge_types*K)
+        self.node_pred_layer = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
+                                       nn.ReLU(),
+                                       Linear(hidden_dim, num_node_types))
+        
+        self.edge_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
+                                       nn.ReLU(),
+                                       Linear(hidden_dim, num_edge_types*K))
 
 
         
     def forward(self, x, edge_index, edge_attr):
+        # make sure x and edge_attr are of type float, for the MLPs
+        x = x.float()
+        edge_attr = edge_attr.float()
+
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
         
@@ -157,13 +167,15 @@ class DenoisingNetwork(nn.Module):
         graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
+        # aggregate with torch mean pooling
+        node_pred = torch.mean(node_pred, dim=0)
 
         
         # edge prediction follows a mixture of multinomial distribution, with
         # the Softmax(sum(mlp_alpha([graph_embedding, h_vi, h_vj])))
         alphas = F.softmax(torch.sum(self.mlp_alpha(torch.cat([graph_embedding, h_v], dim=1)), dim=0, keepdim=True), dim=1)
 
-        p_v = F.softmax(node_pred, dim=1)
+        p_v = F.softmax(node_pred, dim=-1)
         log_theta = self.edge_pred_layer(h_v)
         log_theta = log_theta.view(h_v.shape[0], -1, self.K) # h_v.shape[0] is the number of steps (nodes) (block size)
         p_e = torch.sum(alphas * F.softmax(log_theta, dim=1), dim=-1)
