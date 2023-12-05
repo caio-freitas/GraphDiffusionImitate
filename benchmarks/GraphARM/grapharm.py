@@ -31,8 +31,9 @@ class GraphARM(nn.Module):
         self.masker = NodeMasking(dataset)
 
 
+
         self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-3, betas=(0.9, 0.999))
-        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-2, betas=(0.9, 0.999))
+        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-3, betas=(0.9, 0.999))
 
 
     def node_decay_ordering(self, datapoint):
@@ -89,6 +90,8 @@ class GraphARM(nn.Module):
         Preprocesses graph to be used by the denoising network.
         '''
         graph = graph.clone()
+        # node and edge types to idx
+        graph = self.masker.idxify(graph)
         graph = self.masker.fully_connect(graph)
         return graph
 
@@ -103,14 +106,12 @@ class GraphARM(nn.Module):
         self.ordering_optimizer.zero_grad()
 
 
-
         self.denoising_network.train()
         self.diffusion_ordering_network.eval()
         loss = torch.tensor(0.0, requires_grad=True)
         acc_loss = 0.0
         with tqdm(train_data) as pbar:
             for graph in pbar:
-                n_i = graph.x.shape[0]
                 # preprocess graph
                 graph = self.preprocess(graph)
                 diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
@@ -118,8 +119,8 @@ class GraphARM(nn.Module):
                 for diffusion_trajectory in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
                     node_order = self.node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
-                    for t in range(0, len(node_order)):
-                        for k in range(t):
+                    for t in range(len(node_order)):
+                        for k in range(t+1):# until t
                             node = node_order[k]
                             G_k = diffusion_trajectory[k].clone()
                             G_tplus1 = diffusion_trajectory[t+1].clone()
@@ -128,7 +129,7 @@ class GraphARM(nn.Module):
 
                             # predict node type
                             # logger.debug(f"Denoising node: {node}")
-                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float())
+                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
                             # logger.debug(f"Node type probs: {node_type_probs}")
                             # logger.debug(f"Edge type probs: {edge_type_probs}")
                             w_k = self.diffusion_ordering_network(G_pred)[node]
@@ -192,19 +193,25 @@ class GraphARM(nn.Module):
 
 
     def step_loss(self, G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
-        T = G_0.x.shape[0]
-        n_i = len(node_order[t:])
+        T = len(node_order)
+        n_i = G_0.x.shape[0]
         edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))  # filter to only connections to previously denoised nodes
         # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
         edge_attrs_matrix = G_0.edge_attr.reshape(T, T)
         original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
         # calculate probability of edge type
         p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
-        log_p_edges = torch.sum(torch.log(p_edges))
-        wandb.log({"target_node_type_prob": node_type_probs[node, G_0.x[node]].item()})
+        # log_p_edges = torch.sum(torch.log(p_edges))
+        log_p_edges = torch.sum(torch.tensor([0]))
+        wandb.log({"target_node_type_prob": node_type_probs[G_0.x[node]].item()})
         wandb.log({"target_edges_log_prob": log_p_edges})
+        wandb.log({"p_nodes_1": node_type_probs[0].detach().cpu().numpy()})
+        wandb.log({"p_nodes_2": node_type_probs[1].detach().cpu().numpy()})
+        wandb.log({"p_nodes_3": node_type_probs[2].detach().cpu().numpy()})
+        wandb.log({"p_nodes_4": node_type_probs[3].detach().cpu().numpy()})
+        wandb.log({"p_nodes_5": node_type_probs[4].detach().cpu().numpy()})
         # calculate loss
-        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_0.x[node]])
+        log_p_O_v =  log_p_edges + torch.log(node_type_probs[G_0.x[node]])
         loss = -(n_i/T)*log_p_O_v*w_k/M # cumulative, to join (k) from all previously denoised nodes
         return loss
 
@@ -222,28 +229,47 @@ class GraphARM(nn.Module):
         reward = (n_i/T)*log_p_O_v*w_k/M
         return reward
 
-    def predict_node(self, graph, previously_denoised_nodes):
+    def predict_new_node(self, 
+                         graph, 
+                         previously_denoised_nodes,
+                         sampling_method="argmax"):
         '''
-        Predicts the value of a node in a graph as well as it's connection to all previously denoised nodes.
+        Predicts the value of a new node for graph as well as it's connection to all previously denoised nodes.
+        sampling_method: "argmax" or "sample"
         '''
+        assert sampling_method in ["argmax", "sample"], "sampling_method must be either 'argmax' or 'sample'"
         with torch.no_grad():
+            # preprocess graph
+            graph = self.preprocess(graph)
             # predict node type
             node_type_probs, edge_type_probs = self.denoising_network(graph.x, graph.edge_index, graph.edge_attr)
             
             # sample node type
-            # node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
-            node_type = torch.argmax(node_type_probs.squeeze(), dim=1)
+            if sampling_method == "sample":
+                node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
+            elif sampling_method == "argmax":
+                node_type = torch.argmax(node_type_probs.squeeze(), dim=-1)
+            # lookup dictionary to get node type
+            node_type = torch.tensor(list(self.masker.node_type_to_idx.keys())[node_type.item()], dtype=torch.int32).to(self.device)
+
             # sample edge type
-            # new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
-            new_connections = torch.argmax(edge_type_probs, dim=1)
+            if sampling_method == "sample":
+                new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
+            elif sampling_method == "argmax":
+                new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1)
+            # new_connections = torch.argmax(edge_type_probs, dim=1)
             # filter to only connections to previously denoised nodes
             new_connections = new_connections[previously_denoised_nodes]
+            # lookup dictionary to get edge type
+            if new_connections.any():
+                new_connections = torch.tensor([list(self.masker.edge_type_to_idx.keys())[edge_idx] for edge_idx in new_connections]).to(self.device)
+
         return node_type, new_connections
 
 
-    def save_model(self):
-        torch.save(self.denoising_network.state_dict(), "denoising_network_overfit.pt")
-        torch.save(self.diffusion_ordering_network.state_dict(), "diffusion_ordering_network_overfit.pt")
+    def save_model(self, denoising_network_path="denoising_network.pt", diffusion_ordering_network_path="diffusion_ordering_network.pt"):
+        torch.save(self.denoising_network.state_dict(), denoising_network_path)
+        torch.save(self.diffusion_ordering_network.state_dict(), diffusion_ordering_network_path)
 
     def load_model(self,
                    denoising_network_path="denoising_network_overfit.pt",
