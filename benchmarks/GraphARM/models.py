@@ -134,7 +134,7 @@ class DenoisingNetwork(nn.Module):
         for i in range(num_layers):
             self.layers.append(MPLayer(hidden_dim, hidden_dim))
 
-        self.mlp_alpha = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
+        self.mlp_alpha = nn.Sequential(Linear(3*hidden_dim, hidden_dim),
                                        nn.ReLU(),
                                        Linear(hidden_dim, self.K))
         
@@ -148,7 +148,7 @@ class DenoisingNetwork(nn.Module):
 
 
         
-    def forward(self, x, edge_index, edge_attr):
+    def forward(self, x, edge_index, edge_attr, v_t=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float()
         edge_attr = edge_attr.float()
@@ -173,11 +173,18 @@ class DenoisingNetwork(nn.Module):
         
         # edge prediction follows a mixture of multinomial distribution, with
         # the Softmax(sum(mlp_alpha([graph_embedding, h_vi, h_vj])))
-        alphas = F.softmax(torch.sum(self.mlp_alpha(torch.cat([graph_embedding, h_v], dim=1)), dim=0, keepdim=True), dim=1)
+        alphas = torch.zeros(h_v.shape[0], self.K)
+        if v_t is None:
+            v_t = h_v.shape[0] - 1# node being masked, this assumes that the masked node is the last node in the graph
+        h_v_t = h_v[v_t, :].repeat(h_v.shape[0], 1)
+
+        alphas = self.mlp_alpha(torch.cat([graph_embedding, h_v_t, h_v], dim=1))
+
+        alphas = F.softmax(torch.sum(alphas, dim=0, keepdim=True), dim=1)
 
         p_v = F.softmax(node_pred, dim=-1)
         log_theta = self.edge_pred_layer(h_v)
         log_theta = log_theta.view(h_v.shape[0], -1, self.K) # h_v.shape[0] is the number of steps (nodes) (block size)
-        p_e = torch.sum(alphas * F.softmax(log_theta, dim=1), dim=-1)
+        p_e = torch.sum(alphas * F.softmax(log_theta, dim=1), dim=-1) # softmax over edge types
 
         return p_v, p_e

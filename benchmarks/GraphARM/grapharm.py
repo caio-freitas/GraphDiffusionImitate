@@ -122,14 +122,13 @@ class GraphARM(nn.Module):
                     for t in range(len(node_order)):
                         for k in range(t+1):# until t
                             node = node_order[k]
-                            G_k = diffusion_trajectory[k].clone()
                             G_tplus1 = diffusion_trajectory[t+1].clone()
                             G_pred = G_tplus1.clone()
                               
 
                             # predict node type
                             # logger.debug(f"Denoising node: {node}")
-                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
+                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr, node)
                             # logger.debug(f"Node type probs: {node_type_probs}")
                             # logger.debug(f"Edge type probs: {edge_type_probs}")
                             w_k = self.diffusion_ordering_network(G_pred)[node]
@@ -201,8 +200,8 @@ class GraphARM(nn.Module):
         original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
         # calculate probability of edge type
         p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
-        # log_p_edges = torch.sum(torch.log(p_edges))
-        log_p_edges = torch.sum(torch.tensor([0]))
+        log_p_edges = torch.sum(torch.log(p_edges))
+        # log_p_edges = torch.sum(torch.tensor([0]))
         wandb.log({"target_node_type_prob": node_type_probs[G_0.x[node]].item()})
         wandb.log({"target_edges_log_prob": log_p_edges})
         wandb.log({"p_nodes_1": node_type_probs[0].detach().cpu().numpy()})
