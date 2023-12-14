@@ -95,7 +95,8 @@ class MPLayer(MessagePassing):
         # x has shape [N, in_channels]
         # edge_index has shape [2, E]
 
-        # edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        # **self-loops should be added in the preprocessing step (fully connecting the graph)
+
         out = self.propagate(edge_index, x=x, edge_attr=edge_attr)
         out, _ = self.gru(torch.cat([x, out], dim=-1)) # discard final hidden state
         return out

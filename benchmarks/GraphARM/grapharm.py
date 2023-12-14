@@ -31,12 +31,14 @@ class GraphARM(nn.Module):
         self.masker = NodeMasking(dataset)
 
 
-
         self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-3, betas=(0.9, 0.999))
         self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-3, betas=(0.9, 0.999))
 
 
     def node_decay_ordering(self, datapoint):
+        '''
+        Returns node order for a given graph, using the diffusion ordering network.
+        '''
         # p = datapoint.clone().to(self.device)
         # node_order = []
         # for i in range(p.x.shape[0]):
@@ -118,7 +120,7 @@ class GraphARM(nn.Module):
                 # predictions & loss
                 for diffusion_trajectory in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    node_order = self.node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
+                    node_order = self.node_decay_ordering(G_0)
                     for t in range(len(node_order)):
                         for k in range(t+1):# until t
                             node = node_order[k]
@@ -126,16 +128,14 @@ class GraphARM(nn.Module):
                             G_pred = G_tplus1.clone()
                               
 
-                            # predict node type
-                            # logger.debug(f"Denoising node: {node}")
+                            # predict node and edge type distributions
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr, node)
-                            # logger.debug(f"Node type probs: {node_type_probs}")
-                            # logger.debug(f"Edge type probs: {edge_type_probs}")
+
                             w_k = self.diffusion_ordering_network(G_pred)[node]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
-                            loss = self.step_loss(G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
-                            wandb.log({"step_loss": loss.item()})
+                            loss = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
+                            wandb.log({"vlb": loss.item()})
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
@@ -176,7 +176,7 @@ class GraphARM(nn.Module):
         #                 w_k = self.diffusion_ordering_network(G_tplus1)[node]
 
         #                 # calculate reward
-        #                 reward = self.step_reward(G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M)
+        #                 reward = self.vlb(G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M)
         #                 acc_reward += reward.item()
         #                 pbar.set_description(f"Reward: {reward.item():.4f}")
         #                 wandb.log({"step_reward": reward.item()})
@@ -191,7 +191,12 @@ class GraphARM(nn.Module):
         
 
 
-    def step_loss(self, G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
+    def vlb(self, G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
+        '''
+        Calculates the variational lower bound (VLB) for a given node and edge type distribution, 
+        relative to the original graph G_0.
+        ** Ignores the KL divergence term, as described in the paper.
+        '''
         T = len(node_order)
         n_i = G_0.x.shape[0]
         edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))  # filter to only connections to previously denoised nodes
@@ -204,29 +209,11 @@ class GraphARM(nn.Module):
         # log_p_edges = torch.sum(torch.tensor([0]))
         wandb.log({"target_node_type_prob": node_type_probs[G_0.x[node]].item()})
         wandb.log({"target_edges_log_prob": log_p_edges})
-        wandb.log({"p_nodes_1": node_type_probs[0].detach().cpu().numpy()})
-        wandb.log({"p_nodes_2": node_type_probs[1].detach().cpu().numpy()})
-        wandb.log({"p_nodes_3": node_type_probs[2].detach().cpu().numpy()})
-        wandb.log({"p_nodes_4": node_type_probs[3].detach().cpu().numpy()})
-        wandb.log({"p_nodes_5": node_type_probs[4].detach().cpu().numpy()})
         # calculate loss
         log_p_O_v =  log_p_edges + torch.log(node_type_probs[G_0.x[node]])
         loss = -(n_i/T)*log_p_O_v*w_k/M # cumulative, to join (k) from all previously denoised nodes
         return loss
 
-    def step_reward(self, G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
-        T = G_t.x.shape[0]
-        n_i = len(node_order[t:])
-        edge_type_probs = torch.index_select(edge_type_probs, 0, torch.tensor(node_order[t:]).to(self.device))  # filter to only connections to previously denoised nodes
-        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
-        original_edge_types = torch.index_select(G_t.edge_attr, 0, torch.tensor(node_order[t:]).to(self.device))
-        # calculate probability of edge type
-        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1) - 1)  # remove 1 to account for masked edge type
-        log_p_edges = torch.sum(torch.log(p_edges))
-        # calculate reward (VLB)                        
-        log_p_O_v =  log_p_edges + torch.log(node_type_probs[node, G_t.x[node]])
-        reward = (n_i/T)*log_p_O_v*w_k/M
-        return reward
 
     def predict_new_node(self, 
                          graph, 
@@ -235,6 +222,8 @@ class GraphARM(nn.Module):
         '''
         Predicts the value of a new node for graph as well as it's connection to all previously denoised nodes.
         sampling_method: "argmax" or "sample"
+        - argmax: select node and edge type with highest probability
+        - sample: sample node and edge type from multinomial distribution
         '''
         assert sampling_method in ["argmax", "sample"], "sampling_method must be either 'argmax' or 'sample'"
         with torch.no_grad():

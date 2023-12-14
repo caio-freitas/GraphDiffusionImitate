@@ -44,6 +44,26 @@ class NodeMasking:
             return datapoint.x == self.NODE_MASK
         return datapoint.x[node] == self.NODE_MASK
 
+    def remove_node(self, datapoint, node):
+        '''
+        Removes node from graph, and all edges connected to it
+        '''
+        datapoint = datapoint.clone()
+        # remove node
+        datapoint.x = torch.cat([datapoint.x[:node], datapoint.x[node+1:]])
+
+        # update indices of edge_index
+        datapoint.edge_index[datapoint.edge_index > node] -= 1
+
+        # remove edges (remove elements containing node)
+        datapoint.edge_attr = torch.tensor([edge_attr for edge_attr, edge_index in zip(datapoint.edge_attr, datapoint.edge_index.T) if node not in edge_index])
+        
+        # remove edges from edge_index (remove elements containing node in tuple of edge_index) (if datapoint.edge_index[:, 0] == node or datapoint.edge_index[:, 1] == node)
+        edge_index_T = torch.stack([edge_index_tuple for edge_index_tuple in datapoint.edge_index.T if node not in edge_index_tuple])
+        datapoint.edge_index = edge_index_T.T
+        return datapoint
+
+
 
     def mask_node(self, datapoint, selected_node):
         '''
