@@ -48,21 +48,35 @@ class NodeMasking:
         '''
         Removes node from graph, and all edges connected to it
         '''
+        assert node < datapoint.x.shape[0], "Node does not exist"
+        if datapoint.x.shape[0] == 1:
+            return datapoint.clone()
         datapoint = datapoint.clone()
         # remove node
         datapoint.x = torch.cat([datapoint.x[:node], datapoint.x[node+1:]])
 
-        # update indices of edge_index
-        datapoint.edge_index[datapoint.edge_index > node] -= 1
-
-        # remove edges (remove elements containing node)
-        datapoint.edge_attr = torch.tensor([edge_attr for edge_attr, edge_index in zip(datapoint.edge_attr, datapoint.edge_index.T) if node not in edge_index])
         
         # remove edges from edge_index (remove elements containing node in tuple of edge_index) (if datapoint.edge_index[:, 0] == node or datapoint.edge_index[:, 1] == node)
-        edge_index_T = torch.stack([edge_index_tuple for edge_index_tuple in datapoint.edge_index.T if node not in edge_index_tuple])
-        datapoint.edge_index = edge_index_T.T
+        if datapoint.edge_index.shape[1] > 1:
+
+            # remove edges (remove elements containing node)
+            datapoint.edge_attr = torch.tensor([edge_attr for edge_attr, edge_index in zip(datapoint.edge_attr, datapoint.edge_index.T) if node not in edge_index])
+
+            edge_index_T = torch.stack([edge_index_tuple for edge_index_tuple in datapoint.edge_index.T if node not in edge_index_tuple])
+            datapoint.edge_index = edge_index_T.T
+            # update indices of edge_index
+            datapoint.edge_index[datapoint.edge_index > node] -= 1
         return datapoint
 
+    def add_masked_node(self, datapoint):
+        '''
+        Adds a masked node to the graph
+        '''
+        datapoint = datapoint.clone()
+        datapoint.x = torch.cat([datapoint.x.reshape(-1,1), torch.tensor([[self.NODE_MASK]])], dim=0)
+        datapoint.edge_attr = torch.cat([datapoint.edge_attr.reshape(-1,1), torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0]-1, 1)], dim=0)
+        datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0]-1)]).T], dim=1)
+        return datapoint
 
 
     def mask_node(self, datapoint, selected_node):
@@ -80,7 +94,6 @@ class NodeMasking:
         datapoint = datapoint.clone()
         datapoint.x[selected_node] = self.NODE_MASK
         
-        # TODO fix this, should be connected to all other nodes
         # mask edges
         datapoint.edge_attr[datapoint.edge_index[0] == selected_node] = self.EDGE_MASK
         datapoint.edge_attr[datapoint.edge_index[1] == selected_node] = self.EDGE_MASK
