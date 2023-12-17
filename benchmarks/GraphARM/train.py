@@ -27,24 +27,24 @@ denoising_net = DenoisingNetwork(
     edge_feature_dim=dataset.num_edge_features,
     num_node_types=dataset.x.unique().shape[0],
     num_edge_types=dataset.edge_attr.unique().shape[0],
-    num_layers=7,
-    out_channels=1
+    num_layers=7
+    # hidden_dim=32,
 )
 
+
 wandb.init(
-        project="ARGD",
-        group=f"v1.3.0",
-        name=f"ZINC_overfit_2",
-        # track hyperparameters and run metadata
+        project="GraphARM",
+        group=f"v2.3.0",
+        name=f"ZINC_GraphARM",
         config={
             "policy": "train",
             "n_epochs": 10000,
             "batch_size": 1,
-            "lr": 1e-4,
-        }
+            "lr": 1e-3,
+        },
+        mode='disabled'
     )
 
-os.environ["WANDB_DISABLED"] = "false"
 torch.autograd.set_detect_anomaly(True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
