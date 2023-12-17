@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+# from torch_geometric.nn.conv import RGCNConv
 from torch_geometric.nn import GAT
 from torch_geometric.utils import add_self_loops, degree
 from torch.nn import functional as F
@@ -18,62 +19,86 @@ class DiffusionOrderingNetwork(nn.Module):
                  num_edge_types,
                  num_layers=3,
                  out_channels=1,
-                 num_heads=6):
+                 hidden_dim=32,
+                 num_heads=6,
+                 device='cpu'):
         super(DiffusionOrderingNetwork, self).__init__()
+        self.device = device
+        self.hidden_dim = hidden_dim
+        self.out_channels = out_channels
 
         num_node_types += 1 # add one for masked node type
         num_edge_types += 2 # add one for masked edge type and one for empty edge type
         
 
         # add positional encodings into node features
-        self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=node_feature_dim)
+        self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=hidden_dim)
 
         self.gat = GAT(
-            in_channels=node_feature_dim,
-            out_channels=node_feature_dim,
-            hidden_channels=num_heads * 6,
+            in_channels=hidden_dim,
+            out_channels=out_channels,
+            hidden_channels=hidden_dim * num_heads,
             num_layers=num_layers,
             dropout=0,
-            heads=num_heads,
+            heads=hidden_dim,
             residual=True
         )
+        # self.rgcn = RGCNConv(in_channels=node_feature_dim,
+        #                 out_channels=node_feature_dim,
+        #                 num_relations=num_edge_types,
+        #                 num_bases=30,
+        #                 num_blocks=1,
+        #                 aggr='mean',
+        #                 root_weight=True,
+        #                 bias=True)
+
+        self.mlp = nn.Sequential(Linear(hidden_dim, hidden_dim),
+                                    ReLU(),
+                                    Linear(hidden_dim, hidden_dim),
+                                    ReLU(),
+                                    Linear(hidden_dim, out_channels))
+        
+        # initialize positional encodings
+        MAX_NODES = 10000
+        self.pe = self.positionalencoding(MAX_NODES)
 
 
-    def positionalencoding(self, lengths, permutations):
+    def positionalencoding(self, lengths):
         '''
         From Chen, et al. 2021 (Order Matters: Probabilistic Modeling of Node Sequences for Graph Generation)
+        * lengths: length(s) of graph in the batch
         '''
-        # length = sum([len(perm) for perm in permutations])
-        l_t = len(permutations[0])
-        # pes = [torch.zeros(length, self.d_model) for length in lengths]
-        pes = torch.split(torch.zeros((sum(lengths), self.d_model), device=self.device), lengths)
+        l_t = lengths # .max() # use when parallelizing
+        pes = torch.zeros([l_t, self.out_channels], device=self.device)
         position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
-        div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float, device=self.device) *
-                              -(math.log(10000.0) / self.d_model)))
-        # test = torch.sin(position.float() * div_term)
-        for i in range(len(lengths)):
-            pes[i][permutations[i], 0::2] = torch.sin(position.float() * div_term)
-            pes[i][permutations[i], 1::2] = torch.cos(position.float() * div_term)
-
-        pes = torch.cat(pes)
+        div_term = torch.exp((torch.arange(0, self.out_channels, 2, dtype=torch.float, device=self.device) *
+                              -(math.log(10000.0) / self.out_channels)))
+        pes[:,0::2] = torch.sin(position.float() * div_term)
+        pes[:,1::2] = torch.cos(position.float() * div_term)
         return pes
 
-    def forward(self, G, p=None):
+    def forward(self, G, node_order=None):
+        '''
+        node_order: list of absorbed nodes so far
+        '''
+        # list of not absorbed nodes (G.x.shape[0], except for nodes in node_order)
+        not_masked = torch.tensor([node for node in range(G.x.shape[0]) if node not in node_order], device=self.device)
 
-        h = self.embedding(G.x.squeeze().long())
+        h = self.embedding(G.x.squeeze().long().to(self.device))
 
-        h = self.gat(h, G.edge_index.long(), edge_attr=G.edge_attr.long())
+        h = self.gat(h, G.edge_index.long().to(self.device), edge_attr=G.edge_attr.long().to(self.device))
 
-        # TODO augment node features with positional encodings
-        # if p is not None:
-        #     # p = self.positionalencoding(G.batch_num_nodes().tolist(), p) original from Chen et al.
-        #     p = self.positionalencoding(G.x.shape[0], p)
-        #     h = h + p
-        
-        # softmax over nodes
-        h = F.softmax(h, dim=0)
-        
-        return h # outputs probabilities for a categorical distribution over nodes
+        # # Positional encoding
+        for t in range(len(node_order)):
+            h[node_order[t], :] += self.pe[t, :].to(self.device)
+
+        h_not_absorbed = h[not_masked, :]
+
+        # softmax: h over h_not_absorbed
+        h = torch.exp(h) / torch.sum(torch.exp(h_not_absorbed), dim=0)
+        # make sure values are positive and sum to 1
+        h = torch.softmax(h, dim=0)
+        return h  # outputs probabilities for a categorical distribution over nodes
     
     
 class MPLayer(MessagePassing):
@@ -92,10 +117,11 @@ class MPLayer(MessagePassing):
         self.gru = nn.GRU(2*out_channels, out_channels)
         
     def forward(self, x, edge_index, edge_attr):
-        # x has shape [N, in_channels]
-        # edge_index has shape [2, E]
-
-        # **self-loops should be added in the preprocessing step (fully connecting the graph)
+        '''
+        x has shape [N, in_channels]
+        edge_index has shape [2, E]
+        **self-loops should be added in the preprocessing step (fully connecting the graph)
+        '''
 
         out = self.propagate(edge_index, x=x, edge_attr=edge_attr)
         out, _ = self.gru(torch.cat([x, out], dim=-1)) # discard final hidden state
@@ -120,11 +146,12 @@ class DenoisingNetwork(nn.Module):
                 edge_feature_dim,
                 num_node_types,
                 num_edge_types,
-                out_channels,
                 num_layers=5,
                 hidden_dim=256,
-                K=20):
+                K=20,
+                device='cpu'):
         super().__init__()
+        self.device = device
         num_edge_types += 1 # add one for empty edge type
         self.K = K
         self.num_layers = num_layers
@@ -169,7 +196,7 @@ class DenoisingNetwork(nn.Module):
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
         # aggregate with torch mean pooling
-        node_pred = torch.mean(node_pred, dim=0)
+        node_pred = torch.mean(node_pred, dim=0) # TODO instead of mean, get only masked node to be unmasked
 
         
         # edge prediction follows a mixture of multinomial distribution, with
@@ -187,5 +214,8 @@ class DenoisingNetwork(nn.Module):
         log_theta = self.edge_pred_layer(h_v)
         log_theta = log_theta.view(h_v.shape[0], -1, self.K) # h_v.shape[0] is the number of steps (nodes) (block size)
         p_e = torch.sum(alphas * F.softmax(log_theta, dim=1), dim=-1) # softmax over edge types
+
+        p_v = p_v.to(self.device) 
+        p_e = p_e.to(self.device) 
 
         return p_v, p_e

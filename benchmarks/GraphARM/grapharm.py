@@ -133,8 +133,7 @@ class GraphARM(nn.Module):
                             # predict node and edge type distributions
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
 
-                            # w_k = self.diffusion_ordering_network(G_pred)[node]
-                            w_k = torch.tensor(1.0, requires_grad=True)
+                            w_k = self.diffusion_ordering_network(G_0, node_order[:t])[node_order[k]]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
                             loss = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
@@ -152,45 +151,42 @@ class GraphARM(nn.Module):
         wandb.log({"loss": acc_loss})
 
         
-        # # validation batch (for diffusion ordering network)
-        # self.denoising_network.eval()
-        # self.diffusion_ordering_network.train()
+        ## validation batch (optimizing diffusion ordering network)
+        self.denoising_network.eval()
+        self.diffusion_ordering_network.train()
 
-        # reward = torch.tensor(0.0, requires_grad=True)
-        # acc_reward = 0.0
-        # with tqdm(val_data) as pbar:
-        #     for graph in pbar:
-        #         # preprocess graph
-        #         graph = self.preprocess(graph)
+        reward = torch.tensor(0.0, requires_grad=True)
+        acc_reward = 0.0
+        with tqdm(val_data) as pbar:
+            for graph in pbar:
+                # preprocess graph
+                graph = self.preprocess(graph)
+                diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
+                # predictions & loss
+                for diffusion_trajectory in diffusion_trajectories:
+                    G_0 = diffusion_trajectory[0]
+                    node_order = self.node_decay_ordering(G_0)
+                    for t in range(len(node_order)):
+                        for k in range(t+1):
+                            G_pred = diffusion_trajectory[t+1].clone()                              
 
-        #         n_i = graph.x.shape[0]
-                
-        #         diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
+                            # predict node and edge type distributions
+                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
 
-        #         for diffusion_trajectory in diffusion_trajectories:
-        #             G_0 = diffusion_trajectory[0]
-        #             node_order = self.node_decay_ordering(G_0) # Due to permutation invariance, we can use sample from uniform distribution
-        #             for t in range(len(node_order)-1, 0, -1):
-        #                 G_t = diffusion_trajectory[t].clone()
-        #                 node = node_order[t]
-        #                 G_tplus1 = diffusion_trajectory[t+1].clone()
-        #                 # predict node type
-        #                 node_type_probs, edge_type_probs = self.denoising_network(G_tplus1)
-        #                 w_k = self.diffusion_ordering_network(G_tplus1)[node]
-
-        #                 # calculate reward
-        #                 reward = self.vlb(G_t, node_type_probs, edge_type_probs, w_k, node, node_order, t, M)
-        #                 acc_reward += reward.item()
-        #                 pbar.set_description(f"Reward: {reward.item():.4f}")
-        #                 wandb.log({"step_reward": reward.item()})
-
-        #                 reward.backward()
-                        
+                            w_k = self.diffusion_ordering_network(G_0, node_order[:t])[node_order[k]]
+                            wandb.log({"target_node_ordering_prob": w_k.item()})
+                            # calculate loss
+                            reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M)
+                            wandb.log({"vlb": reward.item()})
+                            acc_reward -= reward.item()
+                            # backprop (accumulated gradients)
+                            reward.backward()
+                            pbar.set_description(f"Reward: {acc_reward:.4f}")
 
         
-        # wandb.log({"reward": acc_reward})
-        # # update parameters (REINFORCE algorithm)
-        # self.ordering_optimizer.step()
+        wandb.log({"reward": acc_reward})
+        # update parameters (REINFORCE algorithm)
+        self.ordering_optimizer.step()
         
 
 
