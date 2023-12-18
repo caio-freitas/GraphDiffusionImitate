@@ -61,15 +61,15 @@ denoising_net = DenoisingNetwork(
 
 wandb.init(
         project="GraphARM",
-        group=f"v2.3.0",
-        name=f"ZINC_DON_overfit",
+        group=f"v2.3.1",
+        name=f"MOCK_DON_overfit",
         config={
             "policy": "train",
             "n_epochs": 10000,
             "batch_size": 1,
             "lr": 1e-3,
         },
-        mode='disabled'
+        # mode='disabled'
     )
 
 

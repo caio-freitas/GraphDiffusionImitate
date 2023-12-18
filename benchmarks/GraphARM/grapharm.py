@@ -39,22 +39,20 @@ class GraphARM(nn.Module):
         '''
         Returns node order for a given graph, using the diffusion ordering network.
         '''
-        # p = datapoint.clone().to(self.device)
-        # node_order = []
-        # for i in range(p.x.shape[0]):
-        #     # use diffusion ordering network to get probabilities
-        #     sigma_t_dist = self.diffusion_ordering_network(p, i)
-        #     # sample (only unmasked nodes) from categorical distribution to get node to mask
-        #     unmasked = ~self.masker.is_masked(p)
-        #     sigma_t = torch.distributions.Categorical(probs=sigma_t_dist[unmasked].flatten()).sample()
+        p = datapoint.clone().to(self.device)
+        node_order = []
+        for i in range(p.x.shape[0]):
+            # use diffusion ordering network to get probabilities
+            sigma_t_dist = self.diffusion_ordering_network(p, node_order)
+            # sample (only unmasked nodes) from categorical distribution to get node to mask
+            unmasked = ~self.masker.is_masked(p)
+            sigma_t = torch.distributions.Categorical(probs=sigma_t_dist[unmasked].flatten()).sample()
             
-        #     # get node index
-        #     sigma_t = torch.where(unmasked.flatten())[0][sigma_t.long()]
-        #     node_order.append(sigma_t)
-        #     # mask node
-        #     p = self.masker.mask_node(p, sigma_t)
-        # return (1, 2, ... , n)
-        node_order = torch.range(0, datapoint.x.shape[0]-1, dtype=torch.int32).tolist()
+            # get node index
+            sigma_t = torch.where(unmasked.flatten())[0][sigma_t.long()]
+            node_order.append(sigma_t)
+            # mask node
+            p = self.masker.mask_node(p, sigma_t)
         return node_order
 
     def uniform_node_decay_ordering(self, datapoint):

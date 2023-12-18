@@ -11,8 +11,8 @@ class NodeMasking:
         self.node_type_to_idx = {node_type.item(): idx for idx, node_type in enumerate(dataset.x.unique())}
         self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset.edge_attr.unique())}
         self.NODE_MASK = dataset.x.unique().shape[0]
-        self.EMPTY_EDGE = dataset.edge_attr.unique().shape[0] + 1
-        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 2
+        self.EMPTY_EDGE = dataset.edge_attr.unique().shape[0]
+        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
         # add masks to node and edge types
         self.node_type_to_idx[self.NODE_MASK] = len(self.node_type_to_idx)
         self.edge_type_to_idx[self.EMPTY_EDGE] = len(self.edge_type_to_idx)

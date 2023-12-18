@@ -34,7 +34,7 @@ denoising_net = DenoisingNetwork(
 
 wandb.init(
         project="GraphARM",
-        group=f"v2.3.0",
+        group=f"v2.3.1",
         name=f"ZINC_GraphARM",
         config={
             "policy": "train",
