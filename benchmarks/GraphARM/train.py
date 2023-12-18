@@ -42,7 +42,7 @@ wandb.init(
             "batch_size": 1,
             "lr": 1e-3,
         },
-        mode='disabled'
+        # mode='disabled'
     )
 
 torch.autograd.set_detect_anomaly(True)

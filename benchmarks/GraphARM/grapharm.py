@@ -172,6 +172,9 @@ class GraphARM(nn.Module):
 
                             # predict node and edge type distributions
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
+                            # not require grad for output of denoising network
+                            node_type_probs = node_type_probs.detach()
+                            edge_type_probs = edge_type_probs.detach()
 
                             w_k = self.diffusion_ordering_network(G_0, node_order[:t])[node_order[k]]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
@@ -216,8 +219,8 @@ class GraphARM(nn.Module):
 
     def predict_new_node(self, 
                          graph, 
-                         previously_denoised_nodes,
-                         sampling_method="argmax"):
+                         sampling_method="argmax",
+                         preprocess=True):
         '''
         Predicts the value of a new node for graph as well as it's connection to all previously denoised nodes.
         sampling_method: "argmax" or "sample"
@@ -226,8 +229,8 @@ class GraphARM(nn.Module):
         '''
         assert sampling_method in ["argmax", "sample"], "sampling_method must be either 'argmax' or 'sample'"
         with torch.no_grad():
-            # preprocess graph
-            graph = self.preprocess(graph)
+            if preprocess:
+                graph = self.preprocess(graph)
             # add masked node to graph
             graph = self.masker.add_masked_node(graph)
             # predict node type
@@ -244,8 +247,7 @@ class GraphARM(nn.Module):
                 new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
             elif sampling_method == "argmax":
                 new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1)
-            # filter to only connections to previously denoised nodes
-            new_connections = new_connections[previously_denoised_nodes]
+            # no need to filter connection to previously denoised nodes, assuming only one new node is added at a time
 
             # lookup dictionary to get node type
             node_type = torch.tensor(next(key for key, value in self.masker.node_type_to_idx.items() if value == node_type.item()), dtype=torch.int32).to(self.device)

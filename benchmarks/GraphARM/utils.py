@@ -11,12 +11,12 @@ class NodeMasking:
         self.node_type_to_idx = {node_type.item(): idx for idx, node_type in enumerate(dataset.x.unique())}
         self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset.edge_attr.unique())}
         self.NODE_MASK = dataset.x.unique().shape[0]
-        self.EMPTY_EDGE = dataset.edge_attr.unique().shape[0]
-        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
+        self.EMPTY_EDGE = dataset.edge_attr.unique().shape[0] + 1
+        self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 2
         # add masks to node and edge types
-        self.node_type_to_idx[self.NODE_MASK] = self.NODE_MASK
-        self.edge_type_to_idx[self.EMPTY_EDGE] = self.EMPTY_EDGE
-        self.edge_type_to_idx[self.EDGE_MASK] = self.EDGE_MASK
+        self.node_type_to_idx[self.NODE_MASK] = len(self.node_type_to_idx)
+        self.edge_type_to_idx[self.EMPTY_EDGE] = len(self.edge_type_to_idx)
+        self.edge_type_to_idx[self.EDGE_MASK] = len(self.edge_type_to_idx)
 
     def idxify(self, datapoint):
         '''
@@ -99,6 +99,26 @@ class NodeMasking:
         datapoint.edge_attr[datapoint.edge_index[1] == selected_node] = self.EDGE_MASK
         return datapoint
     
+    def _reorder_edge_attr_and_index(self, graph):
+        '''
+        Reorders edge_attr and edge_index to be like on nx graph
+        (0, 0), (0, 1), (0, 2), ..., (0, n), (1, 0), (1, 1), ..., (n, n)
+        '''
+        graph = graph.clone()
+        # reorder edge_attr
+        edge_attr = torch.zeros(graph.x.shape[0]**2)
+        for edge_attr_value, edge_index in zip(graph.edge_attr, graph.edge_index.T):
+            edge_attr[edge_index[0] * graph.x.shape[0] + edge_index[1]] = edge_attr_value
+        graph.edge_attr = edge_attr.long()
+        # reorder edge_index
+        edge_index = torch.zeros((2, graph.x.shape[0]**2))
+        for i, edge_index_tuple in enumerate(graph.edge_index.T):
+            edge_index[0, i] = edge_index_tuple[0]
+            edge_index[1, i] = edge_index_tuple[1]
+        graph.edge_index = edge_index.long()
+        return graph
+
+
     def demask_node(self, graph, selected_node, node_type, connections_types):
         '''
         Demasking node mechanism
@@ -113,6 +133,8 @@ class NodeMasking:
             if not self.is_masked(graph, node=i):
                 graph.edge_attr[torch.logical_and(graph.edge_index[0] == i, graph.edge_index[1] == selected_node)] = connection
                 
+        # reorder edge_attr and edge_index to be like on nx graph
+        graph = self._reorder_edge_attr_and_index(graph)
         return graph
     def fully_connect(self, graph, keep_original_edges=True):
         '''
