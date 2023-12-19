@@ -1,12 +1,34 @@
 import torch
 from torch import nn
-# from torch_geometric.nn.conv import RGCNConv
+from torch_geometric.nn.conv import RGCNConv
 from torch_geometric.nn import GAT
 from torch_geometric.utils import add_self_loops, degree
 from torch.nn import functional as F
 from torch.nn import Linear, ReLU
 import math
 from torch_geometric.nn import MessagePassing
+
+
+class RGCN(nn.Module):
+    def __init__(self, num_relations, hidden_dim, out_channels=1, num_layers=3):
+        super(RGCN, self).__init__()
+
+        self.embedding_dim = hidden_dim
+        self.num_layers = num_layers
+
+        self.conv = []
+
+        # Define R-GCN layers
+        for layer in range(num_layers - 1):
+            self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=hidden_dim, num_relations=num_relations, num_bases=2))
+        
+        self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=out_channels, num_relations=num_relations, num_bases=2))
+    def forward(self, x, edge_index, edge_type):
+
+        # R-GCN layers
+        for layer in range(self.num_layers):
+            x = self.conv[layer](x, edge_index, edge_type)
+        return x
 
 class DiffusionOrderingNetwork(nn.Module):
     '''
@@ -34,29 +56,21 @@ class DiffusionOrderingNetwork(nn.Module):
         # add positional encodings into node features
         self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=hidden_dim)
 
-        self.gat = GAT(
-            in_channels=hidden_dim,
-            out_channels=out_channels,
-            hidden_channels=hidden_dim * num_heads,
-            num_layers=num_layers,
-            dropout=0,
-            heads=hidden_dim,
-            residual=True
-        )
-        # self.rgcn = RGCNConv(in_channels=node_feature_dim,
-        #                 out_channels=node_feature_dim,
-        #                 num_relations=num_edge_types,
-        #                 num_bases=30,
-        #                 num_blocks=1,
-        #                 aggr='mean',
-        #                 root_weight=True,
-        #                 bias=True)
-
-        self.mlp = nn.Sequential(Linear(hidden_dim, hidden_dim),
-                                    ReLU(),
-                                    Linear(hidden_dim, hidden_dim),
-                                    ReLU(),
-                                    Linear(hidden_dim, out_channels))
+        # self.gat = GAT(
+        #     in_channels=hidden_dim,
+        #     out_channels=out_channels,
+        #     hidden_channels=hidden_dim * num_heads,
+        #     num_layers=num_layers,
+        #     dropout=0,
+        #     heads=hidden_dim,
+        #     residual=True
+        # )
+        
+        # Create an instance of the RGCN model
+        self.gat = RGCN(num_relations=num_edge_types,
+                        hidden_dim=self.hidden_dim,
+                        out_channels=self.out_channels,
+                        num_layers=num_layers)
         
         # initialize positional encodings
         MAX_NODES = 10000
@@ -82,22 +96,21 @@ class DiffusionOrderingNetwork(nn.Module):
         node_order: list of absorbed nodes so far
         '''
         # list of not absorbed nodes (G.x.shape[0], except for nodes in node_order)
-        not_masked = torch.tensor([node for node in range(G.x.shape[0]) if node not in node_order], device=self.device)
+        unmasked = torch.tensor([node for node in range(G.x.shape[0]) if node not in node_order], device=self.device)
 
         h = self.embedding(G.x.squeeze().long().to(self.device))
 
-        h = self.gat(h, G.edge_index.long().to(self.device), edge_attr=G.edge_attr.long().to(self.device))
+        h = self.gat(h, G.edge_index.long().to(self.device), G.edge_attr.long().to(self.device))
 
         # # Positional encoding
         for t in range(len(node_order)):
             h[node_order[t], :] += self.pe[t, :].to(self.device)
 
-        h_not_absorbed = h[not_masked, :]
+        h_not_absorbed = h[unmasked, :]
 
         # softmax: h over h_not_absorbed
+        # make sure values are positive and sum to 1 (for unmasked nodes)
         h = torch.exp(h) / torch.sum(torch.exp(h_not_absorbed), dim=0)
-        # make sure values are positive and sum to 1
-        h = torch.softmax(h, dim=0)
         return h  # outputs probabilities for a categorical distribution over nodes
     
     
