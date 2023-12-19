@@ -106,11 +106,13 @@ class DiffusionOrderingNetwork(nn.Module):
         for t in range(len(node_order)):
             h[node_order[t], :] += self.pe[t, :].to(self.device)
 
-        h_not_absorbed = h[unmasked, :]
-
-        # softmax: h over h_not_absorbed
-        # make sure values are positive and sum to 1 (for unmasked nodes)
-        h = torch.exp(h) / torch.sum(torch.exp(h_not_absorbed), dim=0)
+        if unmasked.numel() > 0:
+            h_not_absorbed = h[unmasked, :]
+            # softmax: h over h_not_absorbed
+            # make sure values are positive and sum to 1 (for unmasked nodes)
+            h = torch.exp(h) / torch.sum(torch.exp(h_not_absorbed), dim=0)
+        else:
+            h = torch.exp(h) / torch.sum(torch.exp(h), dim=0)
         return h  # outputs probabilities for a categorical distribution over nodes
     
     

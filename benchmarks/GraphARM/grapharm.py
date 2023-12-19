@@ -131,7 +131,7 @@ class GraphARM(nn.Module):
                             # predict node and edge type distributions
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
 
-                            w_k = self.diffusion_ordering_network(G_0, node_order[:t])[node_order[k]]
+                            w_k = self.diffusion_ordering_network(G_0, node_order[t+1:])[node_order[k]]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
                             loss = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
@@ -174,7 +174,7 @@ class GraphARM(nn.Module):
                             node_type_probs = node_type_probs.detach()
                             edge_type_probs = edge_type_probs.detach()
 
-                            w_k = self.diffusion_ordering_network(G_0, node_order[:t])[node_order[k]]
+                            w_k = self.diffusion_ordering_network(G_0, node_order[t+1:])[node_order[k]]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
                             reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M)
