@@ -89,3 +89,6 @@ multirun/
 
 # Model weights
 weights/
+
+# Archive files
+archive/
