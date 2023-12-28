@@ -1,0 +1,41 @@
+num_episodes: 5
+output_dir: ./output
+
+# Environment
+obs_dim: 6
+action_dim: 6
+pred_horizon: 5
+obs_horizon: 1
+action_horizon: 1
+max_steps: 1000
+
+obs_keys: &obs_keys ['joint_values', 'joint_velocities']
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  env:
+    _target_: imitation.env.pybullet.se2_envs.robot_se2_wrapper.RobotSe2EnvWrapper
+    num_obs: 2
+    start_pose: [1.0, 0.0, 0.0] # TODO use this!
+    target_pose: [0.0, 1.0, 0.0]
+
+policy:
+  _target_: imitation.policy.vae_policy.VAEPolicy
+  action_dim: ${action_dim}
+  model:
+    _target_: imitation.model.vae.VAE
+    input_dim: ${eval:'${action_dim}*${pred_horizon}'}
+    hidden_dims: [128, 32, 16, 8]
+    latent_dim: 4
+  env: ${env_runner.env}
+  dataset:
+    _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
+    dataset_path: ./data/trajs.hdf5
+    obs_keys: *obs_keys
+    pred_horizon: ${pred_horizon}
+  ckpt_path: ./weights/se2_vae_test.pt
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

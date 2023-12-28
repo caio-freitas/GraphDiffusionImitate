@@ -1,0 +1,40 @@
+
+task_name: &task_name lift_graph
+dataset_type: &dataset_type ph
+dataset_path: &dataset_path ./data/lift/${task.dataset_type}/low_dim_v141.hdf5
+
+
+obs_dim: 14
+action_dim: 9
+
+
+obs_keys: &obs_keys ['robot0_joint_pos', 'object']
+action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel']
+object_state_keys: &object_state_keys ['cube_pos']
+
+object_state_sizes: &object_state_sizes [
+  {name: "cube_pos", size: 3},
+  {name: "cube_quat", size: 4},
+  {name: "gripper_to_cube_pos", size: 3},
+]
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+  render: ${render}
+  env:
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    max_steps: ${max_steps}
+    task: "Lift"
+    robots: ["Panda"]
+dataset:
+  _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
+  dataset_path: ${task.dataset_path}
+  obs_keys: *obs_keys
+  action_keys: *action_keys
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  object_state_sizes: *object_state_sizes

@@ -1,0 +1,38 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+
+render: False
+
+output_dir: ./output
+max_steps: 5000
+
+
+pred_horizon: 16
+obs_horizon: 2
+action_horizon: 8
+
+
+# Training parameters
+num_epochs: 100
+seed: 0
+model_path: ./weights/${task.task_name}_diffusion_last.pt
+
+
+env_runner: ${task.env_runner}
+
+
+policy:
+  _target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy
+  obs_dim: ${task.obs_dim}
+  action_dim: ${task.action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  num_diffusion_iters: 100
+  dataset: ${task.dataset}
+  ckpt_path: ${model_path}
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
