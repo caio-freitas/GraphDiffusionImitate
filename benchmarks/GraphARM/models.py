@@ -10,9 +10,9 @@ from torch_geometric.nn import MessagePassing
 
 
 class RGCN(nn.Module):
-    def __init__(self, num_relations, hidden_dim, out_channels=1, num_layers=3):
+    def __init__(self, num_relations, hidden_dim, out_channels=1, num_layers=3, device='cpu'):
         super(RGCN, self).__init__()
-
+        self.device = device
         self.embedding_dim = hidden_dim
         self.num_layers = num_layers
 
@@ -20,11 +20,15 @@ class RGCN(nn.Module):
 
         # Define R-GCN layers
         for layer in range(num_layers - 1):
-            self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=hidden_dim, num_relations=num_relations, num_bases=2))
+            self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=hidden_dim, num_relations=num_relations, num_bases=2).to(self.device))
         
-        self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=out_channels, num_relations=num_relations, num_bases=2))
+        self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=out_channels, num_relations=num_relations, num_bases=2).to(self.device))
+    
     def forward(self, x, edge_index, edge_type):
-
+        x = x.to(self.device)
+        edge_index = edge_index.to(self.device)
+        edge_type = edge_type.to(self.device)
+        
         # R-GCN layers
         for layer in range(self.num_layers):
             x = self.conv[layer](x, edge_index, edge_type)
@@ -54,7 +58,7 @@ class DiffusionOrderingNetwork(nn.Module):
         
 
         # add positional encodings into node features
-        self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=hidden_dim)
+        self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=hidden_dim).to(self.device)
 
         # self.gat = GAT(
         #     in_channels=hidden_dim,
@@ -70,11 +74,12 @@ class DiffusionOrderingNetwork(nn.Module):
         self.gat = RGCN(num_relations=num_edge_types,
                         hidden_dim=self.hidden_dim,
                         out_channels=self.out_channels,
-                        num_layers=num_layers)
+                        num_layers=num_layers,
+                        device=device).to(self.device)
         
         # initialize positional encodings
         MAX_NODES = 10000
-        self.pe = self.positionalencoding(MAX_NODES)
+        self.pe = self.positionalencoding(MAX_NODES).to(self.device)
 
 
     def positionalencoding(self, lengths):
@@ -171,31 +176,31 @@ class DenoisingNetwork(nn.Module):
         num_edge_types += 1 # add one for empty edge type
         self.K = K
         self.num_layers = num_layers
-        self.node_embedding = Linear(node_feature_dim, hidden_dim)
-        self.edge_embedding = Linear(edge_feature_dim, hidden_dim)
+        self.node_embedding = Linear(node_feature_dim, hidden_dim).to(self.device)
+        self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
 
         self.layers = nn.ModuleList()
         for i in range(num_layers):
-            self.layers.append(MPLayer(hidden_dim, hidden_dim))
+            self.layers.append(MPLayer(hidden_dim, hidden_dim)).to(self.device)
 
         self.mlp_alpha = nn.Sequential(Linear(3*hidden_dim, hidden_dim),
                                        nn.ReLU(),
-                                       Linear(hidden_dim, self.K))
+                                       Linear(hidden_dim, self.K)).to(self.device)
         
         self.node_pred_layer = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
                                        nn.ReLU(),
-                                       Linear(hidden_dim, num_node_types))
+                                       Linear(hidden_dim, num_node_types)).to(self.device)
         
         self.edge_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
                                        nn.ReLU(),
-                                       Linear(hidden_dim, num_edge_types*K))
+                                       Linear(hidden_dim, num_edge_types*K)).to(self.device)
 
 
         
     def forward(self, x, edge_index, edge_attr, v_t=None):
         # make sure x and edge_attr are of type float, for the MLPs
-        x = x.float()
-        edge_attr = edge_attr.float()
+        x = x.float().to(self.device)
+        edge_attr = edge_attr.float().to(self.device)
 
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
