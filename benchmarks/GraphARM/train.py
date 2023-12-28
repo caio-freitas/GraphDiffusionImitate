@@ -10,6 +10,9 @@ from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwor
 from benchmarks.GraphARM.utils import NodeMasking
 from benchmarks.GraphARM.grapharm import GraphARM
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device {device}")
+
 # instanciate the dataset
 dataset = ZINC(root='~/workspace/GraphDiffusionImitate/data/ZINC', transform=None, pre_transform=None)
 
@@ -17,7 +20,8 @@ diff_ord_net = DiffusionOrderingNetwork(node_feature_dim=1,
                                         num_node_types=dataset.x.unique().shape[0],
                                         num_edge_types=dataset.edge_attr.unique().shape[0],
                                         num_layers=3,
-                                        out_channels=1)
+                                        out_channels=1,
+                                        device=device)
 
 masker = NodeMasking(dataset)
 
@@ -27,8 +31,9 @@ denoising_net = DenoisingNetwork(
     edge_feature_dim=dataset.num_edge_features,
     num_node_types=dataset.x.unique().shape[0],
     num_edge_types=dataset.edge_attr.unique().shape[0],
-    num_layers=7
+    num_layers=7,
     # hidden_dim=32,
+    device=device
 )
 
 
@@ -47,8 +52,6 @@ wandb.init(
 
 torch.autograd.set_detect_anomaly(True)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using device {device}")
 
 grapharm = GraphARM(
     dataset=dataset,
