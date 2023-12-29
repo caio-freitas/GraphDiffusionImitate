@@ -156,11 +156,8 @@ class DiffusionUnet1DPolicy(BasePolicy):
         action_pred = unnormalize_data(naction, stats=self.stats['action'])
 
         # action here is an array with length pred_horizon
-
         # only take action_horizon number of actions
-        start = self.obs_horizon - 1
-        end = start + self.action_horizon
-        action = action_pred[start:end,:]
+        action = action_pred[:self.action_horizon,:]
         # (action_horizon, action_dim)
         return action # TODO limit this in runner
 
