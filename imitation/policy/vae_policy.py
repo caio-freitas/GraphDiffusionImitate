@@ -3,7 +3,7 @@ from torch import nn
 
 from imitation.policy.base_policy import BasePolicy
 from imitation.model.mlp import MLPNet
-from imitation.dataset.pusht_state_dataset import PushTStateDataset
+
 
 import logging
 import wandb
@@ -22,17 +22,11 @@ class VAEPolicy(BasePolicy):
                     env,
                     model: nn.Module,
                     action_dim: int,
-                    dataset = PushTStateDataset(
-                        dataset_path='./pusht_cchi_v7_replay.zarr.zip',
-                        pred_horizon=1,
-                        obs_horizon=1,
-                        action_horizon=1,
-                    ),
+                    dataset = [],
                     ckpt_path=None):
         super().__init__(env)
         self.env = env
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.dataset = dataset
         self.pred_horizon = self.dataset.pred_horizon
         self.action_dim = action_dim
