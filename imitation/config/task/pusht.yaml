@@ -1,0 +1,25 @@
+
+
+task_name: &task_name pusht
+dataset_path: &dataset_path ./data/pusht_cchi_v7_replay.zarr.zip
+
+obs_dim: 5
+action_dim: 2
+
+
+env_runner: 
+  _target_: imitation.env_runner.pusht_diffusion_runner.PushtDiffusionRunner
+  output_dir: ${output_dir}
+  obs_dim: ${task.obs_dim}
+  action_dim: ${task.action_dim}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  max_steps: ${max_steps}
+
+dataset:
+    _target_: imitation.dataset.pusht_state_dataset.PushTStateDataset
+    dataset_path: ${task.dataset_path}
+    pred_horizon: ${pred_horizon}
+    obs_horizon: ${obs_horizon}
+    action_horizon: ${action_horizon}

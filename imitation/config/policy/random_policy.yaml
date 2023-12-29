@@ -1,0 +1,2 @@
+_target_: imitation.policy.random_policy.RandomPolicy
+env: ${task.env_runner.env}

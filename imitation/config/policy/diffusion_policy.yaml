@@ -1,0 +1,9 @@
+_target_: imitation.policy.diffusion_policy.DiffusionUnet1DPolicy
+obs_dim: ${task.obs_dim}
+action_dim: ${task.action_dim}
+pred_horizon: ${pred_horizon}
+obs_horizon: ${obs_horizon}
+action_horizon: ${action_horizon}
+num_diffusion_iters: 50
+dataset: ${task.dataset}
+ckpt_path: ./weights/diffusion_policy_${task.task_name}.pt # TODO parametrize name

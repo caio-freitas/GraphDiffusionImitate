@@ -1,0 +1,19 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+  - policy: mlp_policy
+
+render: True
+
+seed: 0
+num_episodes: 5
+max_steps: 5000
+output_dir: ./output
+
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
+
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
