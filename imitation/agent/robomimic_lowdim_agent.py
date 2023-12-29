@@ -5,7 +5,8 @@ class RobomimicLowdimAgent(BaseAgent):
     def __init__(self, policy):
         super().__init__(policy)
         self.env = policy.env
-    def act(self, observation, latent=None):
+        
+    def get_action(self, observation, latent=None):
         if latent is None:
             return self.policy.get_action(observation)
         else:
