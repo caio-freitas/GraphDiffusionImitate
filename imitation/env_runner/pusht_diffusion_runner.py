@@ -49,6 +49,8 @@ class PushtDiffusionRunner(BaseRunner):
         log.info(f"Model architecture: {agent.policy}")
         done = False
         step_idx = 0
+        rewards = []
+        info = {}
         for i in range(n_steps):
             B = 1
             # stack the last obs_horizon (2) number of observations
@@ -56,7 +58,7 @@ class PushtDiffusionRunner(BaseRunner):
             # normalize observation
 
             # run policy and get future actions 
-            action_pred = agent.act(obs_seq)
+            action_pred = agent.get_action(obs_seq)
 
             # only take action_horizon number of actions
             start = self.obs_horizon - 1
@@ -67,6 +69,8 @@ class PushtDiffusionRunner(BaseRunner):
             for j in range(len(action)):
                 # stepping env
                 obs, reward, done, info = self.env.step(action[j])
+                rewards.append(reward)
+
                 # save observations
                 self.obs_deque.append(obs)
                 # and reward/vis
@@ -85,3 +89,5 @@ class PushtDiffusionRunner(BaseRunner):
             time.sleep(0.01)
             if done:
                 break
+        self.env.close()
+        return rewards, info
