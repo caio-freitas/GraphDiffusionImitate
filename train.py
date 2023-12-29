@@ -10,7 +10,6 @@ import pathlib
 import hydra
 import wandb
 
-from imitation.env_runner.kitchen_pose_runner import KitchenPoseRunner
 from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
