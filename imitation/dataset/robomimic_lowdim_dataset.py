@@ -36,15 +36,16 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         self.indices = []
         self.data_at_indices = []
         # if indices file exists, load it
-        # TODO add dataset params to filename, so that it doesn't load wrong indices
-        if os.path.exists(dataset_path.replace(".hdf5", "_indices.npy")):
-            self.indices = np.load(dataset_path.replace(".hdf5", "_indices.npy"))
-            self.data_at_indices = np.load(dataset_path.replace(".hdf5", "_data_at_indices.npy"), allow_pickle=True)
+        index_file = dataset_path.replace(".hdf5", f"_indices_{obs_horizon}_{action_horizon}_{pred_horizon}.npy")
+        data_at_indices_file = dataset_path.replace(".hdf5", f"_data_at_indices_{obs_horizon}_{action_horizon}_{pred_horizon}.npy")
+        if os.path.exists(index_file):
+            self.indices = np.load(index_file)
+            self.data_at_indices = np.load(data_at_indices_file, allow_pickle=True)
         else:
             self.create_sample_indices()
             # keeps sample indices in memory, so that it doesn't need to be reloaded
-            np.save(dataset_path.replace(".hdf5", "_indices.npy"), self.indices)
-            np.save(dataset_path.replace(".hdf5", "_data_at_indices.npy"), self.data_at_indices)
+            np.save(index_file, self.indices)
+            np.save(data_at_indices_file, self.data_at_indices)
 
         self.stats = {}
         self.stats["obs"] = self.get_data_stats("obs")
