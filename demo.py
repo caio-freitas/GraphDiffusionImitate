@@ -22,8 +22,8 @@ def demo(cfg: DictConfig) -> None:
     log.info(OmegaConf.to_yaml(cfg))
     log.info("Running demo...")
     runner = hydra.utils.instantiate(cfg.env_runner)
-    policy = hydra.utils.instantiate(cfg.policy, env=runner.env)
-    agent = hydra.utils.instantiate(cfg.agent, policy=policy)
+    policy = hydra.utils.instantiate(cfg.policy)
+    agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
     runner.reset()
     runner.run(agent, cfg.max_steps)
 

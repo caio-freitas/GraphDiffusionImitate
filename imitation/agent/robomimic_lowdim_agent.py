@@ -2,9 +2,9 @@ from imitation.agent.base_agent import BaseAgent
 import torch
 
 class RobomimicLowdimAgent(BaseAgent):
-    def __init__(self, policy):
+    def __init__(self, policy, env):
         super().__init__(policy)
-        self.env = policy.env
+        self.env = env
         
     def get_action(self, observation, latent=None):
         if latent is None:

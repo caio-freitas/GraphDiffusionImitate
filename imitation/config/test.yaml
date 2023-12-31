@@ -17,3 +17,4 @@ action_horizon: 1
 
 agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
+  env: ${task.env_runner}
