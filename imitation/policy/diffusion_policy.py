@@ -33,7 +33,6 @@ def unnormalize_data(ndata, stats):
 
 class DiffusionUnet1DPolicy(BasePolicy):
     def __init__(self, 
-                    env,
                     obs_dim: int,
                     action_dim: int,
                     pred_horizon: int,
@@ -41,10 +40,10 @@ class DiffusionUnet1DPolicy(BasePolicy):
                     action_horizon: int,
                     num_diffusion_iters: int,
                     dataset: BaseLowdimDataset,
-                    ckpt_path= None):
-        super().__init__(env)
+                    ckpt_path= None,
+                    lr: float = 1e-4):
+        super().__init__()
         self.dataset = dataset
-        self.env = env
         self.obs_dim = obs_dim
         self.action_dim = action_dim
         self.ckpt_path = ckpt_path
@@ -53,10 +52,10 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
         self.num_diffusion_iters = num_diffusion_iters
+        self.lr = lr
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.device = torch.device("cpu")
-
+        log.info(f"Using device {self.device}")
         # create network object
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=self.action_dim,
@@ -82,7 +81,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
-            log.info('No pretrained weights given. ')
+            log.info('No pretrained weights given.')
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
             return
         if not os.path.isfile(ckpt_path):
@@ -192,7 +191,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.noise_pred_net.to(self.device)
         optimizer = torch.optim.AdamW(
             params=self.noise_pred_net.parameters(),
-            lr=1e-4, weight_decay=1e-6)
+            lr=self.lr, weight_decay=1e-6)
 
         # Cosine LR schedule with linear warmup
         lr_scheduler = get_scheduler(

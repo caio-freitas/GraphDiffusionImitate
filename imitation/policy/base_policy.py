@@ -3,7 +3,7 @@ from typing import Dict
 import torch
 
 class BasePolicy(ABC):
-    def __init__(self, env):
+    def __init__(self):
         pass
     @abstractmethod
     def get_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:

@@ -19,18 +19,22 @@ log = logging.getLogger(__name__)
 
 class VAEPolicy(BasePolicy):
     def __init__(self,
-                    env,
                     model: nn.Module,
                     action_dim: int,
+                    pred_horizon: int,
                     dataset = [],
-                    ckpt_path=None):
-        super().__init__(env)
-        self.env = env
+                    ckpt_path=None,
+                    lr: float = 1e-3):
+        super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        log.info(f"Using device {self.device}")
+
         self.dataset = dataset
-        self.pred_horizon = self.dataset.pred_horizon
+        self.pred_horizon = pred_horizon
         self.action_dim = action_dim
-        self.model = model
+        
+        self.model = model.to(self.device)
+        self.lr = lr
         log.info(f"Model: {self.model}")
         # load model from ckpt
         if ckpt_path is not None:
@@ -45,21 +49,17 @@ class VAEPolicy(BasePolicy):
             pin_memory=True,
             # don't kill worker process afte each epoch
             persistent_workers=True,
-            collate_fn=self.collate_fn
         )
 
         self.ckpt_path = ckpt_path
-        
-    def collate_fn(self, batch):
-        return {
-            'action': torch.stack([x['action'] for x in batch]),
-            'obs': torch.stack([x['obs'] for x in batch])
-        }
 
 
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
-        self.model.load_state_dict(torch.load(ckpt_path))
+        try:
+            self.model.load_state_dict(torch.load(ckpt_path))
+        except:
+            log.error(f"Could not load model from {ckpt_path}")
 
 
     def get_action(self, obs, latent=None):
@@ -83,7 +83,6 @@ class VAEPolicy(BasePolicy):
     def get_latent_space_dist(self):
         '''Get latent space distribution from dataset'''
         # set dataloader batch size to 1
-        # self.dataloader.batch_size = 1
         latents = []
         with tqdm(self.dataloader) as pbar:
             for nbatch in pbar:
@@ -118,7 +117,7 @@ class VAEPolicy(BasePolicy):
             torch.cuda.manual_seed(seed)
 
 
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # visualize data in batch
         batch = next(iter(self.dataloader))

@@ -15,7 +15,6 @@ log = logging.getLogger(__name__)
 
 class MLPPolicy(BasePolicy):
     def __init__(self,
-                    env,
                     model: nn.Module,
                     dataset,
                     obs_dim: int,
@@ -23,17 +22,21 @@ class MLPPolicy(BasePolicy):
                     pred_horizon: int,
                     obs_horizon: int,
                     action_horizon: int,
-                    ckpt_path=None):
-        super().__init__(env)
-        self.env = env # TODO remove
+                    ckpt_path=None,
+                    lr: float = 1e-3):
+        super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.device = torch.device("cpu")
+        log.info(f"Using device {self.device}")
+
         self.dataset = dataset
         self.obs_dim = obs_dim
         self.action_dim = action_dim
+
         self.pred_horizon = pred_horizon
         self.obs_horizon = obs_horizon
         self.action_horizon = action_horizon
+        self.lr = lr
+
         self.model = model.to(self.device)
         # load model from ckpt
         if ckpt_path is not None:
@@ -54,8 +57,10 @@ class MLPPolicy(BasePolicy):
         
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
-        self.model.load_state_dict(torch.load(ckpt_path))
-        
+        try:
+            self.model.load_state_dict(torch.load(ckpt_path))
+        except:
+            log.error(f"Could not load model from {ckpt_path}")    
 
     def get_action(self, obs):
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
@@ -73,7 +78,7 @@ class MLPPolicy(BasePolicy):
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
 
-        loss_fn = nn.MSELoss() # TODO change to abs loss
+        loss_fn = nn.MSELoss()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         # visualize data in batch

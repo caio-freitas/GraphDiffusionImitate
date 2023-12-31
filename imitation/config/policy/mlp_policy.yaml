@@ -13,6 +13,6 @@ model:
     _target_: torch.nn.LeakyReLU
   output_activation: 
     _target_: torch.nn.Identity
-env: ${task.env_runner.env}
 dataset: ${task.dataset}
 ckpt_path: ./weights/${task.task_name}_mlp_last.pt
+lr: 0.0001

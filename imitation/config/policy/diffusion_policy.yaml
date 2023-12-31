@@ -4,6 +4,7 @@ action_dim: ${task.action_dim}
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
-num_diffusion_iters: 50
+num_diffusion_iters: 100
 dataset: ${task.dataset}
 ckpt_path: ./weights/diffusion_policy_${task.task_name}.pt # TODO parametrize name
+lr: 0.00001

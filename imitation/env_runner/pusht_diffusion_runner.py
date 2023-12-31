@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 class PushtDiffusionRunner(BaseRunner):
     def __init__(self,
+                 env: PushTEnv,
                  output_dir: str,
                  obs_dim: int,
                  action_dim: int,
@@ -32,7 +33,7 @@ class PushtDiffusionRunner(BaseRunner):
         self.obs_horizon    = obs_horizon
         self.action_horizon = action_horizon
         self.max_steps      = max_steps
-        self.env = PushTEnv()
+        self.env = env
         self.obs = self.env.reset()
 
         # keep a queue of last 2 steps of observations (obs_horizon)
