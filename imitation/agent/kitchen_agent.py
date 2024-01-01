@@ -4,7 +4,7 @@ class KitchenAgent(BaseAgent):
     def __init__(self, policy):
         super().__init__(policy)
 
-    def act(self, observation):
+    def get_action(self, observation):
         return self.policy.get_action(observation)
     
     def reset(self):

@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 class PushtDiffusionRunner(BaseRunner):
     def __init__(self,
+                 env: PushTEnv,
                  output_dir: str,
                  obs_dim: int,
                  action_dim: int,
@@ -32,7 +33,7 @@ class PushtDiffusionRunner(BaseRunner):
         self.obs_horizon    = obs_horizon
         self.action_horizon = action_horizon
         self.max_steps      = max_steps
-        self.env = PushTEnv()
+        self.env = env
         self.obs = self.env.reset()
 
         # keep a queue of last 2 steps of observations (obs_horizon)
@@ -49,6 +50,8 @@ class PushtDiffusionRunner(BaseRunner):
         log.info(f"Model architecture: {agent.policy}")
         done = False
         step_idx = 0
+        rewards = []
+        info = {}
         for i in range(n_steps):
             B = 1
             # stack the last obs_horizon (2) number of observations
@@ -56,7 +59,7 @@ class PushtDiffusionRunner(BaseRunner):
             # normalize observation
 
             # run policy and get future actions 
-            action_pred = agent.act(obs_seq)
+            action_pred = agent.get_action(obs_seq)
 
             # only take action_horizon number of actions
             start = self.obs_horizon - 1
@@ -67,6 +70,8 @@ class PushtDiffusionRunner(BaseRunner):
             for j in range(len(action)):
                 # stepping env
                 obs, reward, done, info = self.env.step(action[j])
+                rewards.append(reward)
+
                 # save observations
                 self.obs_deque.append(obs)
                 # and reward/vis
@@ -85,3 +90,5 @@ class PushtDiffusionRunner(BaseRunner):
             time.sleep(0.01)
             if done:
                 break
+        self.env.close()
+        return rewards, info

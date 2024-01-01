@@ -1,0 +1,4 @@
+_target_: imitation.policy.random_policy.RandomPolicy
+action_dim: ${task.action_dim}
+pred_horizon: ${pred_horizon}
+lr: 0

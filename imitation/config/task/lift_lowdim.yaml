@@ -3,6 +3,7 @@ task_name: &task_name lift
 dataset_type: &dataset_type ph
 dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
 
+max_steps: 500
 
 obs_dim: 40
 action_dim: 9
@@ -21,7 +22,7 @@ env_runner:
   render: ${render}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-    max_steps: ${max_steps}
+    max_steps: ${task.max_steps}
     task: "Lift"
     robots: ["Panda"]
 dataset:

@@ -1,0 +1,20 @@
+num_episodes: 2
+max_steps: 1000
+output_dir: ./output
+
+action_horizon: 1
+obs_horizon: 1
+
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  env:
+    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+policy:
+  _target_: imitation.policy.random_policy.RandomPolicy
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

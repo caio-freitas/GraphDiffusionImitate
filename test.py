@@ -16,7 +16,7 @@ OmegaConf.register_new_resolver("eval", eval)
 @hydra.main(
         version_base=None,
         config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
-        config_name="test_pusht_diffusion"
+        config_name="test"
         )
 def test(cfg):
     print(OmegaConf.to_yaml(cfg))
@@ -24,9 +24,9 @@ def test(cfg):
     # instanciate environment runner from cfg file
     runner = hydra.utils.instantiate(cfg.task.env_runner)
     # instanciate policy from cfg file
-    policy = hydra.utils.instantiate(cfg.policy, env=runner.env)
+    policy = hydra.utils.instantiate(cfg.policy)
     # instanciate agent from policy
-    agent = hydra.utils.instantiate(cfg.agent, policy=policy)
+    agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
 
     # run policy in environment
     for i in range(cfg.num_episodes):

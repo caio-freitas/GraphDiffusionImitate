@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from imitation.policy.base_policy import BasePolicy
 from gym.spaces import Space
-
+from typing import List
 
 class BaseAgent(ABC):
     '''
@@ -11,11 +11,11 @@ class BaseAgent(ABC):
         self.policy = policy
     
     @abstractmethod
-    def act(self, observation) -> Space:
+    def get_action(self, observation) -> Space:
         '''
         Action is a gym.spaces.Space object.
         '''
-        raise NotImplementedError()
+        return self.policy.get_action(observation)
     
 
     @abstractmethod

@@ -1,0 +1,19 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+  - policy: mlp_policy
+
+output_dir: ./output
+
+pred_horizon: 4
+obs_horizon: 1
+action_horizon: 1
+
+# Training parameters
+num_epochs: 1000
+seed: 0
+
+env_runner: ${task.env_runner}
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent

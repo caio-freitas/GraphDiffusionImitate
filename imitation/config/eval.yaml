@@ -1,0 +1,25 @@
+defaults:
+  - _self_
+  - task: lift_lowdim
+  - policy: mlp_policy
+
+render: True
+
+num_episodes: 20
+max_steps: 500
+output_dir: ./output
+
+
+pred_horizon: 1
+action_horizon: 1
+obs_horizon: 1
+
+
+env_runner: ${task.env_runner}
+
+
+seed: 0
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
+  env: ${task.env_runner}
