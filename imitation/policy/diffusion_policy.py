@@ -41,9 +41,11 @@ class DiffusionUnet1DPolicy(BasePolicy):
                     num_diffusion_iters: int,
                     dataset: BaseLowdimDataset,
                     ckpt_path= None,
-                    lr: float = 1e-4):
+                    lr: float = 1e-4,
+                    batch_size: int = 256):
         super().__init__()
         self.dataset = dataset
+        self.batch_size = batch_size
         self.obs_dim = obs_dim
         self.action_dim = action_dim
         self.ckpt_path = ckpt_path
@@ -101,7 +103,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         # create dataloader
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
-            batch_size=256, # TODO add to parameter file
+            batch_size=self.batch_size,
             num_workers=1,
             shuffle=True,
             # accelerate cpu-gpu transfer
