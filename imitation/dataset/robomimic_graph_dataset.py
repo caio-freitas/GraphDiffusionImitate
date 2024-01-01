@@ -20,7 +20,9 @@ class RobomimicGraphDataset(InMemoryDataset):
                  object_state_keys,
                  pred_horizon=1,
                  obs_horizon=1,
-                 action_horizon=1):
+                 action_horizon=1,
+                 mode="joint-space"):
+        self.mode = mode
         self.obs_keys = obs_keys
         self.action_keys = action_keys
         self.pred_horizon = pred_horizon        #|
@@ -63,7 +65,19 @@ class RobomimicGraphDataset(InMemoryDataset):
     
     def _get_node_feats(self, data, idx):
         node_feats = []
-        joint_positions = self._calculate_joints_positions([*data["robot0_joint_vel"][idx], *data["robot0_gripper_qpos"][idx]])
+        for obs_key in self.obs_keys:
+            stacked_obs = torch.tensor([])
+            for obs_key in self.obs_keys:
+                stacked_obs = torch.cat((stacked_obs, torch.tensor(data[obs_key][idx])), dim=0)
+        if self.mode == "task-space":
+            joint_positions = self._calculate_joints_positions([*data["robot0_joint_pos"][idx], *data["robot0_gripper_qpos"][idx]])
+        elif self.mode == "joint-space":
+            joint_positions = stacked_obs.repeat(3,1).transpose(0,1)
+            # duplicate dimensions for each joint, to match task-space - since objects are going to be represented in task-space
+            # result should be of shape (7,3)
+        else:
+            raise NotImplementedError
+
         for obs_key in self.obs_keys:
             node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx][0]))
         for dim in range(3):
