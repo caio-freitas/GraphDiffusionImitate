@@ -16,7 +16,7 @@ env_runner:
   obs_horizon: ${obs_horizon}
   render: ${render}
   env:
-    _target_: imitation.env.kitchen_pose.gym_kitchen_wrappers.KitchenPoseWrapper
+    _target_: imitation.env.gym_kitchen_wrappers.KitchenPoseWrapper
 
 
 # dataset:
