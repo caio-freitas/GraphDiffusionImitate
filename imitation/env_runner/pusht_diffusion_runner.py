@@ -36,7 +36,7 @@ class PushtDiffusionRunner(BaseRunner):
         self.env = env
         self.obs = self.env.reset()
 
-        # keep a queue of last 2 steps of observations (obs_horizon)
+        # keep a queue of last steps of observations (obs_horizon)
         self.obs_deque = collections.deque(
             [self.obs] * self.obs_horizon, maxlen=self.obs_horizon)
         
@@ -54,7 +54,7 @@ class PushtDiffusionRunner(BaseRunner):
         info = {}
         for i in range(n_steps):
             B = 1
-            # stack the last obs_horizon (2) number of observations
+            # stack the last obs_horizon number of observations
             obs_seq = np.stack(self.obs_deque)
             # normalize observation
 

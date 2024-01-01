@@ -21,7 +21,7 @@ class KitchenPoseWrapper(gym.Wrapper):
         qp = obs[0:9] 
         # Skip 9 to 18 because they are velocities
         obj_qp = obs[18:39]
-        return np.concatenate((qp, obj_qp, np.zeros(30)))
+        return np.concatenate((qp, obj_qp, np.zeros(30))) # to match observation space from diffusion policy dataset
 
     def step(self, action):
         # According to https://robotics.farama.org/envs/franka_kitchen/franka_kitchen/
@@ -30,7 +30,6 @@ class KitchenPoseWrapper(gym.Wrapper):
 
         reward = all[1]
         done = all[2]
-        # TODO check if "done" is in 2 or 3
         info = all[4]
         return obs, reward, done, info
 

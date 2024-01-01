@@ -99,7 +99,6 @@ class VAEPolicy(BasePolicy):
 
     def elbo_loss(self, x, x_hat, mean, logvar):
         '''Implement ELBO loss for VAE Policy'''
-        # is binary cross entropy the right distribution?
         # reconstruction_loss = nn.functional.cross_entropy(x_hat, x, reduction='mean')
         reconstruction_loss = nn.functional.mse_loss(x_hat, x)
 
