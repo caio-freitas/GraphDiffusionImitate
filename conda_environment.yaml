@@ -1,0 +1,36 @@
+name: imitation
+channels:
+  - pytorch
+  - pytorch3d
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.8
+  - pip
+  - hydra-core
+  - torchvision==0.15.1
+  - pip:
+    - pytorchvideo
+    - gymnasium==0.28.1
+    - gym
+    - robomimic
+    - diffusers
+    - zarr
+    - einops
+    - tqdm
+    - pybullet
+    - torch==2.0.0
+    - torch-geometric
+    - -e git+https://github.com/ARISE-Initiative/robosuite.git@v1.4.1#egg=robosuite
+    - mujoco-py
+    # for PushT environment
+    - pygame 
+    - pymunk
+    - shapely
+    - scikit-image
+    - wandb
+    # related work dependencies
+    - -e git+https://github.com/columbia-ai-robotics/diffusion_policy@main#egg=diffusion_policy
+    - -e git+https://github.com/anindex/stoch_gpmp@main#egg=stoch_gpmp
+    - -e git+https://github.com/anindex/torch_robotics@main#egg=torch_robotics
+    

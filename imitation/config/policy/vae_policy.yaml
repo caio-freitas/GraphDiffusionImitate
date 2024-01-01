@@ -1,0 +1,16 @@
+_target_: imitation.policy.vae_policy.VAEPolicy
+action_dim: ${task.action_dim}
+pred_horizon: ${pred_horizon}
+model:
+  _target_: imitation.model.vae.VAE
+  # input is action_dim*obs_horizon
+  input_dim: ${eval:'${task.action_dim}*${pred_horizon}'}
+  hidden_dims: [256, 128, 64]
+  latent_dim: 32
+  activation:
+    _target_: torch.nn.LeakyReLU
+  output_activation:
+    _target_: torch.nn.Identity
+dataset: ${task.dataset}
+ckpt_path: ./weights/${task.task_name}_vae_last.pt
+lr: 0.0001
