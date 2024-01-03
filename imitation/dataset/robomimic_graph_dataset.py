@@ -18,6 +18,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                  action_keys,
                  object_state_sizes,
                  object_state_keys,
+                 num_objects,
                  pred_horizon=1,
                  obs_horizon=1,
                  node_feature_dim = 8, # 3 for position, 4 for quaternion
@@ -39,6 +40,9 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.OBJECT_ROBOT_EDGE = 2
 
         self._test_dimentionality()
+
+        self.ROBOT_NODE_TYPE = 1
+        self.OBJECT_NODE_TYPE = -1
 
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
@@ -158,6 +162,9 @@ class RobomimicGraphDataset(InMemoryDataset):
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
 
+    def _get_edge_attrs(self, num_nodes):
+        # TODO edge attributes
+        return torch.zeros((num_nodes, num_nodes))
 
     def _get_edge_index(self, num_nodes):
         '''
