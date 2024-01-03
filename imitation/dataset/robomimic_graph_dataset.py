@@ -91,7 +91,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
         i = 0
         
-        # create tensor of same dimension as node_feats
+        # create tensor of same dimension return super()._get_node_feats(data, idx) as node_feats
         obj_state_tensor = torch.zeros((self.num_objects,node_feats.shape[1]- 1)) # -1 because of NODE_TYPE
         for object in range(self.num_objects):
             for obj_state in self.object_state_sizes:
@@ -160,3 +160,68 @@ class RobomimicGraphDataset(InMemoryDataset):
         data = torch.load(osp.join(self._processed_dir, f'data_{idx}.pt'))
         return data
     
+
+class MultiRobotGraphDataset(RobomimicGraphDataset):
+    '''
+    Class to use when robomimic dataset contains multiple robots (transport task).
+    '''
+    def __init__(self, 
+                 dataset_path,
+                 action_keys,
+                 object_state_sizes,
+                 object_state_keys,
+                 num_objects,
+                 robots,
+                 pred_horizon=1,
+                 obs_horizon=1,
+                 action_horizon=1,
+                 mode="joint-space"):
+        self.num_robots = len(robots)
+        super().__init__(dataset_path,
+                         action_keys,
+                         object_state_sizes,
+                         object_state_keys,
+                         num_objects,
+                         pred_horizon,
+                         obs_horizon,
+                         action_horizon,
+                         mode)
+        
+    def _get_node_feats(self, data, idx):
+        '''
+        Here, robot0_eef_pos, robot1_eef_pos, ... are used as node features.
+        '''
+        node_feats = []
+        if self.mode == "end-effector":
+            for i in range(self.num_robots):
+                node_feats.append(torch.tensor(data[f"robot{i}_eef_pos"][idx - 1:idx][0]))
+            node_feats = torch.stack(node_feats)
+        elif self.mode == "task-space":
+            for j in range(self.num_robots):
+                node_feats.append(self._calculate_joints_positions([*data[f"robot{j}_joint_pos"][idx], *data[f"robot{j}_gripper_qpos"][idx]]))
+            node_feats = torch.cat(node_feats)
+        elif self.mode == "joint-space":
+            for i in range(self.num_robots):
+                node_feats.append(torch.tensor(data[f"robot{i}_joint_pos"][idx - 1:idx][0]))
+            node_feats = torch.cat(node_feats)
+        else:
+            raise NotImplementedError
+
+        # all node features must be of same length
+        # node_feats = torch.stack(node_feats, dim=1)
+
+        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
+        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
+
+        i = 0
+        obj_state_tensor = torch.zeros((self.num_objects,node_feats.shape[1]- 1)) # -1 because of NODE_TYPE
+        for object in range(self.num_objects):
+            for obj_state in self.object_state_sizes:
+                if obj_state["name"] in self.object_state_keys:
+                    obj_state_tensor[object,i:i + obj_state["size"]] = torch.from_numpy(data["object"][idx - 1:idx][0][i:i + obj_state["size"]])
+                i += obj_state["size"]
+
+        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
+        obj_state_tensor = torch.cat((obj_state_tensor, self.OBJECT_NODE_TYPE*torch.ones((obj_state_tensor.shape[0],1))), dim=1)
+        node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
+        return node_feats

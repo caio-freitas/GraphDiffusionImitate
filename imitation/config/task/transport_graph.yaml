@@ -1,0 +1,71 @@
+
+task_name: &task_name transport
+dataset_type: &dataset_type ph
+dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
+
+max_steps: 1000
+
+obs_dim: 101
+action_dim: 18
+
+
+obs_keys: &obs_keys ['robot0_joint_pos_sin',
+                    'robot0_joint_pos_cos',
+                    'robot0_joint_vel',
+                    'robot0_eef_pos',
+                    'robot0_eef_quat',
+                    'robot0_gripper_qpos',
+                    'robot1_joint_pos_sin',
+                    'robot1_joint_pos_cos',
+                    'robot1_joint_vel',
+                    'robot1_eef_pos',
+                    'robot1_eef_quat',
+                    'robot1_gripper_qpos',
+                    'object']
+robots: &robots ["Panda", "Panda"]
+action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel', 'robot1_joint_vel', 'robot1_gripper_qvel']
+
+# describe all the objects in the scene
+object_state_sizes: &object_state_sizes [
+  {name: "payload_pos", size: 3},
+  {name: "payload_quat", size: 4},
+  {name: "trash_pos", size: 3},
+  {name: "trash_quat", size: 4},
+  {name: "lid_handle_pos", size: 3},
+  {name: "lid_handle_quat", size: 4},
+  {name: "target_bin_pos", size: 3},
+  {name: "trash_bin_pos", size: 4},
+  {name: "gripper0_to_payload", size: 3},
+  {name: "gripper0_to_lid_handle", size: 3},
+  {name: "gripper1_to_payload", size: 3},
+  {name: "gripper1_to_trash", size: 3},
+  {name: "payload_in_target_bin", size: 1},
+  {name: "trash_in_trash_bin", size: 1}
+]
+
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+  render: ${render}
+  env:
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    max_steps: ${task.max_steps}
+    task: "TwoArmTransport"
+    robots: *robots
+    
+
+dataset:
+  _target_: imitation.dataset.robomimic_graph_dataset.MultiRobotGraphDataset
+  dataset_path: ${task.dataset_path}
+  action_keys: *action_keys
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  object_state_sizes: *object_state_sizes
+  object_state_keys: ['payload_pos']
+  num_objects: 1
+  mode: "end-effector"
+  robots: *robots
