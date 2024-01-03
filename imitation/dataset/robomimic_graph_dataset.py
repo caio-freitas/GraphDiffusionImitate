@@ -65,35 +65,39 @@ class RobomimicGraphDataset(InMemoryDataset):
     
     def _get_node_feats(self, data, idx):
         node_feats = []
-        for obs_key in self.obs_keys:
-            stacked_obs = torch.tensor([])
-            for obs_key in self.obs_keys:
-                stacked_obs = torch.cat((stacked_obs, torch.tensor(data[obs_key][idx])), dim=0)
-        if self.mode == "task-space":
-            joint_positions = self._calculate_joints_positions([*data["robot0_joint_pos"][idx], *data["robot0_gripper_qpos"][idx]])
-        elif self.mode == "joint-space":
-            joint_positions = stacked_obs.repeat(3,1).transpose(0,1)
-            # duplicate dimensions for each joint, to match task-space - since objects are going to be represented in task-space
-            # result should be of shape (7,3)
+        if self.mode == "end-effector":
+            node_feats = torch.tensor(data["robot0_eef_pos"][idx - self.obs_horizon:idx][0])
+            node_feats = node_feats.reshape(1,3)
         else:
-            raise NotImplementedError
+            for obs_key in self.obs_keys:
+                stacked_obs = torch.tensor([])
+                for obs_key in self.obs_keys:
+                    stacked_obs = torch.cat((stacked_obs, torch.tensor(data[obs_key][idx])), dim=0)
+            if self.mode == "task-space":
+                joint_positions = self._calculate_joints_positions([*data["robot0_joint_pos"][idx], *data["robot0_gripper_qpos"][idx]])
+            elif self.mode == "joint-space":
+                joint_positions = stacked_obs.repeat(3,1).transpose(0,1)
+                # duplicate dimensions for each joint, to match task-space - since objects are going to be represented in task-space
+                # result should be of shape (7,3)
+            else:
+                raise NotImplementedError
 
-        for obs_key in self.obs_keys:
-            node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx][0]))
-        for dim in range(3):
-            node_feats.append(joint_positions[:,dim])
-            # all node features must be of same length
+            for obs_key in self.obs_keys:
+                node_feats.append(torch.tensor(data[obs_key][idx - self.obs_horizon:idx][0]))
+            for dim in range(3):
+                node_feats.append(joint_positions[:,dim])
+                # all node features must be of same length
+            node_feats = torch.stack(node_feats, dim=1)
         NUM_OBJECTS = len(self.object_state_keys) # TODO this won't work with quaternions
         i = 0
         # create tensor of same dimension as node_feats
-        obj_state_tensor = torch.zeros((NUM_OBJECTS,len(node_feats)))
+        obj_state_tensor = torch.zeros((NUM_OBJECTS,node_feats.shape[1]))
         for object in range(NUM_OBJECTS):
             for obj_state in self.object_state_sizes:
                 if obj_state["name"] in self.object_state_keys:
                     obj_state_tensor[object,i:i + obj_state["size"]] = torch.from_numpy(data["object"][idx - self.obs_horizon:idx][0][i:i + obj_state["size"]])
                 i += obj_state["size"]
 
-        node_feats = torch.stack(node_feats, dim=1)
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
 
         # result must be of shape (num_nodes, num_node_feats)
