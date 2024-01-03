@@ -1,0 +1,49 @@
+
+task_name: &task_name square
+dataset_type: &dataset_type ph
+dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
+
+max_steps: 1000
+
+obs_dim: 44
+action_dim: 9
+
+
+obs_keys: &obs_keys ['robot0_eef_pos', 'object']
+action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel']
+
+# describe all the objects in the scene
+object_state_sizes: &object_state_sizes [
+  # ObjectDescription("world_pose_in_gripper", 3),
+  {name: "nut_pos", size: 3},
+  {name: "nut_quat", size: 4},
+  {name: "nut_to_eef_pos", size: 3},
+  {name: "nut_to_eef_quat", size: 4},
+  # ObjectDescription("nut_id", 1),
+]
+
+# describe the object state keys that are used for the graph
+object_state_keys: &object_state_keys ['nut_pos']
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+  render: ${render}
+  env:
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    max_steps: ${task.max_steps}
+    task: "NutAssemblySquare"
+    robots: ["Panda"]
+
+dataset:
+  _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
+  dataset_path: ${task.dataset_path}
+  action_keys: *action_keys
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
+  object_state_sizes: *object_state_sizes
+  num_objects: 1
+  mode: "end-effector"
