@@ -26,23 +26,29 @@ robots: &robots ["Panda", "Panda"]
 action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel', 'robot1_joint_vel', 'robot1_gripper_qvel']
 
 # describe all the objects in the scene
-object_state_sizes: &object_state_sizes [
-  {name: "payload_pos", size: 3},
-  {name: "payload_quat", size: 4},
-  {name: "trash_pos", size: 3},
-  {name: "trash_quat", size: 4},
-  {name: "lid_handle_pos", size: 3},
-  {name: "lid_handle_quat", size: 4},
-  {name: "target_bin_pos", size: 3},
-  {name: "trash_bin_pos", size: 4},
-  {name: "gripper0_to_payload", size: 3},
-  {name: "gripper0_to_lid_handle", size: 3},
-  {name: "gripper1_to_payload", size: 3},
-  {name: "gripper1_to_trash", size: 3},
-  {name: "payload_in_target_bin", size: 1},
-  {name: "trash_in_trash_bin", size: 1}
-]
+object_state_sizes: &object_state_sizes
+  payload_pos: 3
+  payload_quat: 4
+  trash_pos: 3
+  trash_quat: 4
+  lid_handle_pos: 3
+  lid_handle_quat: 4
+  target_bin_pos: 3
+  trash_bin_pos: 4
+  gripper0_to_payload: 3
+  gripper0_to_lid_handle: 3
+  gripper1_to_payload: 3
+  gripper1_to_trash: 3
+  payload_in_target_bin: 1
+  trash_in_trash_bin: 1
 
+object_state_keys: &object_state_keys 
+  payload: 
+    - payload_pos
+    - payload_quat
+  trash:
+    - trash_pos
+    - trash_quat
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
@@ -65,7 +71,7 @@ dataset:
   obs_horizon: ${obs_horizon}
   action_horizon: ${action_horizon}
   object_state_sizes: *object_state_sizes
-  object_state_keys: ['payload_pos']
+  object_state_keys: *object_state_keys
   num_objects: 1
   mode: "end-effector"
   robots: *robots

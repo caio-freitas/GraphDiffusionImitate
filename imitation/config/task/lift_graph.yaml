@@ -13,14 +13,15 @@ obs_keys: &obs_keys ['robot0_eef_pos', 'object']
 action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel']
 
 # describe all the objects in the scene
-object_state_sizes: &object_state_sizes [
-  {name: "cube_pos", size: 3},
-  {name: "cube_quat", size: 4},
-  {name: "gripper_to_cube_pos", size: 3},
-]
+object_state_sizes: &object_state_sizes
+  cube_pos: 3
+  cube_quat: 4
+  gripper_to_cube_pos: 3
 
 # describe the object state keys that are used for the graph
-object_state_keys: &object_state_keys ['cube_pos']
+object_state_keys: &object_state_keys 
+  cube_pos: 3
+  cube_quat: 4
 
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
