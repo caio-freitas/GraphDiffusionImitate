@@ -8,7 +8,7 @@ class NodeMasker:
         self.node_feature_dim = dataset[0].x.shape[1]
         # assert dataset[0].edge_attr.shape[1] == 1, f"Edge feature dim is not 1, got {dataset[0].edge_attr.shape[1]}"  # edge_feature_dim is 1, since edge_attr is just edge type
         self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset[0].edge_attr.unique())}
-        self.NODE_MASK = 1000
+        self.NODE_MASK = -100
         self.EMPTY_EDGE = 2
         self.EDGE_MASK = 3
         # add masks to node and edge types
