@@ -6,7 +6,7 @@ from tqdm import tqdm
 import torch.nn as nn
 import wandb
 
-from imitation.model.graph_diffusion import DiffusionOrderingNetwork, DenoisingNetwork
+from imitation.model.graph_diffusion import  DenoisingNetwork
 from imitation.utils.graph_diffusion import NodeMasker
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.optimization import get_scheduler
@@ -32,7 +32,7 @@ class GraphDiffusionPolicy(nn.Module):
         self.masker = NodeMasker(dataset)
         
 
-        self.optimizer = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-5)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
 
         # self.dataloader = torch.utils.data.DataLoader(
         #     self.dataset,
@@ -44,6 +44,13 @@ class GraphDiffusionPolicy(nn.Module):
         #     # don't kill worker process afte each epoch
         #     persistent_workers=True
         # )
+
+    def load_nets(self, ckpt_path):
+        '''
+        Load networks from checkpoint
+        '''
+        self.denoising_network.load_state_dict(ckpt_path)
+
 
     def generate_diffusion_trajectory(self, graph):
         '''
@@ -79,7 +86,31 @@ class GraphDiffusionPolicy(nn.Module):
         # edge types to idx
         graph = self.masker.idxify(graph)
         graph = self.masker.fully_connect(graph)
+        graph.x = graph.x.float()
+        graph.edge_attr = graph.edge_attr.long()
         return graph
+
+    def node_decay_ordering(self, graph):
+        '''
+        Returns node decay ordering
+        '''
+        return torch.arange(graph.x.shape[0]-1, -1, -1)
+
+    def vlb(self, G_0, edge_type_probs, node, node_order, t):
+        T = len(node_order)
+        n_i = G_0.x.shape[0]
+        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
+        edge_attrs_matrix = G_0.edge_attr.reshape(T, T)
+        original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
+        # calculate probability of edge type
+        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
+        log_p_edges = torch.sum(torch.log(p_edges))
+        # log_p_edges = torch.sum(torch.tensor([0]))
+        wandb.log({"target_edges_log_prob": log_p_edges})
+        # calculate loss
+        log_p_O_v =  log_p_edges
+        loss = -(n_i/T)*log_p_O_v # cumulative, to join (k) from all previously denoised nodes
+        return loss
 
     def train(self, dataset, num_epochs=100, model_path=None, seed=0):
         '''
@@ -99,25 +130,23 @@ class GraphDiffusionPolicy(nn.Module):
                 # predictions & loss
                 G_0 = diffusion_trajectory[0]
                 node_order = self.node_decay_ordering(G_0)
+                acc_loss = 0
+                self.optimizer.zero_grad()
+
                 for t in range(len(node_order)):
-                    for k in range(t+1):# until t
-                        G_pred = diffusion_trajectory[t+1].clone()                              
+                    G_pred = diffusion_trajectory[t+1].clone()                              
 
-                        # predict node and edge type distributions
-                        node_features, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
+                    # predict node and edge type distributions
+                    node_features, edge_type_probs = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float())
 
-                        w_k = self.diffusion_ordering_network(G_0, node_order[t+1:])[node_order[k]]
-                        w_k = w_k.detach()
-                        wandb.log({"target_node_ordering_prob": w_k.item()})
-                        # calculate loss relative to edge type distribution
-                        loss = self.vlb(G_0, edge_type_probs, w_k, node_order[k], node_order, t) # cumulative loss
-                        # mse loss for node features
-                        node_loss = self.node_feature_loss(node_features, G_pred.x[node_order[k]])
-                        wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
-                        loss += node_loss
-                        wandb.log({"loss": loss.item()})
+                    # calculate loss relative to edge type distribution
+                    loss = self.vlb(G_0, edge_type_probs, node_order[t], node_order, t) # cumulative loss
+                    # mse loss for node features
+                    node_loss = self.node_feature_loss(node_features, G_pred.x[node_order[t]])
+                    wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
+                    loss += node_loss
+                    wandb.log({"loss": loss.item()})
 
-                        acc_loss += loss.item()
-                        # backprop (accumulated gradients)
-                        loss.backward()
-                        pbar.set_description(f"Loss: {acc_loss:.4f}")
+                    acc_loss += loss.item()
+                    # backprop (accumulated gradients)
+                    loss.backward(retain_graph=True)

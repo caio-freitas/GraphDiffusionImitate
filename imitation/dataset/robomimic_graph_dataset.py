@@ -163,9 +163,8 @@ class RobomimicGraphDataset(InMemoryDataset):
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
 
-    def _get_edge_attrs(self, num_nodes):
-        # TODO edge attributes
-        return torch.zeros((num_nodes, num_nodes))
+    def _get_edge_attrs(self, edge_index):
+        return torch.ones((edge_index.shape[1])) # TODO edge attributes
 
     def _get_edge_index(self, num_nodes):
         '''
