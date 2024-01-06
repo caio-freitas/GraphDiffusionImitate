@@ -11,7 +11,6 @@ from torch_geometric.nn import MessagePassing
 
 
 
-
 class MPLayer(MessagePassing):
     '''
     Custom message passing layer for the GraphARM model
