@@ -1,11 +1,11 @@
 defaults:
   - _self_
-  - task: lift_lowdim
-  - policy: mlp_policy
+  - task: lift_graph
+  - policy: graph_diffusion_policy
 
 output_dir: ./output
 
-pred_horizon: 4
+pred_horizon: 1
 obs_horizon: 1
 action_horizon: 1
 
