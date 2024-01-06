@@ -153,7 +153,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
             
             for idx in range(episode_length - self.pred_horizon):
-                if idx - 1 < 0:
+                if idx - 1 < 0 or idx + self.pred_horizon > episode_length:
                     continue
                 data_raw = self.dataset_root["data"][key]["obs"]
                 node_feats = self._get_node_feats(data_raw, idx)
