@@ -6,11 +6,11 @@ class NodeMasker:
     def __init__(self, dataset):
         self.dataset = dataset
         self.node_feature_dim = dataset[0].x.shape[1]
-        assert dataset.edge_attr.shape[1] == 1, f"Edge feature dim is not 1, got {dataset.edge_attr.shape[1]}"  # edge_feature_dim is 1, since edge_attr is just edge type
-        self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset.edge_attr.unique())}
+        # assert dataset[0].edge_attr.shape[1] == 1, f"Edge feature dim is not 1, got {dataset[0].edge_attr.shape[1]}"  # edge_feature_dim is 1, since edge_attr is just edge type
+        self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset[0].edge_attr.unique())}
         self.NODE_MASK = 1000
-        self.EMPTY_EDGE = dataset[0].edge_attr.unique().shape[0]
-        self.EDGE_MASK = dataset[0].edge_attr.unique().shape[0] + 1
+        self.EMPTY_EDGE = 2
+        self.EDGE_MASK = 3
         # add masks to node and edge types
         self.edge_type_to_idx[self.EMPTY_EDGE] = len(self.edge_type_to_idx)
         self.edge_type_to_idx[self.EDGE_MASK] = len(self.edge_type_to_idx)
@@ -148,7 +148,7 @@ class NodeMasker:
         if keep_original_edges:
             # restore values of original edges
             for edge_attr, edge_index in zip(graph.edge_attr, graph.edge_index.T):
-                fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1]] = edge_attr
+                fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1] - 1] = edge_attr
 
         fully_connected.edge_index = torch.nonzero(adjacency_matrix).T
         return fully_connected

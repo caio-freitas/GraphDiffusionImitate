@@ -125,15 +125,14 @@ class RobomimicGraphDataset(InMemoryDataset):
         return node_feats
     
 
-    def _get_edge_attrs(self, num_nodes):
-        # TODO edge attributes
-        return torch.zeros((num_nodes, num_nodes))
+    def _get_edge_attrs(self, edge_index):
+        return torch.ones((edge_index.shape[1])) # TODO edge attributes
 
     def _get_edge_index(self, num_nodes):
         # Adjacency matrix must be converted to COO format
         # for now, all nodes connected to next node
         edge_index = []
-        for idx in range(num_nodes): # TODO connectivity of objects to robot
+        for idx in range(num_nodes - 1): # TODO connectivity of objects to robot
             edge_index.append([idx, idx+1])
 
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
@@ -158,7 +157,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                 data_raw = self.dataset_root["data"][key]["obs"]
                 node_feats = self._get_node_feats(data_raw, idx)
                 edge_index = self._get_edge_index(node_feats.shape[0])
-                edge_attrs = self._get_edge_attrs(node_feats.shape[0])
+                edge_attrs = self._get_edge_attrs(edge_index)
                 y = self._get_y(data_raw, idx)
 
                 data  = Data(x=node_feats,
