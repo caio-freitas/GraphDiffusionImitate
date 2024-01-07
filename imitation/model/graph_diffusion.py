@@ -78,6 +78,8 @@ class DenoisingNetwork(nn.Module):
         
         self.node_pred_layer = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
                                        nn.ReLU(),
+                                       Linear(hidden_dim, hidden_dim),
+                                        nn.ReLU(),
                                        Linear(hidden_dim, node_feature_dim)).to(self.device)
         
         self.edge_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
