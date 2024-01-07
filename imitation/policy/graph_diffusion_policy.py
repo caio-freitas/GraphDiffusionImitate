@@ -119,34 +119,36 @@ class GraphDiffusionPolicy(nn.Module):
         self.optimizer.zero_grad()
         self.denoising_network.train()
 
+        with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
+            for epoch in tepoch:
+                # batch loop
+                with tqdm(dataset, desc='Batch', leave=False) as tepoch:
+                    for nbatch in tepoch:
+                        print(nbatch)
+                        # preprocess graph
+                        graph = self.preprocess(nbatch)
+                        diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
+                        # predictions & loss
+                        G_0 = diffusion_trajectory[0]
+                        node_order = self.node_decay_ordering(G_0)
+                        acc_loss = 0
+                        self.optimizer.zero_grad()
 
-        # batch loop
-        with tqdm(dataset, desc='Batch', leave=False) as tepoch:
-            for nbatch in tepoch:
-                print(nbatch)
-                # preprocess graph
-                graph = self.preprocess(nbatch)
-                diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
-                # predictions & loss
-                G_0 = diffusion_trajectory[0]
-                node_order = self.node_decay_ordering(G_0)
-                acc_loss = 0
-                self.optimizer.zero_grad()
+                        for t in range(len(node_order)):
+                            G_pred = diffusion_trajectory[t+1].clone()                              
 
-                for t in range(len(node_order)):
-                    G_pred = diffusion_trajectory[t+1].clone()                              
+                            # predict node and edge type distributions
+                            node_features, edge_type_probs = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float())
 
-                    # predict node and edge type distributions
-                    node_features, edge_type_probs = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float())
+                            # calculate loss relative to edge type distribution
+                            loss = self.vlb(G_0, edge_type_probs, node_order[t], node_order, t) # cumulative loss
+                            # mse loss for node features
+                            node_loss = self.node_feature_loss(node_features, G_0.x[node_order[t]])
+                            wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
+                            loss += node_loss
+                            wandb.log({"loss": loss.item()})
 
-                    # calculate loss relative to edge type distribution
-                    loss = self.vlb(G_0, edge_type_probs, node_order[t], node_order, t) # cumulative loss
-                    # mse loss for node features
-                    node_loss = self.node_feature_loss(node_features, G_pred.x[node_order[t]])
-                    wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
-                    loss += node_loss
-                    wandb.log({"loss": loss.item()})
-
-                    acc_loss += loss.item()
-                    # backprop (accumulated gradients)
-                    loss.backward(retain_graph=True)
+                            acc_loss += loss.item()
+                            # backprop (accumulated gradients)
+                            loss.backward(retain_graph=True)
+                        self.optimizer.step()
