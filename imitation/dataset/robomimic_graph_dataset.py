@@ -1,7 +1,7 @@
 
 from typing import Callable, Optional
 from torch_geometric.data import Dataset, Data, InMemoryDataset
-from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
+from torch_robotics.torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
 import logging
 import h5py
 import os.path as osp
