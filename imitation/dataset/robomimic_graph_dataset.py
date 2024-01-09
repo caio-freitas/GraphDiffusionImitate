@@ -74,14 +74,15 @@ class RobomimicGraphDataset(InMemoryDataset):
 
         return torch.cat(joint_positions, dim=0)
 
-    @property
-    def raw_file_names(self):
-        return f"robomimic_graph_dataset_{self.root}.hdf5"
     
     @property
     def processed_file_names(self):
-        return f"robomimic_graph_dataset_{self.root}.pt"
-    
+        '''
+        List of files in the self._processed_dir directory that need to be found in order to skip processing
+        '''
+        names = [f"data_{i}.pt" for i in range(self.len())]
+        return names
+
     def _get_object_feats(self, data, t):
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
         obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim)) # -1 because of NODE_TYPE
@@ -165,16 +166,18 @@ class RobomimicGraphDataset(InMemoryDataset):
                              edge_attr=edge_attrs,
                              y=y)             
 
-                torch.save(data, osp.join(self._processed_dir, f'data_{idx_global}.pt'))
+                torch.save(data, osp.join(self.processed_dir, f'data_{idx_global}.pt'))
                 idx_global += 1
 
-        self.__len__ = idx_global
-
     def len(self):
-        return self.__len__
+        # calculate length of dataset based on self.dataset_root
+        length = 0
+        for key in self.dataset_keys:
+            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon - 1
+        return length
     
     def get(self, idx):
-        data = torch.load(osp.join(self._processed_dir, f'data_{idx}.pt'))
+        data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
         return data
     
 
