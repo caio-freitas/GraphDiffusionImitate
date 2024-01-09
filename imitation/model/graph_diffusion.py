@@ -88,12 +88,13 @@ class DenoisingNetwork(nn.Module):
 
 
         
-    def forward(self, x, edge_index, edge_attr, v_t=None):
+    def forward(self, x, edge_index, edge_attr, v_t=None, h_v=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
 
-        h_v = self.node_embedding(x)
+        if h_v is None: # use given node embeddings when available
+            h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
         
         for l in range(self.num_layers):
@@ -129,4 +130,4 @@ class DenoisingNetwork(nn.Module):
         
         p_e = p_e.to(self.device) 
 
-        return node_pred, p_e
+        return node_pred, p_e, h_v

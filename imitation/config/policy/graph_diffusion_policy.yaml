@@ -9,6 +9,6 @@ denoising_network:
   node_feature_dim: ${policy.node_feature_dim}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
-  num_layers: 5
+  num_layers: 7
   hidden_dim: 256
   K: 20
