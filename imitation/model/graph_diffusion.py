@@ -59,9 +59,12 @@ class DenoisingNetwork(nn.Module):
                 num_layers=5,
                 hidden_dim=256,
                 K=20,
-                device='cpu'):
+                device=None):
         super().__init__()
-        self.device = device
+        if device == None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device    
         num_edge_types += 1 # add one for empty edge type
         self.K = K
         self.num_layers = num_layers
@@ -92,6 +95,7 @@ class DenoisingNetwork(nn.Module):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
+        edge_index = edge_index.to(self.device)
 
         if h_v is None: # use given node embeddings when available
             h_v = self.node_embedding(x)

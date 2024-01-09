@@ -20,13 +20,16 @@ class GraphDiffusionPolicy(nn.Module):
                  denoising_network,
                  lr=1e-4,
                  ckpt_path=None,
-                 device='cpu'):
+                 device = None):
         super(GraphDiffusionPolicy, self).__init__()
+        if device == None:
+           self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
         self.dataset = dataset
-        self.device = device
         self.node_feature_dim = node_feature_dim
         self.num_edge_types = num_edge_types
-        self.denoising_network = denoising_network.to(self.device)
+        self.denoising_network = denoising_network
         # no need for diffusion ordering network
         self.node_feature_loss = nn.MSELoss()
         self.masker = NodeMasker(dataset)
@@ -129,7 +132,7 @@ class GraphDiffusionPolicy(nn.Module):
                         graph = self.preprocess(nbatch)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
                         # predictions & loss
-                        G_0 = diffusion_trajectory[0]
+                        G_0 = diffusion_trajectory[0].to(self.device)
                         node_order = self.node_decay_ordering(G_0)
                         acc_loss = 0
                         self.optimizer.zero_grad()
@@ -138,7 +141,7 @@ class GraphDiffusionPolicy(nn.Module):
                         _ ,_ , h_v = self.denoising_network(G_0.x.float(), G_0.edge_index, G_0.edge_attr.float())
                         # loop over nodes
                         for t in range(len(node_order)):
-                            G_pred = diffusion_trajectory[t+1].clone()                              
+                            G_pred = diffusion_trajectory[t+1].clone().to(self.device)                      
 
                             # predict node and edge type distributions
                             node_features, edge_type_probs, h_v = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), h_v = h_v[:G_pred.x.shape[0], :])
