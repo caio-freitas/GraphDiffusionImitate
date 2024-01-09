@@ -133,12 +133,15 @@ class GraphDiffusionPolicy(nn.Module):
                         node_order = self.node_decay_ordering(G_0)
                         acc_loss = 0
                         self.optimizer.zero_grad()
-
+                        
+                        # generate initial node embeddings
+                        _ ,_ , h_v = self.denoising_network(G_0.x.float(), G_0.edge_index, G_0.edge_attr.float())
+                        # loop over nodes
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone()                              
 
                             # predict node and edge type distributions
-                            node_features, edge_type_probs = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float())
+                            node_features, edge_type_probs, h_v = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), h_v = h_v[:G_pred.x.shape[0], :])
 
                             # calculate loss relative to edge type distribution
                             loss = self.vlb(G_0, edge_type_probs, node_order[t], node_order, t) # cumulative loss
