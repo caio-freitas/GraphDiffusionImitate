@@ -42,4 +42,4 @@ dataset:
   action_horizon: ${action_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys:  *object_state_keys
-  mode: "task-space"
+  mode: "task-joint-space"

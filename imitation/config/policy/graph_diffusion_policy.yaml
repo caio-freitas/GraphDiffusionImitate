@@ -1,6 +1,6 @@
 _target_: imitation.policy.graph_diffusion_policy.GraphDiffusionPolicy
 dataset: ${task.dataset}
-node_feature_dim: 8
+node_feature_dim: 9 # 9 when task-joint-space, 8 otherwise
 num_edge_types: 2
 lr: 0.0001
 ckpt_path: /home/caio/workspace/GraphDiffusionImitate/weights/lift_graph_diffusion_policy.pt

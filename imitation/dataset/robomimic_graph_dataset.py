@@ -1,7 +1,7 @@
 
 from typing import Callable, Optional
 from torch_geometric.data import Dataset, Data, InMemoryDataset
-from torch_robotics.torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
+from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
 import logging
 import h5py
 import os.path as osp
@@ -32,7 +32,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.object_state_sizes = object_state_sizes # can be taken from https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
         self.object_state_keys = object_state_keys
         self.num_objects = len(object_state_keys)
-        self._processed_dir = dataset_path.replace(".hdf5", "_processed")
+        self._processed_dir = dataset_path.replace(".hdf5", f"_{self.mode}_processed")
 
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
@@ -78,14 +78,18 @@ class RobomimicGraphDataset(InMemoryDataset):
     @property
     def processed_file_names(self):
         '''
-        List of files in the self._processed_dir directory that need to be found in order to skip processing
+        List of files in the self.processed_dir directory that need to be found in order to skip processing
         '''
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
     def _get_object_feats(self, data, t):
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim)) # -1 because of NODE_TYPE
+        if self.mode == "task-joint-space":
+            obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim + 1)) # extra dimension to match with joint position 
+        else:
+            obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
+
         for object, object_state_items in enumerate(self.object_state_keys.values()):
             i = 0
             for object_state in object_state_items:
@@ -112,9 +116,11 @@ class RobomimicGraphDataset(InMemoryDataset):
                     torch.tensor(data[f"robot0_joint_pos"][t - 1:t][0]).reshape(1,-1),
                     torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
                 node_feats = torch.cat(node_feats)
-            else:
-                raise NotImplementedError
-
+            elif self.mode == "task-joint-space":
+                node_feats = []
+                node_feats.append(torch.cat([self._calculate_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]),
+                                                torch.tensor(data["robot0_joint_pos"][t - 1:t]).reshape(-1,1)], dim=1))
+                node_feats = torch.cat(node_feats, dim=0)
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
         
@@ -227,6 +233,12 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
                     torch.tensor(data[f"robot{i}_joint_pos"][t - 1:t][0]).reshape(1,-1),
                     torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
             node_feats = torch.cat(node_feats)
+        elif self.mode == "task-joint-space":
+            for i in range(self.num_robots):
+                node_feats.append(torch.cat([self._calculate_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]]),
+                                                    torch.tensor(data[f"robot{i}_joint_pos"][t - 1:t]).reshape(-1,1)], dim=1))
+            node_feats = torch.cat(node_feats, dim=0)
+        
         else:
             raise NotImplementedError
 
