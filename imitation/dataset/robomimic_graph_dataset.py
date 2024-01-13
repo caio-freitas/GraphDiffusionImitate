@@ -35,6 +35,9 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
 
+        self.ROBOT_LINK_EDGE = 1
+        self.OBJECT_ROBOT_EDGE = 2
+
         self._test_dimentionality()
 
         self.dataset_root = h5py.File(dataset_path, 'r')
@@ -131,14 +134,37 @@ class RobomimicGraphDataset(InMemoryDataset):
     
 
     def _get_edge_attrs(self, edge_index):
-        return torch.ones((edge_index.shape[1])) # TODO edge attributes
+        '''
+        Attribute edge types to edges
+        - self.ROBOT_LINK_EDGE for edges between robot nodes
+        - self.OBJECT_ROBOT_EDGE for edges between robot and object nodes
+        '''
+        edge_attrs = []
+        num_nodes = torch.max(edge_index)
+        for edge in edge_index.t():
+            # num nodes - self.num_objects is the index of the last robot node
+            if edge[0] <= num_nodes - self.num_objects and edge[1] <= num_nodes - self.num_objects:
+                edge_attrs.append(self.ROBOT_LINK_EDGE)
+            # there are no object-to-object edges
+            else:
+                edge_attrs.append(self.OBJECT_ROBOT_EDGE)
+        return torch.tensor(edge_attrs, dtype=torch.long)
+
 
     def _get_edge_index(self, num_nodes):
-        # Adjacency matrix must be converted to COO format
-        # for now, all nodes connected to next node
+        '''
+        Returns edge index for graph.
+        - all robot nodes are connected to the previous robot node
+        - all object nodes are connected to the last robot node (end-effector)
+        '''
+        eef_idx = 6
         edge_index = []
-        for idx in range(num_nodes - 1): # TODO connectivity of objects to robot
+        for idx in range(eef_idx):
             edge_index.append([idx, idx+1])
+
+        # Connectivity of all other nodes to the last node of robot
+        for idx in range(eef_idx + 1, num_nodes):
+            edge_index.append([idx, eef_idx])
 
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
@@ -197,21 +223,22 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
                  robots,
                  pred_horizon=1,
                  obs_horizon=1,
-                 action_horizon=1,
                  node_feature_dim = 8,
                  mode="joint-space"):
         self.num_robots = len(robots)
+        self.eef_idx = [0, 7, 13]
         super().__init__(dataset_path=dataset_path,
                          action_keys=action_keys,
                          object_state_sizes=object_state_sizes,
                          object_state_keys=object_state_keys,
                          pred_horizon=pred_horizon,
                          obs_horizon=obs_horizon,
-                         action_horizon=action_horizon,
                          mode=mode,
                          node_feature_dim = node_feature_dim,
                          )
         
+
+
     def _get_node_feats(self, data, t):
         '''
         Here, robot0_eef_pos, robot1_eef_pos, ... are used as node features.
@@ -247,3 +274,39 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
 
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
         return node_feats
+    
+    def _get_edge_index(self, num_nodes):
+        '''
+        Returns edge index for graph.
+        - all robot nodes are connected to the previous robot node
+        - all object nodes are connected to the last robot node (end-effector)
+        '''
+        assert len(self.eef_idx) == self.num_robots + 1
+        edge_index = []
+
+        for id_robot in range(1, len(self.eef_idx)):
+            for idx in range(self.eef_idx[id_robot-1], self.eef_idx[id_robot]):
+                edge_index.append([idx, idx+1])
+            # Connectivity of all other nodes to the last node of all robots
+            for idx in range(self.eef_idx[self.num_robots] + 1, num_nodes):
+                edge_index.append([self.eef_idx[id_robot], idx])
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        return edge_index
+    
+    def _get_edge_attrs(self, edge_index):
+        '''
+        Attribute edge types to edges
+        - self.ROBOT_LINK_EDGE for edges between robot nodes
+        - self.OBJECT_ROBOT_EDGE for edges between robot and object nodes
+        '''
+        edge_attrs = []
+        num_nodes = torch.max(edge_index)
+        for edge in edge_index.t():
+            # num nodes - self.num_objects is the index of the last robot node
+            if edge[0] <= num_nodes - self.num_objects and edge[1] <= num_nodes - self.num_objects:
+                edge_attrs.append(self.ROBOT_LINK_EDGE)
+            # there are no object-to-object edges
+            else:
+                edge_attrs.append(self.OBJECT_ROBOT_EDGE)
+        return torch.tensor(edge_attrs, dtype=torch.long)
+        
