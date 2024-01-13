@@ -45,7 +45,6 @@ dataset:
   action_keys: *action_keys
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
-  action_horizon: ${action_horizon}
   object_state_sizes: *object_state_sizes
   num_objects: 1
   mode: "end-effector"
