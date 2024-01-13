@@ -164,7 +164,22 @@ class RobomimicGraphDataset(InMemoryDataset):
         return torch.tensor(edge_attrs, dtype=torch.long)
 
     def _get_edge_attrs(self, edge_index):
-        return torch.ones((edge_index.shape[1])) # TODO edge attributes
+        '''
+        Attribute edge types to edges
+        - self.ROBOT_LINK_EDGE for edges between robot nodes
+        - self.OBJECT_ROBOT_EDGE for edges between robot and object nodes
+        '''
+        edge_attrs = []
+        num_nodes = torch.max(edge_index)
+        for edge in edge_index.t():
+            # num nodes - self.num_objects is the index of the last robot node
+            if edge[0] <= num_nodes - self.num_objects and edge[1] <= num_nodes - self.num_objects:
+                edge_attrs.append(self.ROBOT_LINK_EDGE)
+            # there are no object-to-object edges
+            else:
+                edge_attrs.append(self.OBJECT_ROBOT_EDGE)
+        return torch.tensor(edge_attrs, dtype=torch.long)
+
 
     def _get_edge_index(self, num_nodes):
         '''
