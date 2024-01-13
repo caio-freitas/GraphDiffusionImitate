@@ -20,7 +20,6 @@ class RobomimicGraphDataset(InMemoryDataset):
                  object_state_keys,
                  pred_horizon=1,
                  obs_horizon=1,
-                 action_horizon=1,
                  node_feature_dim = 8, # 3 for position, 4 for quaternion
                  mode="joint-space"):
         self.mode = mode
@@ -28,7 +27,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.action_keys = action_keys
         self.pred_horizon = pred_horizon        #|
         self.obs_horizon = obs_horizon          #| TODO use horizons
-        self.action_horizon = action_horizon    #|
         self.object_state_sizes = object_state_sizes # can be taken from https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
         self.object_state_keys = object_state_keys
         self.num_objects = len(object_state_keys)
