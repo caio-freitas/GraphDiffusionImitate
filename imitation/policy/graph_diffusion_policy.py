@@ -55,6 +55,12 @@ class GraphDiffusionPolicy(nn.Module):
         self.denoising_network.load_state_dict(ckpt_path)
 
 
+    def save_nets(self, ckpt_path):
+        '''
+        Save networks to checkpoint
+        '''
+        torch.save(self.denoising_network.state_dict(), ckpt_path)
+
     def generate_diffusion_trajectory(self, graph):
         '''
         Generate a diffusion trajectory from graph
@@ -127,7 +133,6 @@ class GraphDiffusionPolicy(nn.Module):
                 # batch loop
                 with tqdm(dataset, desc='Batch', leave=False) as tepoch:
                     for nbatch in tepoch:
-                        print(nbatch)
                         # preprocess graph
                         graph = self.preprocess(nbatch)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
@@ -158,3 +163,4 @@ class GraphDiffusionPolicy(nn.Module):
                             # backprop (accumulated gradients)
                             loss.backward(retain_graph=True)
                         self.optimizer.step()
+                        self.save_nets(model_path)
