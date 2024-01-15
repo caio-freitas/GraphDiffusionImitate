@@ -132,6 +132,14 @@ class RobomimicGraphDataset(InMemoryDataset):
         # result must be of shape (num_nodes, num_node_feats)
         return node_feats
     
+    def _get_node_feats_horizon(self, data, idx):
+        '''
+        Calculate node features for self.obs_horizon time steps
+        '''
+        node_feats = []
+        for t in range(idx - self.obs_horizon + 1, idx + 1):
+            node_feats.append(self._get_node_feats(data, t))
+        return torch.stack(node_feats, dim=1)
 
     def _get_edge_attrs(self, edge_index):
         '''
@@ -183,10 +191,10 @@ class RobomimicGraphDataset(InMemoryDataset):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
             
             for idx in range(episode_length - self.pred_horizon):
-                if idx - 1 < 0 or idx + self.pred_horizon > episode_length:
+                if idx - self.obs_horizon <= 0 or idx + self.pred_horizon > episode_length:
                     continue
                 data_raw = self.dataset_root["data"][key]["obs"]
-                node_feats = self._get_node_feats(data_raw, idx)
+                node_feats = self._get_node_feats_horizon(data_raw, idx)
                 edge_index = self._get_edge_index(node_feats.shape[0])
                 edge_attrs = self._get_edge_attrs(edge_index)
                 y = self._get_y(data_raw, idx)
@@ -203,7 +211,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         # calculate length of dataset based on self.dataset_root
         length = 0
         for key in self.dataset_keys:
-            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon - 1
+            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon - self.obs_horizon - 1
         return length
     
     def get(self, idx):
