@@ -54,6 +54,7 @@ class MPLayer(MessagePassing):
 class DenoisingNetwork(nn.Module):
     def __init__(self,
                 node_feature_dim,
+                obs_horizon,
                 edge_feature_dim,
                 num_edge_types,
                 num_layers=5,
@@ -68,7 +69,9 @@ class DenoisingNetwork(nn.Module):
         num_edge_types += 1 # add one for empty edge type
         self.K = K
         self.num_layers = num_layers
-        self.node_embedding = Linear(node_feature_dim, hidden_dim).to(self.device)
+        self.node_feature_dim = node_feature_dim
+        self.obs_horizon = obs_horizon
+        self.node_embedding = Linear(node_feature_dim*obs_horizon, hidden_dim).to(self.device)
         self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
 
         self.layers = nn.ModuleList()
@@ -83,7 +86,7 @@ class DenoisingNetwork(nn.Module):
                                        nn.ReLU(),
                                        Linear(hidden_dim, hidden_dim),
                                         nn.ReLU(),
-                                       Linear(hidden_dim, node_feature_dim)).to(self.device)
+                                       Linear(hidden_dim, node_feature_dim*obs_horizon)).to(self.device)
         
         self.edge_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
                                        nn.ReLU(),
@@ -93,7 +96,7 @@ class DenoisingNetwork(nn.Module):
         
     def forward(self, x, edge_index, edge_attr, v_t=None, h_v=None):
         # make sure x and edge_attr are of type float, for the MLPs
-        x = x.float().to(self.device)
+        x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device)
         edge_index = edge_index.to(self.device)
 
@@ -112,15 +115,18 @@ class DenoisingNetwork(nn.Module):
         graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
-        # aggregate with torch mean pooling
-        node_pred = torch.mean(node_pred, dim=0) # TODO instead of mean, get only masked node to be unmasked
 
+        if v_t is None:
+            v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
+
+        
+        node_pred = node_pred[v_t]
+        node_pred = node_pred.reshape(-1, self.obs_horizon, self.node_feature_dim) # reshape to original shape
         
         # edge prediction follows a mixture of multinomial distribution, with
         # the Softmax(sum(mlp_alpha([graph_embedding, h_vi, h_vj])))
         alphas = torch.zeros(h_v.shape[0], self.K)
-        if v_t is None:
-            v_t = h_v.shape[0] - 1# node being masked, this assumes that the masked node is the last node in the graph
+        
         h_v_t = h_v[v_t, :].repeat(h_v.shape[0], 1)
 
         alphas = self.mlp_alpha(torch.cat([graph_embedding, h_v_t, h_v], dim=1))

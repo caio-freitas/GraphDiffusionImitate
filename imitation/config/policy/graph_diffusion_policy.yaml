@@ -7,6 +7,7 @@ ckpt_path: /home/caio/workspace/GraphDiffusionImitate/weights/lift_graph_diffusi
 denoising_network:
   _target_: imitation.model.graph_diffusion.DenoisingNetwork
   node_feature_dim: ${policy.node_feature_dim}
+  obs_horizon: ${obs_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
   num_layers: 7

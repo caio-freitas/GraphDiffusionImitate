@@ -6,7 +6,7 @@ defaults:
 output_dir: ./output
 
 pred_horizon: 1
-obs_horizon: 1
+obs_horizon: 6
 action_horizon: 1
 
 # Training parameters
