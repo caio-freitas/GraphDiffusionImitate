@@ -125,6 +125,10 @@ class GraphDiffusionPolicy(nn.Module):
         '''
         Train noise prediction model
         '''
+        try:
+            self.load_nets(model_path)
+        except:
+            pass
         self.optimizer.zero_grad()
         self.denoising_network.train()
 
@@ -154,7 +158,7 @@ class GraphDiffusionPolicy(nn.Module):
                             # calculate loss relative to edge type distribution
                             # loss = self.vlb(G_0, edge_type_probs, node_order[t], node_order, t) # cumulative loss
                             # mse loss for node features
-                            loss = self.node_feature_loss(node_features[node_order[t]], G_0.x[node_order[t]])
+                            loss = self.node_feature_loss(node_features, G_0.x[node_order[t]])
                             # wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
                             # loss += node_loss
                             wandb.log({"loss": loss.item()})
@@ -192,6 +196,5 @@ class GraphDiffusionPolicy(nn.Module):
 
         # predict node and edge type distributions
         node_features, edge_type_probs, h_v = self.denoising_network(obs.x.float(), obs.edge_index, obs.edge_attr.float())
-        obs.x = node_features.detach().cpu().numpy()
-        
-        return obs.x # return joint positions only
+        joint_values = node_features.detach().cpu().numpy()
+        return joint_values # return joint positions only
