@@ -1,7 +1,7 @@
 defaults:
   - _self_
-  - task: lift_lowdim
-  - policy: mlp_policy
+  - task: lift_graph
+  - policy: graph_diffusion_policy
 
 render: True
 
@@ -11,7 +11,7 @@ max_steps: 5000
 output_dir: ./output
 
 pred_horizon: 1
-obs_horizon: 1
+obs_horizon: 6
 action_horizon: 1
 
 

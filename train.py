@@ -37,11 +37,11 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=cfg.task.task_name,
         group=policy.__class__.__name__,
-        name=f"graph_diffusion_embeddings",
+        name=f"node-only_graph_diffusion_embeddings",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
-            "n_epochs": 10,
+            "n_epochs": 1000,
             "seed": cfg.seed,
             "lr": cfg.policy.lr,
             "episodes": len(policy.dataset),
@@ -52,7 +52,7 @@ def train(cfg: DictConfig) -> None:
     # train policy
 
     policy.train(dataset=policy.dataset,
-                 num_epochs=10,
+                 num_epochs=1000,
                  model_path=cfg.policy.ckpt_path,
                  seed=cfg.seed)
 

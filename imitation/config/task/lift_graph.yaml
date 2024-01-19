@@ -29,10 +29,13 @@ env_runner:
   obs_horizon: ${obs_horizon}
   render: ${render}
   env:
-    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
+    object_state_sizes: *object_state_sizes
+    object_state_keys:  *object_state_keys
     max_steps: ${task.max_steps}
     task: "Lift"
     robots: ["Panda"]
+    mode: ${task.dataset.mode}
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
   dataset_path: ${task.dataset_path}
@@ -41,4 +44,4 @@ dataset:
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys:  *object_state_keys
-  mode: "task-joint-space"
+  mode: "joint-space"
