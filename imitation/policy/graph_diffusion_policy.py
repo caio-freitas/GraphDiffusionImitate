@@ -125,6 +125,10 @@ class GraphDiffusionPolicy(nn.Module):
         '''
         Train noise prediction model
         '''
+        try:
+            self.load_nets(model_path)
+        except:
+            pass
         self.optimizer.zero_grad()
         self.denoising_network.train()
 
@@ -154,9 +158,9 @@ class GraphDiffusionPolicy(nn.Module):
                             # calculate loss relative to edge type distribution
                             loss = self.vlb(G_0, edge_type_probs, node_order[t], node_order, t) # cumulative loss
                             # mse loss for node features
-                            node_loss = self.node_feature_loss(node_features, G_0.x[node_order[t]])
-                            wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
-                            loss += node_loss
+                            loss = self.node_feature_loss(node_features, G_0.x[node_order[t]])
+                            # wandb.log({"vlb": loss.item(), "node_feature_loss": node_loss.item()})
+                            # loss += node_loss
                             wandb.log({"loss": loss.item()})
 
                             acc_loss += loss.item()
@@ -164,3 +168,33 @@ class GraphDiffusionPolicy(nn.Module):
                             loss.backward(retain_graph=True)
                         self.optimizer.step()
                         self.save_nets(model_path)
+                        wandb.log({"epoch_loss": acc_loss})
+
+
+    def get_action(self, obs):
+        '''
+        Get action from observation
+        '''
+        # append x, edge_index, edge_attr from all graphs in obs to single graph
+        assert len(obs) == self.dataset.obs_horizon
+        node_features = []
+        edge_index = []
+        edge_attr = []
+        for i in range(len(obs)):
+            node_features.append(obs[i].x)
+            edge_index.append(obs[i].edge_index)
+            edge_attr.append(obs[i].edge_attr)
+        node_features = torch.cat(node_features, dim=1)
+        edge_index = torch.cat(edge_index, dim=1)
+        edge_attr = torch.cat(edge_attr, dim=0)
+        obs = torch_geometric.data.Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
+
+        # preprocess obs
+        obs = self.preprocess(obs)
+        self.denoising_network.eval()
+
+
+        # predict node and edge type distributions
+        node_features, edge_type_probs, h_v = self.denoising_network(obs.x.float(), obs.edge_index, obs.edge_attr.float())
+        joint_values = node_features.detach().cpu().numpy()
+        return joint_values # return joint positions only
