@@ -43,7 +43,7 @@ def train(cfg: DictConfig) -> None:
         config={
             "policy": cfg.policy,
             "dataset_type": cfg.task.dataset_type,
-            "n_epochs": cfg.num_epochs,
+            "n_epochs": cfg.num_epochs00,
             "seed": cfg.seed,
             "lr": cfg.policy.lr,
             "episodes": len(policy.dataset),

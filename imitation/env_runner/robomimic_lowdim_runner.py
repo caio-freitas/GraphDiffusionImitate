@@ -66,12 +66,14 @@ class RobomimicEnvRunner(BaseRunner):
         rewards = []
         for i in range(n_steps):
             actions = agent.get_action(self.obs_deque)
-            
+            # Make sure the action is always [[...]]
+            if len(actions.shape) == 1:
+                log.warning("Action shape is 1D, adding batch dimension")
+                actions = actions.reshape(1, -1)
+            elif len(actions.shape) == 3:
+                log.warning("Action shape is 3D, squeezing batch dimension")
+                actions = actions.squeeze(0)
             for j in range(self.action_horizon):
-                # Make sure the action is always [[...]]
-                if len(actions.shape) == 1:
-                    log.warning("Action shape is 1D, adding batch dimension")
-                    actions = actions.reshape(1, -1)
                 action = actions[j] 
                 if done:
                     self.env.close()

@@ -1,7 +1,7 @@
 defaults:
   - _self_
-  - task: lift_lowdim
-  - policy: mlp_policy
+  - task: lift_graph
+  - policy: graph_diffusion_policy
 
 render: True
 
