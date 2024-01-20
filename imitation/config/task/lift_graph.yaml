@@ -6,6 +6,9 @@ dataset_path: &dataset_path /home/caio/workspace/GraphDiffusionImitate/data/lift
 max_steps: 500
 
 
+obs_keys: &obs_keys ['robot0_eef_pos', 'object']
+action_keys: &action_keys ['robot0_joint_vel']
+
 # describe all the objects in the scene
 object_state_sizes: &object_state_sizes
   cube_pos: 3
