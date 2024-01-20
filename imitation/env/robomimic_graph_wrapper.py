@@ -79,13 +79,30 @@ class RobomimicGraphWrapper(gym.Env):
         self.mode = mode
         self.num_objects = len(object_state_keys)
 
-        self.NUM_GRAPH_NODES = 7 + self.num_objects
+        self.NUM_GRAPH_NODES = 7 + self.num_objects # TODO add multi-robot support
 
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
 
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
+
+    def control_loop(self, tgt_jpos, max_n=20, eps=0.05):
+        obs = self.env._get_observations()
+        print(f"obs: {obs}")
+        for i in range(max_n):
+            obs = self.env._get_observations()
+            joint_pos = obs["robot0_joint_pos"]
+            q_diff = joint_pos - tgt_jpos[joint_pos.shape[0]]
+            q_diff_max = np.max(abs(q_diff))
+            if q_diff_max < eps:
+                break
+
+            action = list(q_diff) + list([-1]) # TODO add gripper control
+            assert len(action) == 8, len(action)
+            obs_final, reward, done, _, info = self.env.step(action)
+            self.env.render()
+        return obs_final, reward, done, _, info
 
     def _get_node_feats(self, data):
         '''
@@ -97,7 +114,7 @@ class RobomimicGraphWrapper(gym.Env):
             node_feats = node_feats.reshape(1, -1) # add dimension
         else:
             if self.mode == "task-space":
-                node_feats.append(self._calculate_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]))
+                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]))
                 node_feats = torch.cat(node_feats, dim=0)
             elif self.mode == "joint-space":
                 node_feats.append(torch.cat([
@@ -146,24 +163,24 @@ class RobomimicGraphWrapper(gym.Env):
     def _robosuite_obs_to_robomimic_graph(self, obs):
         '''
         Converts robosuite Gym Wrapper observations to the RobomimicGraphDataset format
+        * requires robot_joint to be "flagged" in robomimic environment
         '''
         node_feats = torch.tensor([])
         for i in range(len(self.robots)):
-            j = i*32
+            j = i*39
+            
+            # 7  - joint angle values
+            robot_joint_pos = obs[j:j + 7]
             # 7  - sin of joint angles
-            robot_joint_sin = obs[j:j + 7]
+            # robot_joint_sin = obs[j + 7:j + 14]
             # 7  - cos of joint angles
-            robot_joint_cos = obs[j + 7:j + 14]
+            # robot_joint_cos = obs[j + 14:j + 21]
             # 7  - joint velocities
-            robot_joint_vel = obs[j + 14:j + 21]
-            eef_pose = obs[j + 21:j + 24]
-            eef_quat = obs[j + 24:j + 28]
-            gripper_pose = obs[j + 28:j + 30]
+            robot_joint_vel = obs[j + 21:j + 28]
+            eef_pose = obs[j + 28:j + 31]
+            eef_quat = obs[j + 31:j + 35]
+            gripper_pose = obs[j + 35:j + 37]
             # Skip 2  - gripper joint velocities
-            # transform *robot_joint_cos, *robot_joint_sin to joint positions
-            robot_joint_pos = self._calculate_joints_positions(robot_joint_cos, robot_joint_sin)
-            # robot_i = [*robot_joint_pos, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose]
-            # final_obs = [*final_obs, *robot_i]
             robot_i_data = {
                 "robot0_joint_pos": robot_joint_pos,
                 "robot0_joint_vel": robot_joint_vel,
@@ -183,9 +200,9 @@ class RobomimicGraphWrapper(gym.Env):
             obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
         # objects states
         for object, object_state_items in enumerate(self.object_state_keys.values()):
-            i = 32*len(self.robots)
+            i = 39*len(self.robots)
             for object_state in object_state_items:
-                obj_state_tensor[object,i-32*len(self.robots):i-32*len(self.robots) + self.object_state_sizes[object_state]] = torch.from_numpy(obs[i:i + self.object_state_sizes[object_state]])
+                obj_state_tensor[object,i-39*len(self.robots):i-39*len(self.robots) + self.object_state_sizes[object_state]] = torch.from_numpy(obs[i:i + self.object_state_sizes[object_state]])
                 i += self.object_state_sizes[object_state]
     
         obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
@@ -215,7 +232,7 @@ class RobomimicGraphWrapper(gym.Env):
             robot_joint_vel = action[j:j + 7]
             robot_gripper_vel = 0 # for now no gripper control
             final_action = [*final_action, *robot_joint_vel, robot_gripper_vel]
-        obs, reward, done, _, info = self.env.step(final_action)
+        obs, reward, done, _, info = self.control_loop(final_action)
         self.env.render()
         if reward == 1:
             done = True
