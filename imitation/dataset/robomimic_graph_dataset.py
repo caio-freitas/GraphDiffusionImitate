@@ -197,7 +197,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats = self._get_node_feats_horizon(data_raw, idx)
                 edge_index = self._get_edge_index(node_feats.shape[0])
                 edge_attrs = self._get_edge_attrs(edge_index)
-                y = self._get_y(data_raw, idx)
+                y = self._get_node_feats_horizon(data_raw, idx + self.pred_horizon)
 
                 data  = Data(x=node_feats,
                              edge_index=edge_index,
