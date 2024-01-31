@@ -33,7 +33,7 @@ class GraphDiffusionPolicy(nn.Module):
         self.num_edge_types = num_edge_types
         self.denoising_network = denoising_network
         # no need for diffusion ordering network
-        self.node_feature_loss = nn.L1Loss()
+        self.node_feature_loss = nn.MSELoss()
         self.masker = NodeMasker(dataset)
         
 
