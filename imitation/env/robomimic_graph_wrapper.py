@@ -89,18 +89,17 @@ class RobomimicGraphWrapper(gym.Env):
 
     def control_loop(self, tgt_jpos, max_n=20, eps=0.05):
         obs = self.env._get_observations()
-        print(f"obs: {obs}")
         for i in range(max_n):
             obs = self.env._get_observations()
             joint_pos = obs["robot0_joint_pos"]
-            q_diff = joint_pos - tgt_jpos[joint_pos.shape[0]]
+            q_diff = tgt_jpos[:joint_pos.shape[0]] - joint_pos
             q_diff_max = np.max(abs(q_diff))
-            if q_diff_max < eps:
-                break
 
             action = list(q_diff) + list([-1]) # TODO add gripper control
             assert len(action) == 8, len(action)
             obs_final, reward, done, _, info = self.env.step(action)
+            if q_diff_max < eps:
+                break
             self.env.render()
         return obs_final, reward, done, _, info
 
