@@ -116,7 +116,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats.append(torch.cat([
                     torch.tensor(data[f"robot0_joint_pos"][t - 1:t][0]).reshape(1,-1),
                     torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
-                node_feats = torch.cat(node_feats)
+                node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 node_feats = []
                 node_feats.append(torch.cat([self._calculate_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]),
@@ -132,12 +132,12 @@ class RobomimicGraphDataset(InMemoryDataset):
         # result must be of shape (num_nodes, num_node_feats)
         return node_feats
     
-    def _get_node_feats_horizon(self, data, idx):
+    def _get_node_feats_horizon(self, data, idx, horizon):
         '''
         Calculate node features for self.obs_horizon time steps
         '''
         node_feats = []
-        for t in range(idx - self.obs_horizon + 1, idx + 1):
+        for t in range(idx - horizon + 1, idx + 1):
             node_feats.append(self._get_node_feats(data, t))
         return torch.stack(node_feats, dim=1)
 
@@ -194,10 +194,10 @@ class RobomimicGraphDataset(InMemoryDataset):
                 if idx - self.obs_horizon <= 0 or idx + self.pred_horizon > episode_length:
                     continue
                 data_raw = self.dataset_root["data"][key]["obs"]
-                node_feats = self._get_node_feats_horizon(data_raw, idx)
-                edge_index = self._get_edge_index(node_feats.shape[0])
-                edge_attrs = self._get_edge_attrs(edge_index)
-                y = self._get_node_feats_horizon(data_raw, idx + self.pred_horizon)
+                node_feats  = self._get_node_feats_horizon(data_raw, idx + self.pred_horizon, self.pred_horizon)
+                edge_index  = self._get_edge_index(node_feats.shape[0])
+                edge_attrs  = self._get_edge_attrs(edge_index)
+                y           = self._get_node_feats_horizon(data_raw, idx, self.obs_horizon)
 
                 data  = Data(x=node_feats,
                              edge_index=edge_index,

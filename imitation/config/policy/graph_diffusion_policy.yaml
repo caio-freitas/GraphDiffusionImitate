@@ -6,11 +6,11 @@ lr: 0.0001
 ckpt_path: /home/caio/workspace/GraphDiffusionImitate/weights/lift_graph_diffusion_policy.pt
 device: cuda
 denoising_network:
-  _target_: imitation.model.graph_diffusion.DenoisingNetwork
+  _target_: imitation.model.graph_diffusion.ConditionalGraphDenoisingNetwork
   node_feature_dim: ${policy.node_feature_dim}
   obs_horizon: ${obs_horizon}
+  pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
   num_layers: 7
   hidden_dim: 256
-  K: 20
