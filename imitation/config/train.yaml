@@ -5,9 +5,9 @@ defaults:
 
 output_dir: ./output
 
-pred_horizon: 1
-obs_horizon: 6
-action_horizon: 1
+pred_horizon: 8
+obs_horizon: 4
+action_horizon: 8
 
 # Training parameters
 num_epochs: 1000

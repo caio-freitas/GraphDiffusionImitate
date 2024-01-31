@@ -1,11 +1,12 @@
 import torch
+import torch_geometric
 from torch_geometric.utils import to_dense_adj
 
 
 class NodeMasker:
     def __init__(self, dataset):
         self.dataset = dataset
-        self.node_feature_dim = dataset[0].x.shape[1]
+        self.node_feature_dim = dataset[0].x.shape[1:]
         # assert dataset[0].edge_attr.shape[1] == 1, f"Edge feature dim is not 1, got {dataset[0].edge_attr.shape[1]}"  # edge_feature_dim is 1, since edge_attr is just edge type
         self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset[0].edge_attr.unique())}
         self.NODE_MASK = -100
@@ -67,9 +68,9 @@ class NodeMasker:
         Adds a masked node to the graph
         '''
         datapoint = datapoint.clone()
-        masked_node_feature = self.NODE_MASK*torch.ones(1, self.node_feature_dim)
+        masked_node_feature = self.NODE_MASK*torch.ones(1, *self.node_feature_dim)
         datapoint.x = torch.cat([datapoint.x, masked_node_feature], dim=0)
-        datapoint.edge_attr = torch.cat([datapoint.edge_attr, torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0]-1, 1)], dim=0)
+        datapoint.edge_attr = torch.cat([datapoint.edge_attr, torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0]-1)])
         datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0]-1)]).T], dim=1)
         return datapoint
 
@@ -137,6 +138,12 @@ class NodeMasker:
         '''
         Fully connect graph with edge attribute value
         '''
+        if graph.edge_index.shape[1] == graph.x.shape[0]**2: # already fully connected
+            return graph
+        elif graph.x.shape[0] == 1: # single-node graph
+            graph.edge_index = torch.tensor([[0], [0]])
+            graph.edge_attr = torch.tensor([self.EDGE_MASK])
+            return graph
         adjacency_matrix = to_dense_adj(graph.edge_index)[0]
         adjacency_matrix[adjacency_matrix == 0] = 1
 
@@ -176,3 +183,9 @@ class NodeMasker:
                 unmasked_nodes.append(node)
 
         return unmasked_nodes
+    
+    def create_empty_graph(self, n_nodes):
+        '''
+        Creates an empty graph with n_nodes
+        '''
+        return torch_geometric.data.Data(x=torch.ones(n_nodes, *self.node_feature_dim, dtype=torch.int32) * self.NODE_MASK, edge_index=torch.tensor([[0], [0]]), edge_attr=torch.tensor([self.EDGE_MASK]))

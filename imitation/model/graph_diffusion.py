@@ -141,3 +141,115 @@ class DenoisingNetwork(nn.Module):
         p_e = p_e.to(self.device) 
 
         return node_pred, p_e, h_v
+    
+
+class ConditionalGraphDenoisingNetwork(nn.Module):
+    def __init__(self,
+                node_feature_dim,
+                obs_horizon,
+                pred_horizon,
+                edge_feature_dim,
+                num_edge_types,
+                num_layers=5,
+                hidden_dim=256,
+                device=None):
+        '''
+        Denoising GNN (based on GraphARM) with FiLM conditioning on 
+        "global" conditioning vector (encoded observation)
+        '''
+        super().__init__()
+        if device == None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
+        num_edge_types += 1
+        self.num_layers = num_layers
+        self.node_feature_dim = node_feature_dim
+        self.obs_horizon = obs_horizon
+        self.pred_horizon = pred_horizon
+        self.hidden_dim = hidden_dim    
+        self.node_embedding = Linear(node_feature_dim*pred_horizon, hidden_dim).to(self.device)
+        self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
+        # FiLM modulation https://arxiv.org/abs/1709.07871
+        # predicts per-channel scale and bias
+        self.cond_channels = hidden_dim * 2
+        self.cond_encoder = nn.Sequential(
+            nn.Mish(),
+            nn.Linear(node_feature_dim*obs_horizon, self.cond_channels),
+            nn.Unflatten(-1, (-1, 1))
+        ).to(self.device)
+
+
+
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            self.layers.append(MPLayer(hidden_dim, hidden_dim)).to(self.device)
+        
+        self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            Linear(hidden_dim, 1*self.pred_horizon)
+        ).to(self.device)
+        self.pe = self.positionalencoding(100).to(self.device) # max length of 100
+        
+
+    def positionalencoding(self, lengths):
+        '''
+        From Chen, et al. 2021 (Order Matters: Probabilistic Modeling of Node Sequences for Graph Generation)
+        * lengths: length(s) of graph in the batch
+        '''
+        l_t = lengths # .max() # use when parallelizing
+        pes = torch.zeros([l_t, self.hidden_dim], device=self.device)
+        position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
+        div_term = torch.exp((torch.arange(0, self.hidden_dim, 2, dtype=torch.float, device=self.device) *
+                              -(math.log(10000.0) / self.hidden_dim)))
+        pes[:,0::2] = torch.sin(position.float() * div_term)
+        pes[:,1::2] = torch.cos(position.float() * div_term)
+        return pes
+
+    def forward(self, x, edge_index, edge_attr, cond=None, node_order=None):
+        # make sure x and edge_attr are of type float, for the MLPs
+        x = x.float().to(self.device).flatten(start_dim=1)
+        edge_attr = edge_attr.float().to(self.device)
+        edge_index = edge_index.to(self.device)
+        cond = cond.float().to(self.device).flatten(start_dim=1)
+
+        N = x.shape[0] - 1
+
+        h_v = self.node_embedding(x)
+        h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
+        
+         # # Positional encoding
+        h_v[N, :] += self.pe[N, :].to(self.device)
+
+        # FiLM conditioning
+        embed = self.cond_encoder(cond)
+        # pooling over graph nodes, to get a graph-level conditioning vector
+        embed = torch.mean(embed, dim=0)
+        embed = embed.reshape(
+            1, 2, self.hidden_dim)
+        scale = embed[:,0,...]
+        bias = embed[:,1,...]
+        h_v = scale * h_v + bias
+
+        # instead of convolution, run message passing
+        for l in range(self.num_layers):
+            h_v = self.layers[l](h_v, edge_index, h_e)
+
+        
+        # graph-level embedding, from average pooling layer
+        graph_embedding = torch.mean(h_v, dim=0)
+
+        # repeat graph embedding to have the same shape as h_v
+        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+
+        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
+
+        v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
+        
+        node_pred = node_pred[v_t]
+        node_pred = node_pred.reshape(-1, self.pred_horizon, 1) # reshape to original shape
+        
+        return node_pred
+    

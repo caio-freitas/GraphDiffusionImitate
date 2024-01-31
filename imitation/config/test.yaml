@@ -7,12 +7,12 @@ render: True
 
 seed: 0
 num_episodes: 5
-max_steps: 5000
+max_steps: 10000
 output_dir: ./output
 
-pred_horizon: 1
-obs_horizon: 6
-action_horizon: 1
+pred_horizon: 8
+obs_horizon: 4
+action_horizon: 8
 
 
 agent:
