@@ -52,7 +52,7 @@ def train(cfg: DictConfig) -> None:
     # train policy
 
     policy.train(dataset=policy.dataset.shuffle(),
-                 num_epochs=1000,
+                 num_epochs=20,
                  model_path=cfg.policy.ckpt_path,
                  seed=cfg.seed)
 
