@@ -221,7 +221,7 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
         
          # # Positional encoding
-        h_v[N, :] += self.pe[N, :].to(self.device)
+        h_v += self.pe[N, :].to(self.device)
 
         # FiLM conditioning
         embed = self.cond_encoder(cond)
