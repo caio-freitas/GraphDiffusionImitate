@@ -87,8 +87,10 @@ class RobomimicGraphWrapper(gym.Env):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-    def control_loop(self, tgt_jpos, max_n=20, eps=0.05):
+    def control_loop(self, tgt_jpos, max_n=200, eps=0.05):
         obs = self.env._get_observations()
+        print(f"joint pos: {obs['robot0_joint_pos']}")
+        print(f"tgt_jpos: {tgt_jpos}")
         for i in range(max_n):
             obs = self.env._get_observations()
             joint_pos = obs["robot0_joint_pos"]
@@ -119,7 +121,7 @@ class RobomimicGraphWrapper(gym.Env):
                 node_feats.append(torch.cat([
                     torch.tensor(data[f"robot0_joint_pos"]).reshape(1,-1),
                     torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
-                node_feats = torch.cat(node_feats)
+                node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 raise NotImplementedError
         return node_feats
@@ -232,6 +234,7 @@ class RobomimicGraphWrapper(gym.Env):
             robot_gripper_vel = 0 # for now no gripper control
             final_action = [*final_action, *robot_joint_vel, robot_gripper_vel]
         obs, reward, done, _, info = self.control_loop(final_action)
+        # obs, reward, done, _, info = self.env.step(final_action)
         self.env.render()
         if reward == 1:
             done = True
