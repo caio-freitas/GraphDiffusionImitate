@@ -128,9 +128,11 @@ class GraphDiffusionPolicy(nn.Module):
             pass
         self.optimizer.zero_grad()
         self.denoising_network.train()
+        batch_size = 5
 
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:
+                batch_i = 0
                 # batch loop
                 with tqdm(dataset, desc='Batch', leave=False) as tepoch:
                     for nbatch in tepoch:
@@ -141,7 +143,6 @@ class GraphDiffusionPolicy(nn.Module):
                         G_0 = diffusion_trajectory[0].to(self.device)
                         node_order = self.node_decay_ordering(G_0)
                         acc_loss = 0
-                        self.optimizer.zero_grad()
                         
                         # loop over nodes
                         for t in range(len(node_order)):
@@ -152,14 +153,22 @@ class GraphDiffusionPolicy(nn.Module):
 
                             # mse loss for node features
                             loss = self.node_feature_loss(node_features, G_0.x[node_order[t],:,0].float())
+                            # use correlation as loss
+                            # x = torch.stack([node_features.squeeze(), G_0.x[node_order[t],:,0].float()])
+                            # x += torch.rand_like(x) * 1e-8 # add noise to avoid NaNs
+                            # loss -= (1/batch_size)*torch.corrcoef(x)[0,1]
                             wandb.log({"loss": loss.item()})
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
                             loss.backward(retain_graph=True)
-                        self.optimizer.step()
-                        self.save_nets(model_path)
-                        wandb.log({"epoch_loss": acc_loss})
+                        batch_i += 1
+                        # update weights
+                        if batch_i % batch_size == 0:
+                            self.optimizer.step()
+                            self.optimizer.zero_grad()
+                            self.save_nets(model_path)
+                            wandb.log({"batch_loss": acc_loss})
 
     def get_joint_values(self, x):
         '''
@@ -202,8 +211,8 @@ class GraphDiffusionPolicy(nn.Module):
         edge_index = obs[0].edge_index
         edge_attr = obs[0].edge_attr.float()
         for i in range(len(obs)):
-            node_features.append(obs[i].x)
-        node_features = torch.cat(node_features, dim=1).reshape(-1, self.node_feature_dim, self.dataset.obs_horizon)
+            node_features.append(obs[i].x.unsqueeze(1))
+        node_features = torch.cat(node_features, dim=1)
 
        
         self.denoising_network.eval()
