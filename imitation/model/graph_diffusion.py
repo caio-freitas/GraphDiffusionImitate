@@ -231,10 +231,10 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
             1, 2, self.hidden_dim)
         scale = embed[:,0,...]
         bias = embed[:,1,...]
-        h_v = scale * h_v + bias
 
         # instead of convolution, run message passing
         for l in range(self.num_layers):
+            h_v = scale * h_v + bias
             h_v = self.layers[l](h_v, edge_index, h_e)
 
         
