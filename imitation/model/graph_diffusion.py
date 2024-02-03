@@ -173,16 +173,18 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
         # FiLM modulation https://arxiv.org/abs/1709.07871
         # predicts per-channel scale and bias
         self.cond_channels = hidden_dim * 2
-        self.cond_encoder = nn.Sequential(
-            nn.Mish(),
-            nn.Linear(node_feature_dim*obs_horizon, self.cond_channels),
-            nn.Unflatten(-1, (-1, 1))
-        ).to(self.device)
+        self.cond_encoders = nn.ModuleList()
+        for _ in range(num_layers):
+            self.cond_encoders.append(nn.Sequential(
+                nn.Mish(),
+                nn.Linear(node_feature_dim*obs_horizon, self.cond_channels),
+                nn.Unflatten(-1, (-1, 1))
+            ).to(self.device))
 
 
 
         self.layers = nn.ModuleList()
-        for i in range(num_layers):
+        for _ in range(num_layers):
             self.layers.append(MPLayer(hidden_dim, hidden_dim)).to(self.device)
         
         self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
@@ -223,17 +225,18 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
          # # Positional encoding
         h_v += self.pe[N, :].to(self.device)
 
-        # FiLM conditioning
-        embed = self.cond_encoder(cond)
-        # pooling over graph nodes, to get a graph-level conditioning vector
-        embed = torch.mean(embed, dim=0)
-        embed = embed.reshape(
-            1, 2, self.hidden_dim)
-        scale = embed[:,0,...]
-        bias = embed[:,1,...]
 
+        
         # instead of convolution, run message passing
         for l in range(self.num_layers):
+            # FiLM conditioning
+            embed = self.cond_encoders[l](cond)
+            # pooling over graph nodes, to get a graph-level conditioning vector
+            embed = torch.mean(embed, dim=0)
+            embed = embed.reshape(
+                1, 2, self.hidden_dim)
+            scale = embed[:,0,...]
+            bias = embed[:,1,...]
             h_v = scale * h_v + bias
             h_v = self.layers[l](h_v, edge_index, h_e)
 
