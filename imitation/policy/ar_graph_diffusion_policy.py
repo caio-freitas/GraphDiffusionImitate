@@ -13,7 +13,7 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.optimization import get_scheduler
 
 
-class GraphDiffusionPolicy(nn.Module):
+class AutoregressiveGraphDiffusionPolicy(nn.Module):
     def __init__(self,
                  dataset,
                  node_feature_dim,
@@ -23,7 +23,7 @@ class GraphDiffusionPolicy(nn.Module):
                  ckpt_path=None,
                  device = None,
                  mode = 'joint-space'):
-        super(GraphDiffusionPolicy, self).__init__()
+        super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
