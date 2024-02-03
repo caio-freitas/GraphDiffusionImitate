@@ -37,7 +37,7 @@ class GraphDiffusionPolicy(nn.Module):
         self.masker = NodeMasker(dataset)
         
 
-        self.optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=5e-5)
+        self.optimizer = torch.optim.AdamW(self.denoising_network.parameters(), lr=5e-4)
         self.mode = mode
 
         if ckpt_path is not None:
