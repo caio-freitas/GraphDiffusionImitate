@@ -12,5 +12,5 @@ denoising_network:
   pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
-  num_layers: 7
-  hidden_dim: 512
+  num_layers: 5
+  hidden_dim: 256
