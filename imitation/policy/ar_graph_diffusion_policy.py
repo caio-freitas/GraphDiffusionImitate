@@ -138,6 +138,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     for nbatch in tepoch:
                         # preprocess graph
                         graph = self.preprocess(nbatch)
+                        graph = self.masker.idxify(graph)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
                         # predictions & loss
                         G_0 = diffusion_trajectory[0].to(self.device)
@@ -209,7 +210,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         obs[0] = self.preprocess(obs[0])
         obs[0] = self.masker.idxify(obs[0])
         edge_index = obs[0].edge_index
-        edge_attr = obs[0].edge_attr.float()
+        edge_attr = obs[0].edge_attr
         for i in range(len(obs)):
             node_features.append(obs[i].x.unsqueeze(1))
         node_features = torch.cat(node_features, dim=1)
@@ -219,17 +220,17 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
-        action = self.masker.idxify(action)
+
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph
-            # preprocess action graph
-            action = self.preprocess(action)    
+            action = self.preprocess(action)
+            # predict node attributes for last node in action
+            action.x[-1] = self.denoising_network(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
-            # predict node and edge type distributions
-            action.x[-1] = self.denoising_network(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
             if x_i == obs[0].x.shape[0]-1:
                 break
             action = self.masker.add_masked_node(action)
+            
             
             
         joint_values_t = self.get_joint_values(action.x.detach().cpu().numpy())

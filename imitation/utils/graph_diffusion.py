@@ -10,11 +10,11 @@ class NodeMasker:
         # assert dataset[0].edge_attr.shape[1] == 1, f"Edge feature dim is not 1, got {dataset[0].edge_attr.shape[1]}"  # edge_feature_dim is 1, since edge_attr is just edge type
         self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset[0].edge_attr.unique())}
         self.NODE_MASK = -100
-        self.EMPTY_EDGE = 2
-        self.EDGE_MASK = 3
+        self.EMPTY_EDGE = 3 # TODO parametrize to num_edge_types + 1
+        self.EDGE_MASK = 4 # TODO parametrize to num_edge_types + 2
         # add masks to node and edge types
-        self.edge_type_to_idx[self.EMPTY_EDGE] = len(self.edge_type_to_idx)
-        self.edge_type_to_idx[self.EDGE_MASK] = len(self.edge_type_to_idx)
+        self.edge_type_to_idx[self.EMPTY_EDGE] = self.EMPTY_EDGE # mask to itself, so that it's associative with fully_connect()
+        self.edge_type_to_idx[self.EDGE_MASK] = self.EDGE_MASK # mask to itself, so that it's associative with fully_connect()
 
     def idxify(self, datapoint):
         '''
@@ -70,8 +70,8 @@ class NodeMasker:
         datapoint = datapoint.clone()
         masked_node_feature = self.NODE_MASK*torch.ones(1, *self.node_feature_dim)
         datapoint.x = torch.cat([datapoint.x, masked_node_feature], dim=0)
-        datapoint.edge_attr = torch.cat([datapoint.edge_attr, torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0]-1)])
-        datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0]-1)]).T], dim=1)
+        datapoint.edge_attr = torch.cat([datapoint.edge_attr, torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0])])
+        datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0])]).T], dim=1)
         return datapoint
 
 
@@ -155,7 +155,8 @@ class NodeMasker:
         if keep_original_edges:
             # restore values of original edges
             for edge_attr, edge_index in zip(graph.edge_attr, graph.edge_index.T):
-                fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1] - 1] = edge_attr
+                fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1] ] = edge_attr
+                fully_connected.edge_attr[edge_index[1] * fully_connected.x.shape[0] + edge_index[0] ] = edge_attr
 
         fully_connected.edge_index = torch.nonzero(adjacency_matrix).T
         return fully_connected

@@ -213,7 +213,7 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
     def forward(self, x, edge_index, edge_attr, cond=None, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device)
+        edge_attr = edge_attr.float().to(self.device) 
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device).flatten(start_dim=1)
 
