@@ -25,8 +25,8 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.mode = mode
         self.node_feature_dim = node_feature_dim
         self.action_keys = action_keys
-        self.pred_horizon = pred_horizon        #|
-        self.obs_horizon = obs_horizon          #| TODO use horizons
+        self.pred_horizon = pred_horizon
+        self.obs_horizon = obs_horizon
         self.object_state_sizes = object_state_sizes # can be taken from https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
         self.object_state_keys = object_state_keys
         self.num_objects = len(object_state_keys)
@@ -114,8 +114,8 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats = torch.cat(node_feats, dim=0)
             elif self.mode == "joint-space":
                 node_feats.append(torch.cat([
-                    torch.tensor(data[f"robot0_joint_pos"][t - 1:t][0]).reshape(1,-1),
-                    torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
+                    torch.tensor([*data[f"robot0_joint_pos"][t - 1:t][0], *data["robot0_gripper_qpos"][t - 1:t][0]]).reshape(1,-1),
+                    torch.zeros((6,9))])) # complete with zeros to match task-space dimensionality
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 node_feats = []
@@ -165,7 +165,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         - all robot nodes are connected to the previous robot node
         - all object nodes are connected to the last robot node (end-effector)
         '''
-        eef_idx = 6
+        eef_idx = 7
         edge_index = []
         for idx in range(eef_idx):
             edge_index.append([idx, idx+1])

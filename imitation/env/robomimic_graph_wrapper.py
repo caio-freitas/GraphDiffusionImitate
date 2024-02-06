@@ -87,17 +87,17 @@ class RobomimicGraphWrapper(gym.Env):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-    def control_loop(self, tgt_jpos, max_n=200, eps=0.05):
+    def control_loop(self, tgt_jpos, max_n=20, eps=0.05):
         obs = self.env._get_observations()
         print(f"joint pos: {obs['robot0_joint_pos']}")
         print(f"tgt_jpos: {tgt_jpos}")
         for i in range(max_n):
             obs = self.env._get_observations()
-            joint_pos = obs["robot0_joint_pos"]
-            q_diff = tgt_jpos[:joint_pos.shape[0]] - joint_pos
+            joint_pos = np.array([*obs["robot0_joint_pos"], *obs["robot0_gripper_qpos"]])
+            q_diff = np.array(tgt_jpos) - joint_pos[:len(tgt_jpos)]
             q_diff_max = np.max(abs(q_diff))
 
-            action = list(q_diff) + list([-1]) # TODO add gripper control
+            action = list(q_diff)
             assert len(action) == 8, len(action)
             obs_final, reward, done, _, info = self.env.step(action)
             if q_diff_max < eps:
@@ -230,9 +230,9 @@ class RobomimicGraphWrapper(gym.Env):
             in the robomimic datasets, it's composed of 7 joint velocities and 2 gripper velocities (for each "finger").
             '''
             j = i*9
-            robot_joint_vel = action[j:j + 7]
-            robot_gripper_vel = 0 # for now no gripper control
-            final_action = [*final_action, *robot_joint_vel, robot_gripper_vel]
+            robot_joint_pos = action[j:j + 7]
+            robot_gripper_pos = -action[j + 7]
+            final_action = [*final_action, *robot_joint_pos, robot_gripper_pos]
         obs, reward, done, _, info = self.control_loop(final_action)
         # obs, reward, done, _, info = self.env.step(final_action)
         self.env.render()
