@@ -107,7 +107,6 @@ class RobomimicLowdimWrapper(gym.Env):
             robot_gripper_vel = action[j + 8] # use only last action for gripper
             final_action = [*final_action, *robot_joint_vel, robot_gripper_vel]
         obs, reward, done, _, info = self.env.step(final_action)
-        self.env.render()
         if reward == 1:
             done = True
             info = {"success": True}
