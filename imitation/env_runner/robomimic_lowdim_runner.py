@@ -1,3 +1,4 @@
+import imageio
 import logging
 import time
 from typing import Dict
@@ -16,14 +17,20 @@ class RobomimicEnvRunner(BaseRunner):
                 action_horizon,
                 obs_horizon,
                 render=True,
-                fps=30) -> None:
+                fps=30,
+                output_video=False) -> None:
         super().__init__(output_dir)
         self.env = env
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
         self.render = render
         self.fps = fps
-        
+        self.output_video = output_video
+        self.output_dir = output_dir
+        if self.output_video: # don't create video writer if not needed
+            self.video_writer = imageio.get_writer(f"{self.output_dir}/output_{time.time()}.mp4", fps=30)
+
+
         # keep a queue of last obs_horizon steps of observations
         self.reset()
 
@@ -34,6 +41,9 @@ class RobomimicEnvRunner(BaseRunner):
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
+        if self.output_video:
+            self.video_writer = imageio.get_writer(f"{self.output_dir}/output_{time.time()}.mp4", fps=30)
+    
         done = False
         info = {}
         rewards = []
@@ -55,7 +65,20 @@ class RobomimicEnvRunner(BaseRunner):
                 if self.render:
                     self.env.render()
                     time.sleep(1/self.fps)
+
+                if self.output_video and self.video_writer is not None:
+                    # We need to directly grab full observations so we can get image data
+                    full_obs = self.env.env._get_observations()
+
+                    # Grab image data (assume relevant camera name is the first in the env camera array)
+                    img = full_obs[self.env.env.camera_names[0] + "_image"]
+
+                    # Write to video writer
+                    self.video_writer.append_data(img[::-1])
+
                 i += 1
             
         self.env.close()
+        if self.output_video and self.video_writer is not None:
+            self.video_writer.close()
         return rewards, info

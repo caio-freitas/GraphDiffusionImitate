@@ -3,11 +3,12 @@ defaults:
   - task: lift_lowdim
   - policy: mlp_policy
 
-render: True
+render: False
+output_video: False
 
 num_episodes: 20
 max_steps: 500
-output_dir: ./output
+output_dir: ./outputs
 
 
 pred_horizon: 1

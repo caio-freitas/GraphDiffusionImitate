@@ -38,6 +38,7 @@ class RobomimicLowdimWrapper(gym.Env):
                  task="Lift",
                  has_renderer=True,
                  robots=["Panda"],
+                 output_video=False,
                  ):
         controller_config = load_controller_config(default_controller="JOINT_VELOCITY") 
         self.robots = [*robots] # gambiarra to make it work with robots list
@@ -48,8 +49,8 @@ class RobomimicLowdimWrapper(gym.Env):
             suite.make(
                 task,
                 robots=self.robots,
-                use_camera_obs=False,  # do not use pixel observations
-                has_offscreen_renderer=False,  # not needed since not using pixel obs
+                use_camera_obs=output_video, # use when recording video
+                has_offscreen_renderer=output_video, 
                 has_renderer=has_renderer,  # make sure we can render to the screen
                 reward_shaping=True,  # use dense rewards
                 control_freq=30,  # control should happen fast enough so that simulation looks smooth
@@ -72,21 +73,23 @@ class RobomimicLowdimWrapper(gym.Env):
         '''
         final_obs = []
         for i in range(len(self.robots)):
-            j = i*32
+            j = i*39
             # 7  - sin of joint angles
-            robot_joint_sin = obs[j:j + 7]
+            robot_joint_pos = obs[j:j + 7]
+           # 7  - sin of joint angles
+            # robot_joint_sin = obs[j + 7:j + 14]
             # 7  - cos of joint angles
-            robot_joint_cos = obs[j + 7:j + 14]
+            # robot_joint_cos = obs[j + 14:j + 21]
             # 7  - joint velocities
-            robot_joint_vel = obs[j + 14:j + 21]
-            eef_pose = obs[j + 21:j + 24]
-            eef_quat = obs[j + 24:j + 28]
-            gripper_pose = obs[j + 28:j + 30]
+            robot_joint_vel = obs[j + 21:j + 28]
+            eef_pose = obs[j + 28:j + 31]
+            eef_quat = obs[j + 31:j + 35]
+            gripper_pose = obs[j + 35:j + 37]
             # Skip 2  - gripper joint velocities
-            robot_i = [*robot_joint_cos, *robot_joint_sin, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose]
+            robot_i = [*robot_joint_pos, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose]
             final_obs = [*final_obs, *robot_i]
         
-        objects = obs[32*len(self.robots):]
+        objects = obs[39*len(self.robots):]
         return [*final_obs, *objects]
         
 
