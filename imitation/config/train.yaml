@@ -8,7 +8,7 @@ output_dir: ./outputs
 render: False
 output_video: True
 
-pred_horizon: 8
+pred_horizon: 16
 obs_horizon: 4
 action_horizon: 8
 # Training parameters
