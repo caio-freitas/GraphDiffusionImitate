@@ -30,6 +30,19 @@ def test(cfg):
     # instanciate agent from policy
     agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
 
+    wandb.init(
+        project=cfg.task.task_name,
+        group=policy.__class__.__name__,
+        name=f"eval",
+        # track hyperparameters and run metadata
+        config={
+            "policy": cfg.policy,
+            "episodes": cfg.num_episodes,
+            "task": cfg.task.task_name,
+        },
+        # mode="disabled",
+    )
+
     # run policy in environment
     success_count = 0
     for i in range(cfg.num_episodes):
@@ -40,6 +53,7 @@ def test(cfg):
         if info["success"]:
             success_count += 1
         log.info({"episode_reward": sum(rewards), "success": info["success"]})
+        wandb.log({"episode_reward": sum(rewards), "success": 1 if info["success"] else 0})
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
 
 if __name__ == "__main__":

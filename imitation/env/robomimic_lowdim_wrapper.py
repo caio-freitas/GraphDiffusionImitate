@@ -56,6 +56,9 @@ class RobomimicLowdimWrapper(gym.Env):
                 control_freq=30,  # control should happen fast enough so that simulation looks smooth
                 horizon=max_steps,  # long horizon so we can sample high rewards
                 controller_configs=controller_config,
+                # setup camera resolution
+                camera_heights=96,
+                camera_widths=96,
             ),
             keys = keys
         )

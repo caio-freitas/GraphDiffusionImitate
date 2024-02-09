@@ -7,6 +7,7 @@ import gymnasium as gym
 import collections
 from imitation.agent.base_agent import BaseAgent
 from imitation.env_runner.base_runner import BaseRunner
+import wandb
 
 log = logging.getLogger(__name__)
 
@@ -27,12 +28,18 @@ class RobomimicEnvRunner(BaseRunner):
         self.fps = fps
         self.output_video = output_video
         self.output_dir = output_dir
+        self.curr_video = None
         if self.output_video: # don't create video writer if not needed
-            self.video_writer = imageio.get_writer(f"{self.output_dir}/output_{time.time()}.mp4", fps=30)
+            self.start_video()
 
 
         # keep a queue of last obs_horizon steps of observations
         self.reset()
+
+
+    def start_video(self):
+        self.curr_video = f"{self.output_dir}/output_{time.time()}.mp4"
+        self.video_writer = imageio.get_writer(self.curr_video, fps=30)
 
     def reset(self) -> None:
         self.obs = self.env.reset()
@@ -42,8 +49,7 @@ class RobomimicEnvRunner(BaseRunner):
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         if self.output_video:
-            self.video_writer = imageio.get_writer(f"{self.output_dir}/output_{time.time()}.mp4", fps=30)
-    
+            self.start_video()
         done = False
         info = {}
         rewards = []
@@ -58,6 +64,8 @@ class RobomimicEnvRunner(BaseRunner):
                 action = actions[j] 
                 if done:
                     self.env.close()
+                    if self.output_video and self.video_writer is not None:
+                        self.video_writer.close()
                     return rewards, info
                 obs, reward, done, info = self.env.step(action)
                 self.obs_deque.append(obs)
@@ -81,4 +89,7 @@ class RobomimicEnvRunner(BaseRunner):
         self.env.close()
         if self.output_video and self.video_writer is not None:
             self.video_writer.close()
+            # Log video to WandB
+            if wandb.run is not None:
+                wandb.log({"video": wandb.Video(self.curr_video, fps=self.fps)})
         return rewards, info
