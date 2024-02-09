@@ -25,12 +25,12 @@ class RobomimicEnvRunner(BaseRunner):
         self.fps = fps
         
         # keep a queue of last obs_horizon steps of observations
-        obs = self.env.reset()
-        self.obs_deque = collections.deque(
-            [obs] * self.obs_horizon, maxlen=self.obs_horizon)
+        self.reset()
 
     def reset(self) -> None:
         self.obs = self.env.reset()
+        self.obs_deque = collections.deque(
+            [self.obs] * self.obs_horizon, maxlen=self.obs_horizon)
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
@@ -47,7 +47,8 @@ class RobomimicEnvRunner(BaseRunner):
                     actions = actions.reshape(1, -1)
                 action = actions[j] 
                 if done:
-                    break
+                    self.env.close()
+                    return rewards, info
                 obs, reward, done, info = self.env.step(action)
                 self.obs_deque.append(obs)
                 
@@ -55,5 +56,6 @@ class RobomimicEnvRunner(BaseRunner):
                     self.env.render()
                     time.sleep(1/self.fps)
                 i += 1
+            
         self.env.close()
         return rewards, info
