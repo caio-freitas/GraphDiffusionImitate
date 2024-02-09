@@ -54,7 +54,9 @@ class RobomimicGraphWrapper(gym.Env):
         self.object_state_sizes = object_state_sizes
         self.object_state_keys = object_state_keys
         self.node_feature_dim = node_feature_dim
-        controller_config = load_controller_config(default_controller="JOINT_POSITION") 
+        controller_config = load_controller_config(default_controller="JOINT_POSITION")
+        # tune up controller gains
+        controller_config["kp"] = 250 # default is 50
         self.robots = [*robots] # gambiarra to make it work with robots list
         keys = [ "robot0_proprio-state", 
                 *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
@@ -79,7 +81,7 @@ class RobomimicGraphWrapper(gym.Env):
         self.mode = mode
         self.num_objects = len(object_state_keys)
 
-        self.NUM_GRAPH_NODES = 7 + self.num_objects # TODO add multi-robot support
+        self.NUM_GRAPH_NODES = 9 + self.num_objects # TODO add multi-robot support
 
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
@@ -87,13 +89,11 @@ class RobomimicGraphWrapper(gym.Env):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-    def control_loop(self, tgt_jpos, max_n=20, eps=0.05):
+    def control_loop(self, tgt_jpos, max_n=1, eps=0.02):
         obs = self.env._get_observations()
-        print(f"joint pos: {obs['robot0_joint_pos']}")
-        print(f"tgt_jpos: {tgt_jpos}")
         for i in range(max_n):
             obs = self.env._get_observations()
-            joint_pos = np.array([*obs["robot0_joint_pos"], *obs["robot0_gripper_qpos"]])
+            joint_pos = np.array([*obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][1]])  # use only last action for gripper
             q_diff = np.array(tgt_jpos) - joint_pos[:len(tgt_jpos)]
             q_diff_max = np.max(abs(q_diff))
 
@@ -119,8 +119,8 @@ class RobomimicGraphWrapper(gym.Env):
                 node_feats = torch.cat(node_feats, dim=0)
             elif self.mode == "joint-space":
                 node_feats.append(torch.cat([
-                    torch.tensor(data[f"robot0_joint_pos"]).reshape(1,-1),
-                    torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
+                    torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1),
+                    torch.zeros((6,9))])) # complete with zeros to match task-space dimensionality
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 raise NotImplementedError
@@ -141,7 +141,7 @@ class RobomimicGraphWrapper(gym.Env):
         - all robot nodes are connected to the previous robot node
         - all object nodes are connected to the last robot node (end-effector)
         '''
-        eef_idx = 6
+        eef_idx = 8
         edge_index = []
         edge_attrs = []
         for idx in range(eef_idx):

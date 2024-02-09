@@ -165,7 +165,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         - all robot nodes are connected to the previous robot node
         - all object nodes are connected to the last robot node (end-effector)
         '''
-        eef_idx = 7
+        eef_idx = 8
         edge_index = []
         for idx in range(eef_idx):
             edge_index.append([idx, idx+1])
