@@ -91,8 +91,6 @@ class RobomimicGraphWrapper(gym.Env):
 
     def control_loop(self, tgt_jpos, max_n=1, eps=0.02):
         obs = self.env._get_observations()
-        print(f"joint pos: {obs['robot0_joint_pos']}")
-        print(f"tgt_jpos: {tgt_jpos}")
         for i in range(max_n):
             obs = self.env._get_observations()
             joint_pos = np.array([*obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][1]])  # use only last action for gripper
