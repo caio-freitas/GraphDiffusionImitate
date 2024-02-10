@@ -4,16 +4,46 @@ defaults:
   - policy: mlp_policy
 
 output_dir: ./outputs
+# on evaluating, for environment wrapper
+render: False
+output_video: True
 
 pred_horizon: 16
 obs_horizon: 8
 action_horizon: 16
 
 # Training parameters
-num_epochs: 1000
+num_epochs: 100
 seed: 0
 
 env_runner: ${task.env_runner}
 
 agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
+
+# Disable evaluation 
+# eval_params: None
+
+# Evaluation after training
+
+eval_params:
+  task: ${task}
+  policy: ${policy}
+  render: False
+  output_video: True
+
+  num_episodes: 20
+  max_steps: 500
+  output_dir: ./outputs
+
+
+  pred_horizon: ${pred_horizon}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+
+
+  env_runner: ${task.env_runner}
+
+  seed: 0
+
+  agent: ${agent}
