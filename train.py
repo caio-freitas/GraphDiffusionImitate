@@ -10,11 +10,12 @@ import pathlib
 import hydra
 import wandb
 
+from eval import eval_main
 from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
 
-OmegaConf.register_new_resolver("eval", eval)
+OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 
 @hydra.main(
@@ -54,7 +55,9 @@ def train(cfg: DictConfig) -> None:
     policy.train(dataset=policy.dataset,
                  num_epochs=cfg.num_epochs,
                  model_path=cfg.policy.ckpt_path,
-                 seed=cfg.seed)
+                 seed=cfg.seed)#
+    if cfg.eval_params is not None:
+        eval_main(cfg.eval_params)
 
 if __name__ == "__main__":
     train()

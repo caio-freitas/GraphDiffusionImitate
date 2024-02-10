@@ -41,6 +41,17 @@ class RobomimicEnvRunner(BaseRunner):
         self.curr_video = f"{self.output_dir}/output_{time.time()}.mp4"
         self.video_writer = imageio.get_writer(self.curr_video, fps=30)
 
+
+    def end_video(self):
+        if self.video_writer is not None:
+            self.video_writer.close()
+        # Log video to WandB
+        if wandb.run is not None:
+            log.info(f"Logging video to wandb")
+            wandb.log({"video": wandb.Video(self.curr_video, fps=self.fps)})
+        else:
+            log.warning("wandb.run is None, not logging video to wandb")
+
     def reset(self) -> None:
         self.obs = self.env.reset()
         self.obs_deque = collections.deque(
@@ -64,8 +75,8 @@ class RobomimicEnvRunner(BaseRunner):
                 action = actions[j] 
                 if done:
                     self.env.close()
-                    if self.output_video and self.video_writer is not None:
-                        self.video_writer.close()
+                    if self.output_video:
+                        self.end_video()
                     return rewards, info
                 obs, reward, done, info = self.env.step(action)
                 self.obs_deque.append(obs)
@@ -74,7 +85,7 @@ class RobomimicEnvRunner(BaseRunner):
                     self.env.render()
                     time.sleep(1/self.fps)
 
-                if self.output_video and self.video_writer is not None:
+                if self.output_video:
                     # We need to directly grab full observations so we can get image data
                     full_obs = self.env.env._get_observations()
 
@@ -87,9 +98,7 @@ class RobomimicEnvRunner(BaseRunner):
                 i += 1
             
         self.env.close()
-        if self.output_video and self.video_writer is not None:
-            self.video_writer.close()
-            # Log video to WandB
-            if wandb.run is not None:
-                wandb.log({"video": wandb.Video(self.curr_video, fps=self.fps)})
+        if self.output_video:
+            self.end_video()
+
         return rewards, info

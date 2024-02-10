@@ -13,14 +13,14 @@ import wandb
 
 log = logging.getLogger(__name__)
 
-OmegaConf.register_new_resolver("eval", eval)
+OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 @hydra.main(
         version_base=None,
         config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
         config_name="eval"
         )
-def test(cfg):
+def eval_main(cfg):
     print(OmegaConf.to_yaml(cfg))
     log.info("Running evaluation...")
     # instanciate environment runner from cfg file
@@ -57,4 +57,4 @@ def test(cfg):
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
 
 if __name__ == "__main__":
-    test()
+    eval_main()
