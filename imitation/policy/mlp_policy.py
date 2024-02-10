@@ -79,7 +79,7 @@ class MLPPolicy(BasePolicy):
             torch.cuda.manual_seed(seed)
 
         loss_fn = nn.MSELoss()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # visualize data in batch
         batch = next(iter(self.dataloader))

@@ -3,11 +3,11 @@ defaults:
   - task: lift_lowdim
   - policy: mlp_policy
 
-output_dir: ./output
+output_dir: ./outputs
 
-pred_horizon: 4
-obs_horizon: 1
-action_horizon: 1
+pred_horizon: 16
+obs_horizon: 8
+action_horizon: 16
 
 # Training parameters
 num_epochs: 1000

@@ -5,18 +5,16 @@ dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_di
 
 max_steps: 1000
 
-obs_dim: 101
+obs_dim: 87
 action_dim: 18
 
 
-obs_keys: &obs_keys ['robot0_joint_pos_sin',
-                    'robot0_joint_pos_cos',
+obs_keys: &obs_keys ['robot0_joint_pos',
                     'robot0_joint_vel',
                     'robot0_eef_pos',
                     'robot0_eef_quat',
                     'robot0_gripper_qpos',
-                    'robot1_joint_pos_sin',
-                    'robot1_joint_pos_cos',
+                    'robot1_joint_pos',
                     'robot1_joint_vel',
                     'robot1_eef_pos',
                     'robot1_eef_quat',
