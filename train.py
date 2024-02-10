@@ -35,9 +35,9 @@ def train(cfg: DictConfig) -> None:
         log.error("cfg.policy.ckpt_path doesn't exist")
     
     wandb.init(
-        project=cfg.task.task_name,
-        group=policy.__class__.__name__,
-        name=f"seed_{cfg.seed}",
+        project=policy.__class__.__name__,
+        group=cfg.task.task_name,
+        name=f"v0.0.1",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
