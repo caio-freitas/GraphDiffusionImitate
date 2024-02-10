@@ -31,8 +31,8 @@ def test(cfg):
     agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
 
     wandb.init(
-        project=cfg.task.task_name,
-        group=policy.__class__.__name__,
+        project=policy.__class__.__name__,
+        group=cfg.task.task_name,
         name=f"eval",
         # track hyperparameters and run metadata
         config={
