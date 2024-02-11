@@ -32,11 +32,13 @@ env_runner:
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
   render: ${render}
+  output_video: ${output_video}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${task.max_steps}
     task: "TwoArmTransport"
     robots: *robots
+    output_video: ${output_video}
     
 
 dataset:

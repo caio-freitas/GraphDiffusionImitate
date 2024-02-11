@@ -18,11 +18,13 @@ env_runner:
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
   render: ${render}
+  output_video: ${output_video}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${task.max_steps}
     task: "NutAssemblySquare"
     robots: ["Panda"]
+    output_video: ${output_video}
 
 dataset:
   _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
