@@ -37,6 +37,7 @@ def eval_main(cfg):
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
+            "dataset_type": cfg.task.dataset_type,
             "episodes": cfg.num_episodes,
             "task": cfg.task.task_name,
         },
