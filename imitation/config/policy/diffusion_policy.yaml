@@ -6,5 +6,5 @@ obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
 num_diffusion_iters: 100
 dataset: ${task.dataset}
-ckpt_path: ./weights/diffusion_policy_${task.task_name}.pt # TODO parametrize name
+ckpt_path: ./weights/diffusion_policy_${task.task_name}_${task.dataset_type}.pt
 lr: 0.00001

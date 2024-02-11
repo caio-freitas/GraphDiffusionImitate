@@ -6,5 +6,5 @@ obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
 num_diffusion_iters: 100
 dataset: ${task.dataset}
-ckpt_path: ./weights/mlp_diffusion_${task.task_name}.ckpt
+ckpt_path: ./weights/mlp_diffusion_${task.task_name}_${task.dataset_type}.ckpt
 lr: 0.0001

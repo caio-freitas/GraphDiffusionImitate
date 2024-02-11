@@ -14,5 +14,5 @@ model:
   output_activation: 
     _target_: torch.nn.Identity
 dataset: ${task.dataset}
-ckpt_path: ./weights/${task.task_name}_mlp_last.pt
+ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_mlp_last.pt
 lr: 0.00005
