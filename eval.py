@@ -55,6 +55,7 @@ def eval_main(cfg):
         log.info({"episode_reward": sum(rewards), "success": info["success"]})
         wandb.log({"episode_reward": sum(rewards), "success": 1 if info["success"] else 0})
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
+    wandb.finish()
 
 if __name__ == "__main__":
     eval_main()
