@@ -46,7 +46,6 @@ def train(cfg: DictConfig) -> None:
             "n_epochs": cfg.num_epochs,
             "seed": cfg.seed,
             "lr": cfg.policy.lr,
-            "episodes": len(policy.dataset),
             "task": cfg.task.task_name,
         },
         # mode="disabled",

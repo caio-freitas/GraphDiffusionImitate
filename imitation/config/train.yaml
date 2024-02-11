@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - task: lift_lowdim
-  - policy: mlp_policy
+  - policy: robomimic_lowdim
 
 output_dir: ./outputs
 # on evaluating, for environment wrapper
@@ -9,7 +9,7 @@ render: False
 output_video: True
 
 pred_horizon: 16
-obs_horizon: 8
+obs_horizon: 16
 action_horizon: 16
 
 # Training parameters
