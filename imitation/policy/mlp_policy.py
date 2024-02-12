@@ -38,6 +38,7 @@ class MLPPolicy(BasePolicy):
         self.lr = lr
 
         self.model = model.to(self.device)
+        self.global_epoch = 0
         # load model from ckpt
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
@@ -99,12 +100,11 @@ class MLPPolicy(BasePolicy):
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                wandb.log({"epoch": epoch, "loss": loss.item()})
+                self.global_epoch += 1
+                wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
                 # save model
                 torch.save(self.model.state_dict(), model_path)
-                pbar.set_description(f"Epoch: {epoch}, Loss: {loss.item()}")
-
-        wandb.finish()
+                pbar.set_description(f"Epoch: {self.global_epoch}, Loss: {loss.item()}")
         
         torch.save(self.model.state_dict(), model_path + f'{num_epochs}_ep.pt')

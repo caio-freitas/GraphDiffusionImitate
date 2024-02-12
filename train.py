@@ -51,14 +51,29 @@ def train(cfg: DictConfig) -> None:
         },
         # mode="disabled",
     )
-    # train policy
 
+    E = cfg.num_epochs
+    if cfg.eval_params != "disabled":
+        E = cfg.eval_params.eval_every
+    
+     # evaluate every E epochs
+    for i in range(cfg.num_epochs // E):
+        # train policy
+        policy.train(dataset=policy.dataset,
+                    num_epochs=E,
+                    model_path=cfg.policy.ckpt_path,
+                    seed=cfg.seed)
+        if cfg.eval_params != "disabled":
+            eval_main(cfg.eval_params)
+
+    # final epochs and evaluation
     policy.train(dataset=policy.dataset,
-                 num_epochs=cfg.num_epochs,
-                 model_path=cfg.policy.ckpt_path,
-                 seed=cfg.seed)#
-    if cfg.eval_params is not None:
-        eval_main(cfg.eval_params)
+                    num_epochs=cfg.num_epochs % E,
+                    model_path=cfg.policy.ckpt_path,
+                    seed=cfg.seed)
+    eval_main(cfg.eval_params)
+
+    wandb.finish()
 
 if __name__ == "__main__":
     train()
