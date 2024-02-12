@@ -10,9 +10,9 @@ num_episodes: 5
 max_steps: 5000
 output_dir: ./outputs
 
-pred_horizon: 16
-obs_horizon: 8
-action_horizon: 16
+pred_horizon: 8
+obs_horizon: 4
+action_horizon: 8
 
 
 agent:

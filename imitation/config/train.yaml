@@ -8,12 +8,11 @@ output_dir: ./outputs
 render: False
 output_video: True
 
-pred_horizon: 16
-obs_horizon: 8
-action_horizon: 16
-
+pred_horizon: 8
+obs_horizon: 4
+action_horizon: 8
 # Training parameters
-num_epochs: 100
+num_epochs: 2000
 seed: 0
 
 env_runner: ${task.env_runner}
@@ -32,8 +31,8 @@ eval_params:
   render: False
   output_video: True
 
-  num_episodes: 20
-  max_steps: 500
+  num_episodes: 50
+  max_steps: 1000
   output_dir: ./outputs
 
 
