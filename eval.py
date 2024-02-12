@@ -30,19 +30,20 @@ def eval_main(cfg):
     # instanciate agent from policy
     agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
 
-    wandb.init(
-        project=policy.__class__.__name__,
-        group=cfg.task.task_name,
-        name=f"eval",
-        # track hyperparameters and run metadata
-        config={
-            "policy": cfg.policy,
-            "dataset_type": cfg.task.dataset_type,
-            "episodes": cfg.num_episodes,
-            "task": cfg.task.task_name,
-        },
-        # mode="disabled",
-    )
+    if __name__ == "__main__":
+        wandb.init(
+            project=policy.__class__.__name__,
+            group=cfg.task.task_name,
+            name=f"eval",
+            # track hyperparameters and run metadata
+            config={
+                "policy": cfg.policy,
+                "dataset_type": cfg.task.dataset_type,
+                "episodes": cfg.num_episodes,
+                "task": cfg.task.task_name,
+            },
+            # mode="disabled",
+        )
 
     # run policy in environment
     success_count = 0
@@ -56,7 +57,7 @@ def eval_main(cfg):
         log.info({"episode_reward": sum(rewards), "success": info["success"]})
         wandb.log({"episode_reward": sum(rewards), "success": 1 if info["success"] else 0})
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
-    wandb.finish()
+    wandb.log({"success_rate": success_count/cfg.num_episodes})
 
 if __name__ == "__main__":
     eval_main()

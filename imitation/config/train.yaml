@@ -21,11 +21,11 @@ agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
 
 # Disable evaluation 
-# eval_params: None
+# eval_params: "disabled"
 
-# Evaluation after training
-
+# Evaluation during training
 eval_params:
+  eval_every: 50 # evaluate every 50 epochs
   task: ${task}
   policy: ${policy}
   render: False
