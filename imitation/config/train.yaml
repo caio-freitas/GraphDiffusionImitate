@@ -8,10 +8,9 @@ output_dir: ./outputs
 render: False
 output_video: True
 
-pred_horizon: 16
-obs_horizon: 16
-action_horizon: 16
-
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
 # Training parameters
 num_epochs: 2000
 seed: 0

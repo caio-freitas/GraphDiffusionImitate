@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - task: lift_lowdim
-  - policy: mlp_policy
+  - policy: robomimic_lowdim
 
 render: False
 output_video: True
@@ -11,9 +11,9 @@ max_steps: 500
 output_dir: ./outputs
 
 
-pred_horizon: 8
-obs_horizon: 4
-action_horizon: 8
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
 
 
 env_runner: ${task.env_runner}
