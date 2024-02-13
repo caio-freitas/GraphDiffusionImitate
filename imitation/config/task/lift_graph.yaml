@@ -3,7 +3,7 @@ task_name: &task_name lift
 dataset_type: &dataset_type ph
 dataset_path: &dataset_path /home/caio/workspace/GraphDiffusionImitate/data/lift/${task.dataset_type}/low_dim_v141.hdf5
 
-max_steps: ${max_steps}
+max_steps: 500
 
 
 obs_keys: &obs_keys ['robot0_eef_pos', 'object']
@@ -25,13 +25,16 @@ env_runner:
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
   render: ${render}
+  output_video: ${output_video}
   env:
     _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
     object_state_sizes: *object_state_sizes
     object_state_keys:  *object_state_keys
     max_steps: ${task.max_steps}
     task: "Lift"
+    has_renderer: ${render}
     robots: ["Panda"]
+    output_video: ${output_video}
     mode: ${task.dataset.mode}
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset

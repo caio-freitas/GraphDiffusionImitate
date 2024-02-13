@@ -45,6 +45,7 @@ class RobomimicGraphWrapper(gym.Env):
                  task="Lift",
                  has_renderer=True,
                  robots=["Panda"],
+                 output_video=False,
                  mode="task-joint-space"
                  ):
         '''
@@ -61,12 +62,13 @@ class RobomimicGraphWrapper(gym.Env):
         keys = [ "robot0_proprio-state", 
                 *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
                 "object-state"]
+        self.has_renderer = has_renderer
         self.env = RobomimicGymWrapper(
             suite.make(
                 task,
                 robots=self.robots,
-                use_camera_obs=False,  # do not use pixel observations
-                has_offscreen_renderer=False,  # not needed since not using pixel obs
+                use_camera_obs=output_video,  # do not use pixel observations
+                has_offscreen_renderer=output_video,  # not needed since not using pixel obs
                 has_renderer=has_renderer,  # make sure we can render to the screen
                 reward_shaping=True,  # use dense rewards
                 control_freq=30,  # control should happen fast enough so that simulation looks smooth
@@ -102,7 +104,8 @@ class RobomimicGraphWrapper(gym.Env):
             obs_final, reward, done, _, info = self.env.step(action)
             if q_diff_max < eps:
                 break
-            self.env.render()
+            if self.has_renderer:
+                self.env.render()
         return obs_final, reward, done, _, info
 
     def _get_node_feats(self, data):
@@ -235,7 +238,6 @@ class RobomimicGraphWrapper(gym.Env):
             final_action = [*final_action, *robot_joint_pos, robot_gripper_pos]
         obs, reward, done, _, info = self.control_loop(final_action)
         # obs, reward, done, _, info = self.env.step(final_action)
-        self.env.render()
         if reward == 1:
             done = True
             info = {"success": True}
