@@ -180,7 +180,6 @@ class RobomimicGraphDataset(InMemoryDataset):
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
 
-
     def _get_edge_index(self, num_nodes):
         '''
         Returns edge index for graph.
