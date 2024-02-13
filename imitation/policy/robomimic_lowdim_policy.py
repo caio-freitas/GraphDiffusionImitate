@@ -20,7 +20,7 @@ class RobomimicLowdimPolicy(BasePolicy):
     def __init__(self, 
             action_dim, 
             obs_dim,
-            algo_name='bc_rnn',
+            algo_name='bc',
             obs_type='low_dim',
             task_name='square',
             dataset_type='ph',
@@ -72,6 +72,8 @@ class RobomimicLowdimPolicy(BasePolicy):
             persistent_workers=True,
         )
 
+        self.global_epoch = 0
+
     def to(self,*args,**kwargs):
         device, dtype, non_blocking, convert_to_format = torch._C._nn._parse_to(*args, **kwargs)
         if device is not None:
@@ -81,21 +83,19 @@ class RobomimicLowdimPolicy(BasePolicy):
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
         try:
-            self.model.load_state_dict(torch.load(ckpt_path))
+            self.model.deserialize(torch.load(ckpt_path))
         except Exception as e:
-            log.warning(f"Failed to load model from {ckpt_path}")
-            log.warning(e)
+            log.error(f"Could not load model from {ckpt_path}. Error: {e}")
 
     # =========== inference =============
     def get_action(self, obs):
-        assert obs.shape[1] == 1
+        if self.model.nets.training:        
+            self.model.set_eval()
+        obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
         robomimic_obs_dict = {self.obs_key: obs[:,0,:]}
         action = self.model.get_action(robomimic_obs_dict)
         # (B, Da)
-        # result = {
-        #     'action': action[:,None,:] # (B, 1, Da)
-        # }
-        return action
+        return action.cpu().numpy()
     
     def reset(self):
         self.model.reset()
@@ -103,17 +103,24 @@ class RobomimicLowdimPolicy(BasePolicy):
     # =========== training ==============
     
     def train(self, dataset, num_epochs, model_path, seed=0):
-        for epoch in range(num_epochs):
-            log.info(f"Training epoch {epoch}")
-            batch = next(iter(self.dataloader))
-            robomimic_batch = {
-                'obs': {self.obs_key: batch['obs']},
-                'actions': batch['action']
-            }
-            input_batch = self.model.process_batch_for_training(
-                robomimic_batch)
-            info = self.model.train_on_batch(
-                batch=input_batch, epoch=num_epochs, validate=True)
+        with tqdm(range(num_epochs)) as pbar:
+            for epoch in pbar:
+                for batch in self.dataloader:
+                    robomimic_batch = {
+                        'obs': {self.obs_key: batch['obs']},
+                        'actions': batch['action']
+                    }
+                    input_batch = self.model.process_batch_for_training(
+                        robomimic_batch)
+                    info = self.model.train_on_batch(
+                        batch=input_batch, epoch=epoch, validate=False)
+                wandb.log({"epoch": self.global_epoch,
+                        "loss": info['losses']['action_loss'],
+                        "log_probs": info['losses']['log_probs']})
+                # save model from dict in self.model.serialize()
+                torch.save(self.model.serialize(), model_path)
+                self.global_epoch += 1
+                
+        torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
         
-        # keys: losses, predictions
         return info
