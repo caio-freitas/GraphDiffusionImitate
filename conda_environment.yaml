@@ -13,7 +13,7 @@ dependencies:
     - pytorchvideo
     - gymnasium==0.28.1
     - gym
-    - -e git+https://github.com/ARISE-Initiative/robomimic@main#egg=robosuite
+    - robomimic
     - diffusers
     - zarr
     - einops

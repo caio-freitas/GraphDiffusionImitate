@@ -1,44 +1,41 @@
 
-task_name: &task_name lift
+task_name: &task_name lift_graph
 dataset_type: &dataset_type ph
-dataset_path: &dataset_path /home/caio/workspace/GraphDiffusionImitate/data/lift/${task.dataset_type}/low_dim_v141.hdf5
+dataset_path: &dataset_path ./data/lift/${task.dataset_type}/low_dim_v141.hdf5
 
-max_steps: ${max_steps}
+max_steps: 500
+
+obs_dim: 14
+action_dim: 9
 
 
-obs_keys: &obs_keys ['robot0_eef_pos', 'object']
-action_keys: &action_keys ['robot0_joint_vel']
+obs_keys: &obs_keys ['robot0_joint_pos', 'object']
+action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel']
+object_state_keys: &object_state_keys ['cube_pos']
 
-# describe all the objects in the scene
-object_state_sizes: &object_state_sizes
-  cube_pos: 3
-  cube_quat: 4
-  gripper_to_cube_pos: 3
+object_state_sizes: &object_state_sizes [
+  {name: "cube_pos", size: 3},
+  {name: "cube_quat", size: 4},
+  {name: "gripper_to_cube_pos", size: 3},
+]
 
-# describe the object state keys that are used for the graph
-object_state_keys: &object_state_keys
-  cube: ["cube_pos", "cube_quat"]
-
-env_runner:
+env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
   render: ${render}
   env:
-    _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
-    object_state_sizes: *object_state_sizes
-    object_state_keys:  *object_state_keys
+    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
     max_steps: ${task.max_steps}
     task: "Lift"
     robots: ["Panda"]
-    mode: ${task.dataset.mode}
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
   dataset_path: ${task.dataset_path}
+  obs_keys: *obs_keys
   action_keys: *action_keys
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
   object_state_sizes: *object_state_sizes
-  object_state_keys:  *object_state_keys
-  mode: "joint-space"
