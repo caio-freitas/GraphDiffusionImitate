@@ -170,7 +170,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             self.optimizer.zero_grad()
                             self.scheduler.step(acc_loss)
                             self.save_nets(model_path)
-                            wandb.log({"batch_loss": acc_loss})
+                            wandb.log({"batch_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
