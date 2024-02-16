@@ -7,10 +7,7 @@ from tqdm import tqdm
 import torch.nn as nn
 import wandb
 import torch_geometric
-from imitation.model.graph_diffusion import  DenoisingNetwork
 from imitation.utils.graph_diffusion import NodeMasker
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-from diffusers.optimization import get_scheduler
 
 
 class AutoregressiveGraphDiffusionPolicy(nn.Module):
@@ -31,13 +28,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.dataset = dataset
         self.node_feature_dim = node_feature_dim
         self.num_edge_types = num_edge_types
-        self.denoising_network = denoising_network
+        self.model = denoising_network
         # no need for diffusion ordering network
         self.node_feature_loss = nn.MSELoss()
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
-        self.optimizer = torch.optim.AdamW(self.denoising_network.parameters(), lr=5e-4)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=30, factor=0.4, verbose=True)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -49,7 +47,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         print(f"Loading networks from checkpoint: {ckpt_path}")
         try:
-            self.denoising_network.load_state_dict(torch.load(ckpt_path, map_location=self.device))
+            self.model.load_state_dict(torch.load(ckpt_path, map_location=self.device))
         except Exception as e:
             print(f"Could not load networks from checkpoint: {e}\n")
 
@@ -58,7 +56,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         Save networks to checkpoint
         '''
-        torch.save(self.denoising_network.state_dict(), ckpt_path)
+        torch.save(self.model.state_dict(), ckpt_path)
 
     def generate_diffusion_trajectory(self, graph):
         '''
@@ -127,7 +125,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         except:
             pass
         self.optimizer.zero_grad()
-        self.denoising_network.train()
+        self.model.train()
         batch_size = 5
 
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
@@ -150,10 +148,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
 
                             # predict node and edge type distributions
-                            node_features = self.denoising_network(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), cond=G_0.y.float())
-
+                            joint_values = self.model(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), cond=G_0.y.float())
+                            # joint_values = node_features[0] # first node feature is joint values
                             # mse loss for node features
-                            loss = self.node_feature_loss(node_features, G_0.x[node_order[t],:,0].float())
+                            loss = self.node_feature_loss(joint_values, G_0.x[node_order[t],:,:].float())
+                            # TODO add loss for absolute positions, to make the model physics-informed
+
                             # use correlation as loss
                             # x = torch.stack([node_features.squeeze(), G_0.x[node_order[t],:,0].float()])
                             # x += torch.rand_like(x) * 1e-8 # add noise to avoid NaNs
@@ -168,6 +168,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         if batch_i % batch_size == 0:
                             self.optimizer.step()
                             self.optimizer.zero_grad()
+                            self.scheduler.step(acc_loss)
                             self.save_nets(model_path)
                             wandb.log({"batch_loss": acc_loss})
                 self.global_epoch += 1
@@ -217,7 +218,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         node_features = torch.cat(node_features, dim=1)
 
        
-        self.denoising_network.eval()
+        self.model.eval()
 
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
@@ -225,7 +226,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action.x[-1] = self.denoising_network(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
+            action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
             if x_i == obs[0].x.shape[0]-1:

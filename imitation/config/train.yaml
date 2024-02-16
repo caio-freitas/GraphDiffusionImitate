@@ -10,7 +10,7 @@ output_video: True
 
 pred_horizon: 16
 obs_horizon: 4
-action_horizon: 8
+action_horizon: 16
 # Training parameters
 num_epochs: 2000
 seed: 0
@@ -25,7 +25,7 @@ agent:
 
 # Evaluation during training
 eval_params:
-  eval_every: 50 # evaluate every 50 epochs
+  eval_every: 1 # evaluate every 50 epochs
   task: ${task}
   policy: ${policy}
   render: False

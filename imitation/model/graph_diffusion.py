@@ -10,21 +10,20 @@ from torch_geometric.nn import MessagePassing
 
 
 
-
 class MPLayer(MessagePassing):
     '''
     Custom message passing layer for the GraphARM model
     '''
     def __init__(self, in_channels, out_channels):
         super().__init__(aggr='sum') #  "Max" aggregation.
-        self.f = nn.Sequential(Linear(3 * in_channels, out_channels),
+        self.f = nn.Sequential(Linear(3 * in_channels, in_channels),
                        nn.ReLU(),
-                       Linear(out_channels, out_channels)) # MLP for message construction
-        self.g = nn.Sequential(Linear(3 * in_channels, out_channels),
+                       Linear(in_channels, in_channels)) # MLP for message construction
+        self.g = nn.Sequential(Linear(3 * in_channels, in_channels),
                           nn.ReLU(),
-                          Linear(out_channels, out_channels)) # MLP for attention coefficients
+                          Linear(in_channels, in_channels)) # MLP for attention coefficients
         
-        self.gru = nn.GRU(2*out_channels, out_channels)
+        self.gru = nn.GRU(2*in_channels, out_channels)
         
     def forward(self, x, edge_index, edge_attr):
         '''
@@ -49,6 +48,25 @@ class MPLayer(MessagePassing):
         a_ij = self.g(torch.cat([h_vi, h_vj, h_eij], dim=-1))
         return m_ij * a_ij
 
+class ConditionalMPLayer(MPLayer):
+    '''
+    Custom message passing layer with global conditioning applied to the GRU
+    '''
+    def __init__(self, in_channels, out_channels):
+        super().__init__(in_channels, out_channels)
+        self.gru = nn.GRU(3*in_channels, out_channels)
+        
+    def forward(self, x, edge_index, edge_attr, cond):
+        '''
+        x has shape [N, in_channels]
+        edge_index has shape [2, E]
+        **self-loops should be added in the preprocessing step (fully connecting the graph)
+        '''
+
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        cond = cond.repeat(out.shape[0], 1)
+        out, _ = self.gru(torch.cat([x, out, cond], dim=-1))
+        return out
 
 class DenoisingNetwork(nn.Module):
     def __init__(self,
@@ -142,7 +160,7 @@ class DenoisingNetwork(nn.Module):
         return node_pred, p_e, h_v
     
 
-class ConditionalGraphDenoisingNetwork(nn.Module):
+class FiLMConditionalGraphDenoisingNetwork(nn.Module):
     def __init__(self,
                 node_feature_dim,
                 obs_horizon,
@@ -190,7 +208,7 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
             nn.ReLU(),
             Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            Linear(hidden_dim, 1*self.pred_horizon)
+            Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
         self.pe = self.positionalencoding(100).to(self.device) # max length of 100
         
@@ -251,7 +269,89 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
         v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
         
         node_pred = node_pred[v_t]
-        node_pred = node_pred.reshape(-1, self.pred_horizon, 1) # reshape to original shape
+        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape
         
         return node_pred
     
+
+
+class ConditionalGraphDenoisingNetwork(FiLMConditionalGraphDenoisingNetwork):
+    def __init__(self,
+                node_feature_dim,
+                obs_horizon,
+                pred_horizon,
+                edge_feature_dim,
+                num_edge_types,
+                num_layers=5,
+                hidden_dim=256,
+                device=None):
+        '''
+        Denoising GNN (based on GraphARM) with FiLM conditioning on 
+        "global" conditioning vector (encoded observation)
+        '''
+        super().__init__(
+            node_feature_dim,
+            obs_horizon,
+            pred_horizon,
+            edge_feature_dim,
+            num_edge_types,
+            num_layers,
+            hidden_dim,
+            device
+        )
+        # overwrite FiLM layers with simple MLPs
+        self.cond_channels = hidden_dim
+        self.cond_encoders = nn.Sequential(
+                nn.Mish(),
+                nn.Linear(node_feature_dim*obs_horizon, self.cond_channels),
+                nn.Unflatten(-1, (-1, 1))
+            ).to(self.device)
+
+        # overwrite MP layers with conditional MP layers
+        self.layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.layers.append(ConditionalMPLayer(hidden_dim, hidden_dim)).to(self.device)
+
+
+    def forward(self, x, edge_index, edge_attr, cond=None, node_order=None):
+        # make sure x and edge_attr are of type float, for the MLPs
+        x = x.float().to(self.device).flatten(start_dim=1)
+        edge_attr = edge_attr.float().to(self.device) 
+        edge_index = edge_index.to(self.device)
+        cond = cond.float().to(self.device).flatten(start_dim=1)
+
+        N = x.shape[0] - 1
+
+        h_v = self.node_embedding(x)
+        h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
+        
+         # # Positional encoding
+        h_v += self.pe[N, :].to(self.device)
+
+        # Conditioning
+        cond_embed = self.cond_encoders(cond)
+        # pooling for graph-level conditioning
+        cond_embed = torch.mean(cond_embed, dim=0).reshape(1,-1)
+
+        for l in range(self.num_layers):
+            # import pdb; pdb.set_trace()
+            h_v = self.layers[l](h_v, edge_index, h_e, cond_embed)
+
+        
+        # graph-level embedding, from average pooling layer
+        graph_embedding = torch.mean(h_v, dim=0)
+
+        # repeat graph embedding to have the same shape as h_v
+        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+
+        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2 * hidden_dim
+
+        v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
+        
+        node_pred = node_pred[v_t]
+        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape
+        
+
+        return node_pred
+    
+

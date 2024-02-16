@@ -38,7 +38,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=policy.__class__.__name__,
         group=cfg.task.task_name,
-        name=f"v1.0.0",
+        name=f"v1.0.0 (5x256)",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
@@ -51,6 +51,8 @@ def train(cfg: DictConfig) -> None:
         },
         # mode="disabled",
     )
+    wandb.watch(policy.model, log="all")
+
 
     E = cfg.num_epochs
     if cfg.eval_params != "disabled":
@@ -59,7 +61,7 @@ def train(cfg: DictConfig) -> None:
      # evaluate every E epochs
     for i in range(cfg.num_epochs // E):
         # train policy
-        policy.train(dataset=policy.dataset,
+        policy.train(dataset=policy.dataset.shuffle(),
                     num_epochs=E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
