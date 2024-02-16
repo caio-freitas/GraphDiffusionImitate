@@ -35,7 +35,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # no need for diffusion ordering network
         self.node_feature_loss = nn.MSELoss()
         self.masker = NodeMasker(dataset)
-        
+        self.global_epoch = 0
 
         self.optimizer = torch.optim.AdamW(self.denoising_network.parameters(), lr=5e-4)
         self.mode = mode
@@ -158,7 +158,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             # x = torch.stack([node_features.squeeze(), G_0.x[node_order[t],:,0].float()])
                             # x += torch.rand_like(x) * 1e-8 # add noise to avoid NaNs
                             # loss -= (1/batch_size)*torch.corrcoef(x)[0,1]
-                            wandb.log({"loss": loss.item()})
+                            wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
@@ -170,6 +170,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             self.optimizer.zero_grad()
                             self.save_nets(model_path)
                             wandb.log({"batch_loss": acc_loss})
+                self.global_epoch += 1
 
     def get_joint_values(self, x):
         '''
@@ -235,5 +236,4 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             
         joint_values_t = self.get_joint_values(action.x.detach().cpu().numpy())
 
-        print("joint values: ", joint_values_t)
         return joint_values_t
