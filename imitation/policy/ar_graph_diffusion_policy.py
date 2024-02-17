@@ -35,7 +35,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=30, factor=0.4, verbose=True)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/100)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -170,7 +170,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             self.optimizer.zero_grad()
                             self.scheduler.step(acc_loss)
                             self.save_nets(model_path)
-                            wandb.log({"batch_loss": acc_loss})
+                            wandb.log({"batch_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
