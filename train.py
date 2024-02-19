@@ -38,7 +38,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=policy.__class__.__name__,
         group=cfg.task.task_name,
-        name=f"v1.0.0 (5x256)",
+        name=f"v1.0.2",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
@@ -51,7 +51,7 @@ def train(cfg: DictConfig) -> None:
         },
         # mode="disabled",
     )
-    wandb.watch(policy.model, log="all")
+    # wandb.watch(policy.model, log="all")
 
 
     E = cfg.num_epochs
