@@ -10,7 +10,7 @@ import torch_geometric
 from imitation.utils.graph_diffusion import NodeMasker
 
 
-class AutoregressiveGraphDiffusionPolicy(nn.Module):
+class StochAutoregressiveGraphDiffusionPolicy(nn.Module):
     def __init__(self,
                  dataset,
                  node_feature_dim,
@@ -20,7 +20,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                  ckpt_path=None,
                  device = None,
                  mode = 'joint-space'):
-        super(AutoregressiveGraphDiffusionPolicy, self).__init__()
+        super(StochAutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
@@ -100,21 +100,79 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         return torch.arange(graph.x.shape[0]-1, -1, -1)
 
-    def vlb(self, G_0, edge_type_probs, node, node_order, t):
-        T = len(node_order)
+    def nll_loss(self, G_0, node_features, node):
         n_i = G_0.x.shape[0]
-        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
-        edge_attrs_matrix = G_0.edge_attr.reshape(T, T)
-        original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
-        # calculate probability of edge type
-        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
-        log_p_edges = torch.sum(torch.log(p_edges))
-        # log_p_edges = torch.sum(torch.tensor([0]))
-        wandb.log({"target_edges_log_prob": log_p_edges})
-        # calculate loss
-        log_p_O_v =  log_p_edges
-        loss = -(n_i/T)*log_p_O_v # cumulative, to join (k) from all previously denoised nodes
+        # get likelihood of joint values
+        log_likelihood = self.get_distribution_likelihood(node_features, G_0.x[node,:,:])
+        loss = - log_likelihood
         return loss
+
+    
+    def get_distribution_likelihood(self, dist_params, joint_values):
+            '''
+            Returns the likelihood of joint values given a Mixture of Gaussians (MoG) distribution.
+            Args:
+                dist_params: A tensor containing parameters for the MoG distribution.
+                This should be in the format [means, variances, mixing_weights],
+                where means and variances are shaped [pred_horizon, node_feature_dim, num_mixtures],
+                and mixing_weights are shaped [num_mixtures].
+                joint_values: A tensor containing joint values shaped [pred_horizon, node_feature_dim].
+            '''
+            # Extract parameters
+            means = dist_params[0].to(self.device).double()
+            variances = dist_params[1].to(self.device).double()
+            mixing_weights = dist_params[2].to(self.device).double()
+
+            # Reshape mixing_weights for broadcasting
+            mixing_weights = mixing_weights.unsqueeze(0).unsqueeze(0)  # Add two dimensions to the front
+
+            # Calculate squared differences and normalize by variances
+            repeated_joint_values = joint_values.unsqueeze(2).repeat(1, 1, mixing_weights.shape[2])
+            squared_diffs = (repeated_joint_values - means) ** 2 / variances
+
+            # Calculate exponential terms and multiply with mixing weights
+            exp_terms = torch.exp(-0.5 * squared_diffs) * mixing_weights
+
+            # Calculate likelihoods and sum over mixtures
+            likelihoods = exp_terms / torch.sqrt(2 * np.pi * variances)
+            likelihood_sum = torch.sum(likelihoods, dim=2)  # sum over mixtures
+
+            # Calculate and return log-likelihood
+            return torch.sum(torch.log(likelihood_sum))
+
+
+    def sample_from_distribution(self, dist_params):
+        '''
+        Samples joint values from a Mixture of Gaussians (MoG) distribution.
+        Args:
+            dist_params: A tensor containing parameters for the MoG distribution.
+            This should be in the format [means, variances, mixing_weights],
+            where means and variances are shaped [pred_horizon, node_feature_dim, num_mixtures],
+            and mixing_weights are shaped [num_mixtures].
+
+        Returns:
+            joint_values: A tensor containing sampled joint values shaped
+            [pred_horizon, num_features].
+        '''
+
+        # Extract parameters
+        means = dist_params[0]
+        variances = dist_params[1]
+        mixing_weights = dist_params[2]
+
+        # Get the index of the maximum mixing weight
+        max_mixture_idx = torch.argmax(mixing_weights)
+
+        # Sample from Gaussian using the maximum mixing weight
+        pred_horizon = means.shape[0]
+        num_features = means.shape[1]
+        joint_values = torch.zeros(pred_horizon, num_features) # single joint/node
+        for i in range(pred_horizon):
+            for j in range(num_features):
+                # Sample from Gaussian using the maximum mixing weight
+                joint_values[i, j] = torch.normal(means[i, j, max_mixture_idx], torch.sqrt(variances[i, j, max_mixture_idx]))
+
+        return joint_values
 
     def train(self, dataset, num_epochs=100, model_path=None, seed=0):
         '''
@@ -148,21 +206,20 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
 
                             # predict node and edge type distributions
-                            joint_values = self.model(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), cond=G_0.y.float())
+                            logits = self.model(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), cond=G_0.y.float())
+                            
                             # joint_values = node_features[0] # first node feature is joint values
                             # mse loss for node features
-                            loss = self.node_feature_loss(joint_values, G_0.x[node_order[t],:,:].float())
+                            # loss = self.node_feature_loss(joint_values, G_0.x[node_order[t],:,:].float())
+                            loss = self.nll_loss(G_0, logits, node_order[t])
+
                             # TODO add loss for absolute positions, to make the model physics-informed
 
-                            # use correlation as loss
-                            # x = torch.stack([node_features.squeeze(), G_0.x[node_order[t],:,0].float()])
-                            # x += torch.rand_like(x) * 1e-8 # add noise to avoid NaNs
-                            # loss -= (1/batch_size)*torch.corrcoef(x)[0,1]
-                            wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
+                            wandb.log({"epoch": self.global_epoch, "nll_loss": loss.item()})
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
-                            loss.backward(retain_graph=True)
+                            loss.backward()
                         batch_i += 1
                         # update weights
                         if batch_i % batch_size == 0:
@@ -182,7 +239,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - end-effector: raise NotImplementedError
         '''
         if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:,:,0].T # all nodes, all timesteps, first value
+            return x[:8,:,0].T # all nodes, all timesteps, first value
         elif self.mode == 'end-effector':
             raise NotImplementedError
         else:
@@ -226,7 +283,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
+            logits = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
+            action.x[-1]  = self.sample_from_distribution(logits)
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
             if x_i == obs[0].x.shape[0]-1:
