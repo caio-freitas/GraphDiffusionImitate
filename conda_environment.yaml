@@ -13,6 +13,9 @@ dependencies:
     - pytorchvideo
     - gymnasium==0.28.1
     - gym
+    - diffusers
+    - zarr
+    - h5py
     - robomimic
     - diffusers
     - zarr
