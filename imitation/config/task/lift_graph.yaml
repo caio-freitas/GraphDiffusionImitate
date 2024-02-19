@@ -1,6 +1,6 @@
 
 task_name: &task_name lift
-dataset_type: &dataset_type mh
+dataset_type: &dataset_type ph
 dataset_path: &dataset_path ./data/lift/${task.dataset_type}/low_dim_v141.hdf5
 
 max_steps: 500
@@ -44,4 +44,4 @@ dataset:
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys:  *object_state_keys
-  mode: "joint-space"
+  mode: "task-joint-space"
