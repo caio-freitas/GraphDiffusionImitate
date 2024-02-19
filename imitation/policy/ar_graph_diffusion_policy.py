@@ -182,7 +182,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - end-effector: raise NotImplementedError
         '''
         if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:,:,0].T # all nodes, all timesteps, first value
+            return x[:8,:,0].T # all nodes, all timesteps, first value
         elif self.mode == 'end-effector':
             raise NotImplementedError
         else:
@@ -223,7 +223,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
 
-        for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph
+        for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
             action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)

@@ -12,6 +12,8 @@ import torch_geometric
 import logging
 from tqdm import tqdm
 
+from imitation.utils.generic import calculate_panda_joints_positions
+
 log = logging.getLogger(__name__)
  
 class RobomimicGymWrapper(GymWrapper):
@@ -91,7 +93,7 @@ class RobomimicGraphWrapper(gym.Env):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-    def control_loop(self, tgt_jpos, max_n=1, eps=0.02):
+    def control_loop(self, tgt_jpos, max_n=10, eps=0.02):
         obs = self.env._get_observations()
         for i in range(max_n):
             obs = self.env._get_observations()
@@ -118,24 +120,20 @@ class RobomimicGraphWrapper(gym.Env):
             node_feats = node_feats.reshape(1, -1) # add dimension
         else:
             if self.mode == "task-space":
-                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]))
-                node_feats = torch.cat(node_feats, dim=0)
+                node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]])).T)
+                node_feats = torch.cat(node_feats, dim=0).T
             elif self.mode == "joint-space":
                 node_feats.append(torch.cat([
                     torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1),
                     torch.zeros((6,9))])) # complete with zeros to match task-space dimensionality
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
-                raise NotImplementedError
+                node_feats = []
+                # [node, node_feats]
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
+                node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]])).T)
+                node_feats = torch.cat(node_feats, dim=0).T
         return node_feats
-    
-    def _calculate_joints_positions(self, joint_cos, joint_sin):
-        '''
-        Calculates joint positions from joint cosines and sines
-        '''
-        
-        return torch.atan2(torch.tensor(joint_sin), 
-                           torch.tensor(joint_cos))
 
 
     def _get_edges(self):

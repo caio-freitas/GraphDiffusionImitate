@@ -1,14 +1,14 @@
 
 from typing import Callable, Optional
 from torch_geometric.data import Dataset, Data, InMemoryDataset
-from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
 import logging
 import h5py
 import os.path as osp
 import numpy as np
 import torch
 from tqdm import tqdm
-from scipy.spatial.transform import Rotation as R
+
+from imitation.utils.generic import calculate_panda_joints_positions
 
 log = logging.getLogger(__name__)
 
@@ -47,8 +47,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         except:
             pass
 
-        self.robot_fk = DifferentiableFrankaPanda()
-
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
 
     def _test_dimentionality(self):
@@ -62,18 +60,6 @@ class RobomimicGraphDataset(InMemoryDataset):
              
 
         
-    def _calculate_joints_positions(self, joints):
-        q = torch.tensor([joints]).to("cpu")
-        q.requires_grad_(True)
-        data = self.robot_fk.compute_forward_kinematics_all_links(q)
-        data = data[0]
-        joint_positions = []
-        # add joint positions
-        for i in range(7):
-            joint_quat = torch.tensor(R.from_matrix(data[i, :3, :3].detach().numpy()).as_quat())
-            joint_positions.append(torch.cat([data[i, :3, 3], joint_quat]).reshape(1,-1))
-
-        return torch.cat(joint_positions, dim=0)
 
     
     @property
@@ -110,7 +96,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             if self.mode == "task-space":
                 node_feats = []
                 for i in range(t - 1, t):
-                    node_feats.append(self._calculate_joints_positions([*data["robot0_joint_pos"][i], *data["robot0_gripper_qpos"][i]]))
+                    node_feats.append(calculate_panda_joints_positions([*data["robot0_joint_pos"][i], *data["robot0_gripper_qpos"][i]]))
                 node_feats = torch.cat(node_feats, dim=0)
             elif self.mode == "joint-space":
                 node_feats.append(torch.cat([
@@ -119,9 +105,10 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 node_feats = []
-                node_feats.append(torch.cat([self._calculate_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]),
-                                                torch.tensor(data["robot0_joint_pos"][t - 1:t]).reshape(-1,1)], dim=1))
-                node_feats = torch.cat(node_feats, dim=0)
+                # [node, node_feats]
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t - 1:t][0], *data["robot0_gripper_qpos"][t - 1:t][0]]).reshape(1,-1))
+                node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]])).T)
+                node_feats = torch.cat(node_feats, dim=0).T
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
         
@@ -258,7 +245,7 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
             node_feats = torch.stack(node_feats)
         elif self.mode == "task-space":
             for j in range(self.num_robots):
-                node_feats.append(self._calculate_joints_positions([*data[f"robot{j}_joint_pos"][t], *data[f"robot{j}_gripper_qpos"][t]]))
+                node_feats.append(calculate_panda_joints_positions([*data[f"robot{j}_joint_pos"][t], *data[f"robot{j}_gripper_qpos"][t]]))
             node_feats = torch.cat(node_feats)
         elif self.mode == "joint-space":
             for i in range(self.num_robots):
@@ -268,7 +255,7 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
             node_feats = torch.cat(node_feats)
         elif self.mode == "task-joint-space":
             for i in range(self.num_robots):
-                node_feats.append(torch.cat([self._calculate_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]]),
+                node_feats.append(torch.cat([calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]]),
                                                     torch.tensor(data[f"robot{i}_joint_pos"][t - 1:t]).reshape(-1,1)], dim=1))
             node_feats = torch.cat(node_feats, dim=0)
         

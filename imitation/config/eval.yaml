@@ -1,19 +1,19 @@
 defaults:
   - _self_
-  - task: lift_lowdim
-  - policy: mlp_policy
+  - task: lift_graph
+  - policy: graph_diffusion_policy
 
 render: False
 output_video: True
 
 num_episodes: 20
-max_steps: 500
+max_steps: 1000
 output_dir: ./outputs
 
 
-pred_horizon: 8
+pred_horizon: 4
 obs_horizon: 4
-action_horizon: 8
+action_horizon: 4
 
 
 env_runner: ${task.env_runner}
