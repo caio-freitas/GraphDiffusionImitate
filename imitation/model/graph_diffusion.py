@@ -185,11 +185,16 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
-        self.node_embedding = Linear(node_feature_dim*pred_horizon, hidden_dim).to(self.device)
-        self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
+        self.num_mixtures = 2 # make sure it's power of 2
+
+        # Node embedding
+        self.node_embedding = Linear(node_feature_dim*pred_horizon, self.hidden_dim).to(self.device)
+        # Edge embedding
+        self.edge_embedding = Linear(edge_feature_dim, self.hidden_dim).to(self.device)
+
         # FiLM modulation https://arxiv.org/abs/1709.07871
         # predicts per-channel scale and bias
-        self.cond_channels = hidden_dim * 2
+        self.cond_channels = self.hidden_dim * 2
         self.cond_encoders = nn.ModuleList()
         for _ in range(num_layers):
             self.cond_encoders.append(nn.Sequential(
@@ -198,20 +203,23 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
                 nn.Unflatten(-1, (-1, 1))
             ).to(self.device))
 
-
-
+        # Graph layers
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
-            self.layers.append(MPLayer(hidden_dim, hidden_dim)).to(self.device)
-        
-        self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
+            self.layers.append(MPLayer(self.hidden_dim, self.hidden_dim).to(self.device))
+
+        # Prediction layer (adjusted for multiple mixtures)
+        self.node_pred_layer = nn.Sequential(
+            Linear(2 * self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
-            Linear(hidden_dim, hidden_dim),
+            Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
-            Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
+            Linear(self.hidden_dim, 2 * self.node_feature_dim * self.pred_horizon * self.num_mixtures + self.num_mixtures) # 2 * hidden_dim for means and variances, and num_mixtures for mixing weights
         ).to(self.device)
+
+        # Positional encoding
         self.pe = self.positionalencoding(100).to(self.device) # max length of 100
-        
+
 
     def positionalencoding(self, lengths):
         '''
@@ -264,14 +272,30 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         # repeat graph embedding to have the same shape as h_v
         graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
 
-        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
+        # Modified output layer to predict distribution parameters
+        dist_params = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1))
 
+        # Split the output into means, variances, and mixing weights
+        means = dist_params[:, :self.node_feature_dim * self.pred_horizon * self.num_mixtures]
+        variances = dist_params[:, self.node_feature_dim * self.pred_horizon * self.num_mixtures:2 * self.node_feature_dim * self.pred_horizon * self.num_mixtures]
+        mixing_weights = dist_params[:, 2 * self.node_feature_dim * self.pred_horizon * self.num_mixtures:]
+
+        # softmax the mixing weights and variances (to ensure positivity)
+        mixing_weights = F.softmax(mixing_weights, dim=-1)
+        variances = F.softplus(variances)
+
+        # Reshape the output to match the number of mixtures
+        means = means.view(-1, self.pred_horizon, self.node_feature_dim, self.num_mixtures)
+        variances = variances.view(-1, self.pred_horizon, self.node_feature_dim, self.num_mixtures)
+        mixing_weights = mixing_weights.view(-1, self.num_mixtures)
+
+        # get only last node
         v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
-        
-        node_pred = node_pred[v_t]
-        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape
-        
-        return node_pred
+        means = means[v_t]
+        variances = variances[v_t]
+        mixing_weights = mixing_weights[v_t]
+
+        return means, variances, mixing_weights
     
 
 
