@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: lift_lowdim
+  - task: lift_eef
   - policy: robomimic_lowdim
 
 output_dir: ./outputs
