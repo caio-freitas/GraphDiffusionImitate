@@ -2,7 +2,7 @@ _target_: imitation.policy.robomimic_lowdim_policy.RobomimicLowdimPolicy
 obs_dim: ${task.obs_dim}
 action_dim: ${task.action_dim}
 # only works with fixed horizons, pred_horizon = obs_horizon
-algo_name: "bc"
+algo_name: "bc_rnn"
 obs_type: "low_dim"
 task_name: ${task.task_name}
 dataset_type: ${task.dataset_type}
