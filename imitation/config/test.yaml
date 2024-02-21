@@ -3,6 +3,7 @@ defaults:
   - task: lift_graph
   - policy: graph_diffusion_policy
 
+output_video: False
 render: True
 
 seed: 0
@@ -10,9 +11,9 @@ num_episodes: 5
 max_steps: 5000
 output_dir: ./outputs
 
-pred_horizon: 16
+pred_horizon: 4
 obs_horizon: 4
-action_horizon: 16
+action_horizon: 4
 
 
 agent:
