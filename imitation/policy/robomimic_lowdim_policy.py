@@ -26,6 +26,7 @@ class RobomimicPretrainedWrapper:
             obs_type='low_dim',
             task_name='square',
             dataset_type='ph',
+            dataset=None,
             ckpt_path=None,
             lr=1e-4
         ):
