@@ -93,7 +93,7 @@ class RobomimicGraphWrapper(gym.Env):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-    def control_loop(self, tgt_jpos, max_n=10, eps=0.02):
+    def control_loop(self, tgt_jpos, max_n=1, eps=0.02):
         obs = self.env._get_observations()
         for i in range(max_n):
             obs = self.env._get_observations()
@@ -212,8 +212,11 @@ class RobomimicGraphWrapper(gym.Env):
 
         edge_index, edge_attrs = self._get_edges()
 
+        y = node_feats
+        # zero first column of node_feats (joint values, not present in task-space observation)
+        y[:10,0] = 0
         # create graph
-        graph = torch_geometric.data.Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attrs)
+        graph = torch_geometric.data.Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attrs, y=y)
 
         return graph
     

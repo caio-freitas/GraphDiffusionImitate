@@ -35,7 +35,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/100)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -147,7 +147,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
 
-                            # predict node and edge type distributions
                             joint_values = self.model(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), cond=G_0.y.float())
                             # joint_values = node_features[0] # first node feature is joint values
                             # mse loss for node features
@@ -207,15 +206,15 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # append x, edge_index, edge_attr from all graphs in obs to single graph
         assert len(obs) == self.dataset.obs_horizon
         # turn deque into single graph with extra node-feature dimension
-        node_features = []
+        obs_cond = []
         # edge_indes and edge_attr don't change
         obs[0] = self.preprocess(obs[0])
         obs[0] = self.masker.idxify(obs[0])
         edge_index = obs[0].edge_index
         edge_attr = obs[0].edge_attr
         for i in range(len(obs)):
-            node_features.append(obs[i].x.unsqueeze(1))
-        node_features = torch.cat(node_features, dim=1)
+            obs_cond.append(obs[i].y.unsqueeze(1))
+        obs_cond = torch.cat(obs_cond, dim=1)
 
        
         self.model.eval()
@@ -226,7 +225,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
+            action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=obs_cond)
             if self.mode == "joint-space":
                 action.x[-1,:,1:] = 0 # zero out all but first node features to avoid propagating noise
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot
