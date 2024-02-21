@@ -227,6 +227,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action = self.preprocess(action)
             # predict node attributes for last node in action
             action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=node_features)
+            if self.mode == "joint-space":
+                action.x[-1,:,1:] = 0 # zero out all but first node features to avoid propagating noise
+            action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
             if x_i == obs[0].x.shape[0]-1:
