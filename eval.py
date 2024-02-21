@@ -56,7 +56,7 @@ def eval_main(cfg):
             success_count += 1
         log.info({"episode_reward": sum(rewards), "success": info["success"]})
         wandb.log({"episode_reward": sum(rewards), "success": 1 if info["success"] else 0})
-        if i > 5:
+        if i >= 1:
             runner.output_video = False
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
     wandb.log({"success_rate": success_count/cfg.num_episodes})
