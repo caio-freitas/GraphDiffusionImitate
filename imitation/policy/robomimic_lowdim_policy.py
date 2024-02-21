@@ -55,7 +55,7 @@ class RobomimicLowdimPolicy(BasePolicy):
             )
         self.model = model
         self.nets = model.nets
-        self.normalizer = LinearNormalizer()
+        self.normalizer = self.dataset.get_normalizer()
         self.obs_key = obs_key
         self.config = config
 
@@ -91,11 +91,10 @@ class RobomimicLowdimPolicy(BasePolicy):
 
     # =========== inference =============
     def get_action(self, obs):
-        obs = self.normalizer['obs'].normalize(obs_dict['obs'])
+        obs = self.normalizer['obs'].normalize(torch.tensor(obs)).to(self.device)
         if self.model.nets.training:        
             self.model.set_eval()
-        obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
-        robomimic_obs_dict = {self.obs_key: obs[:,0,:]}
+        robomimic_obs_dict = {self.obs_key: obs[:,:]}
         naction = self.model.get_action(robomimic_obs_dict)
         action = self.normalizer['action'].unnormalize(naction)
         # (B, Da)
