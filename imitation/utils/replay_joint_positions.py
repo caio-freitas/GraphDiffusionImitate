@@ -22,9 +22,11 @@ OmegaConf.register_new_resolver("eval", eval)
 class PlaybackPolicy:
     def __init__(self, dataset):
         self.dataset = dataset
+        self.t = 0
 
     def get_action(self, obs):
-        return self.dataset[0].x[:,:,0].T.numpy()
+        self.t += 1
+        return self.dataset[self.t].x[:,:,0].T.numpy()
 
     def train(self, dataset, num_epochs, model_path, seed):
         self.dataset = dataset
