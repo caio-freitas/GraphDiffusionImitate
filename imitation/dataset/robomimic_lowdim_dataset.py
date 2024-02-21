@@ -5,6 +5,8 @@ import h5py
 from tqdm import tqdm
 import os
 import logging
+from diffusion_policy.model.common.normalizer import LinearNormalizer
+
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +53,22 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         self.stats["obs"] = self.get_data_stats("obs")
         self.stats["action"] = self.get_data_stats("action")
         
+    def get_normalizer(self):
+        normalizer = LinearNormalizer()
+        data_obs = []
+        for d in tqdm(self.data_at_indices):
+            data_obs.append(d["obs"])
+        data_obs = np.concatenate(data_obs, axis=0)
+        data_action = []
+        for d in tqdm(self.data_at_indices):
+            data_action.append(d["action"])
+        data_action = np.concatenate(data_action, axis=0)
+        self.stats["obs"] = data_obs
+        self.stats["action"] = data_action
+        normalizer.fit(self.stats)
+        return normalizer
+
+
     def create_sample_indices(self):
         '''
         Creates indices for sampling from dataset
