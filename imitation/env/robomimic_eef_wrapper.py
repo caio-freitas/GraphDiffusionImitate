@@ -32,7 +32,7 @@ class RobomimicGymWrapper(GymWrapper):
                 ob_lst.append(np.array(obs_dict[key]).flatten())
         return np.concatenate(ob_lst)
 
-class RobomimicLowdimWrapper(gym.Env):
+class RobomimicEefWrapper(gym.Env):
     def __init__(self,
                  max_steps=5000,
                  task="Lift",
@@ -40,7 +40,7 @@ class RobomimicLowdimWrapper(gym.Env):
                  robots=["Panda"],
                  output_video=False,
                  ):
-        controller_config = load_controller_config(default_controller="JOINT_VELOCITY") 
+        controller_config = load_controller_config(default_controller="OSC_POSE") 
         self.robots = [*robots] # gambiarra to make it work with robots list
         keys = [ "robot0_proprio-state", 
                 *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
@@ -89,7 +89,7 @@ class RobomimicLowdimWrapper(gym.Env):
             eef_quat = obs[j + 31:j + 35]
             gripper_pose = obs[j + 35:j + 37]
             # Skip 2  - gripper joint velocities 
-            robot_i = [*robot_joint_pos, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose] 
+            robot_i = [*eef_pose, *eef_quat, *gripper_pose] 
             final_obs = [*final_obs, *robot_i]
         
         objects = obs[39*len(self.robots):]
@@ -102,17 +102,7 @@ class RobomimicLowdimWrapper(gym.Env):
     
 
     def step(self, action):
-        final_action = []
-        for i in range(len(self.robots)):
-            '''
-            Robosuite's action space is composed of 7 joint velocities and 1 gripper velocity, while 
-            in the robomimic datasets, it's composed of 7 joint velocities and 2 gripper velocities (for each "finger").
-            '''
-            j = i*9
-            robot_joint_vel = action[j:j + 7]
-            robot_gripper_vel = action[j + 8] # use only last action for gripper
-            final_action = [*final_action, *robot_joint_vel, robot_gripper_vel]
-        obs, reward, done, _, info = self.env.step(final_action)
+        obs, reward, done, _, info = self.env.step(action)
         if reward == 1:
             done = True
             info = {"success": True}
