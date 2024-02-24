@@ -31,7 +31,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.object_state_keys = object_state_keys
         self.num_objects = len(object_state_keys)
         self._processed_dir = dataset_path.replace(".hdf5", f"_{self.mode}_processed")
-        self.step_size = 4 # avoid idling by skipping frames
+        self.step_size = 2 # avoid idling by skipping frames
 
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
@@ -58,10 +58,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         sum_object_state_sizes = sum([self.object_state_sizes[object_state] for object_state in list(self.object_state_keys.values())[0]])
         assert self.node_feature_dim == sum_object_state_sizes + 1 # +1 for NODE_TYPE
 
-             
-
-        
-
     
     @property
     def processed_file_names(self):
@@ -81,33 +77,34 @@ class RobomimicGraphDataset(InMemoryDataset):
         for object, object_state_items in enumerate(self.object_state_keys.values()):
             i = 0
             for object_state in object_state_items:
-                obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][t - 1:t][0][i:i + self.object_state_sizes[object_state]])
+                obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][t][i:i + self.object_state_sizes[object_state]])
                 i += self.object_state_sizes[object_state]
 
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
         return obj_state_tensor
 
-    def _get_node_feats(self, data, t):
+    def _get_node_feats(self, data, t, mode):
         node_feats = []
-        if self.mode == "end-effector":
-            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t - 1:t][0]), torch.tensor(data["robot0_eef_quat"][t - 1:t][0])], dim=0)
+        if mode == "end-effector":
+            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t]), torch.tensor(data["robot0_eef_quat"][t])], dim=0)
             node_feats = node_feats.reshape(1, -1) # add dimension
         else:
-            if self.mode == "task-space":
+            if mode == "task-space":
                 node_feats = []
-                for i in range(t - 1, t):
-                    node_feats.append(calculate_panda_joints_positions([*data["robot0_joint_pos"][i], *data["robot0_gripper_qpos"][i]]))
-                node_feats = torch.cat(node_feats, dim=0)
-            elif self.mode == "joint-space":
+                # complete with zeros to match task-joint-space dimensionality
+                node_feats.append(torch.zeros((1,9)))
+                node_feats.append(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).T)
+                node_feats = torch.cat(node_feats).T
+            elif mode == "joint-space":
                 node_feats.append(torch.cat([
-                    torch.tensor([*data[f"robot0_joint_pos"][t - 1:t][0], *data["robot0_gripper_qpos"][t - 1:t][0]]).reshape(1,-1),
+                    torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1),
                     torch.zeros((6,9))])) # complete with zeros to match task-space dimensionality
                 node_feats = torch.cat(node_feats).T
-            elif self.mode == "task-joint-space":
+            elif mode == "task-joint-space":
                 node_feats = []
                 # [node, node_feats]
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t - 1:t][0], *data["robot0_gripper_qpos"][t - 1:t][0]]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
                 node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]])).T)
                 node_feats = torch.cat(node_feats, dim=0).T
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
@@ -125,8 +122,15 @@ class RobomimicGraphDataset(InMemoryDataset):
         Calculate node features for self.obs_horizon time steps
         '''
         node_feats = []
+        episode_length = data["object"].shape[0]
         for t in range(idx - horizon + 1, idx + 1, self.step_size):
-            node_feats.append(self._get_node_feats(data, t))
+            if t + horizon*self.step_size >= episode_length:
+                if t < episode_length:
+                    node_feats.append(self._get_node_feats(data, t, self.mode))
+                else:
+                    node_feats.append(self._get_node_feats(data, episode_length - 1, self.mode)) 
+            else:
+                node_feats.append(self._get_node_feats(data, t, self.mode))
         return torch.stack(node_feats, dim=1)
 
     def _get_edge_attrs(self, edge_index):
@@ -165,13 +169,16 @@ class RobomimicGraphDataset(InMemoryDataset):
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
     
-    def _get_y(self, data, idx):
-        actions = []
-        for action_key in self.action_keys:
-            actions.append(torch.tensor(data[action_key][idx:idx + self.pred_horizon]))
-        
-        return torch.stack(actions, dim=-1)
+    def _get_y_horizon(self, data, idx, horizon):
+        '''
+        Get y (observation) for time step t. Should contain only task-space joint positions.
+        '''
+        y = []
+        for t in range(idx - horizon + 1, idx + 1):
+            y.append(self._get_node_feats(data, t, "task-space"))
+        return torch.stack(y, dim=1)
 
+    
     def process(self):
         idx_global = 0
 
@@ -179,18 +186,19 @@ class RobomimicGraphDataset(InMemoryDataset):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
             
             for idx in range(episode_length - self.pred_horizon):
-                if idx - self.obs_horizon*self.step_size <= 0 or idx + self.pred_horizon*self.step_size > episode_length:
+                if idx - self.obs_horizon <= 0:
                     continue
                 data_raw = self.dataset_root["data"][key]["obs"]
                 node_feats  = self._get_node_feats_horizon(data_raw, idx + self.pred_horizon*self.step_size, self.pred_horizon*self.step_size)
                 edge_index  = self._get_edge_index(node_feats.shape[0])
                 edge_attrs  = self._get_edge_attrs(edge_index)
-                y           = self._get_node_feats_horizon(data_raw, idx, self.obs_horizon*self.step_size)
+                y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
 
                 data  = Data(x=node_feats,
                              edge_index=edge_index,
                              edge_attr=edge_attrs,
-                             y=y)             
+                             y=y,
+                             time=torch.tensor([idx], dtype=torch.long)/ episode_length)
 
                 torch.save(data, osp.join(self.processed_dir, f'data_{idx_global}.pt'))
                 idx_global += 1
