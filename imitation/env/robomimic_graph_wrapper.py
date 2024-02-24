@@ -59,7 +59,7 @@ class RobomimicGraphWrapper(gym.Env):
         self.node_feature_dim = node_feature_dim
         controller_config = load_controller_config(default_controller="JOINT_POSITION")
         # tune up controller gains
-        controller_config["kp"] = 250 # default is 50
+        controller_config["kp"] = 200 # default is 50
         self.robots = [*robots] # gambiarra to make it work with robots list
         keys = [ "robot0_proprio-state", 
                 *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
