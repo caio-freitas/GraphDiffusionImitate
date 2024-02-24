@@ -1,8 +1,10 @@
 '''
 Diffusion Policy for imitation learning with graphs
 '''
+from functools import lru_cache
 import numpy as np
 import torch
+import torch.nn.functional as F
 from tqdm import tqdm
 import torch.nn as nn
 import wandb
@@ -30,12 +32,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.num_edge_types = num_edge_types
         self.model = denoising_network
         # no need for diffusion ordering network
-        self.node_feature_loss = nn.MSELoss()
+
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/20)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/10)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -58,6 +60,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         torch.save(self.model.state_dict(), ckpt_path)
 
+    @torch.jit.export
     def generate_diffusion_trajectory(self, graph):
         '''
         Generate a diffusion trajectory from graph
@@ -84,6 +87,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         return diffusion_trajectory
 
+    @torch.jit.export
     def preprocess(self, graph):
         '''
         Preprocesses graph to be used by the denoising network.
@@ -94,27 +98,38 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         graph.edge_attr = graph.edge_attr.long()
         return graph
 
-    def node_decay_ordering(self, graph):
+    # cache function results, as it is called multiple times
+    @lru_cache
+    def node_decay_ordering(self, graph_size):
         '''
         Returns node decay ordering
         '''
-        return torch.arange(graph.x.shape[0]-1, -1, -1)
+        return torch.arange(graph_size-1, -1, -1)
 
-    def vlb(self, G_0, edge_type_probs, node, node_order, t):
-        T = len(node_order)
-        n_i = G_0.x.shape[0]
-        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
-        edge_attrs_matrix = G_0.edge_attr.reshape(T, T)
-        original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
-        # calculate probability of edge type
-        p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
-        log_p_edges = torch.sum(torch.log(p_edges))
-        # log_p_edges = torch.sum(torch.tensor([0]))
-        wandb.log({"target_edges_log_prob": log_p_edges})
-        # calculate loss
-        log_p_O_v =  log_p_edges
-        loss = -(n_i/T)*log_p_O_v # cumulative, to join (k) from all previously denoised nodes
-        return loss
+    def node_feature_loss(self, pred, target):
+        '''
+        Node feature loss
+        '''
+        lambda_joint_pos = 0.1
+        lambda_joint_values = 1
+
+        pred_joint_vals = pred[:,0] # [pred_horizon, 1]
+
+        pred_x = pred[:,1:4] # [pred_horizon, 3]
+
+        target_joint_vals = target[:,0] # [pred_horizon, 1]
+        target_x = target[:,1:4] # [pred_horizon, 3]
+        loss_joint_pos_loss = F.pairwise_distance(pred_x, target_x, p=2).mean()
+        wandb.log({"loss_joint_pos_loss": loss_joint_pos_loss.item()})
+        loss_joint_pos =  loss_joint_pos_loss
+        loss_joint_values = nn.L1Loss()(pred_joint_vals, target_joint_vals)
+        wandb.log({"loss_joint_values": loss_joint_values.item()})
+
+        return lambda_joint_pos * loss_joint_pos + lambda_joint_values * loss_joint_values
+
+
+
+        
 
     def train(self, dataset, num_epochs=100, model_path=None, seed=0):
         '''
@@ -140,7 +155,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
                         # predictions & loss
                         G_0 = diffusion_trajectory[0].to(self.device)
-                        node_order = self.node_decay_ordering(G_0)
+                        node_order = self.node_decay_ordering(G_0.x.shape[0])
                         acc_loss = 0
                         
                         # loop over nodes
