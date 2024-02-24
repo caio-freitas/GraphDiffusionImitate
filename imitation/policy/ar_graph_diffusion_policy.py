@@ -34,7 +34,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
