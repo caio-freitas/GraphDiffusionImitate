@@ -152,11 +152,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             # mse loss for node features
                             loss = self.node_feature_loss(joint_values, G_0.x[node_order[t],:,:].float())
                             # TODO add loss for absolute positions, to make the model physics-informed
-
-                            # use correlation as loss
-                            # x = torch.stack([node_features.squeeze(), G_0.x[node_order[t],:,0].float()])
-                            # x += torch.rand_like(x) * 1e-8 # add noise to avoid NaNs
-                            # loss -= (1/batch_size)*torch.corrcoef(x)[0,1]
                             wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
                             acc_loss += loss.item()
@@ -181,7 +176,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - end-effector: raise NotImplementedError
         '''
         if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:8,:,0].T # all nodes, all timesteps, first value
+            return x[:8,:,0].T # all (joint-representing) nodes, all timesteps, first value
         elif self.mode == 'end-effector':
             raise NotImplementedError
         else:
@@ -198,6 +193,21 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action_edge_attr[i] = edge_attr[torch.logical_and(edge_index[0] == action_edge_index[0, i], edge_index[1] == action_edge_index[1, i])]
         return action_edge_attr
     
+    def get_graph_from_obs(self, obs_deque):
+        '''
+        Get graph from observation deque
+        '''
+        obs_cond = []
+        # edge_indes and edge_attr don't change
+        first_graph = self.preprocess(obs_deque[0])
+        first_graph = self.masker.idxify(first_graph)
+        edge_index = first_graph.edge_index # edge_index doesn't change over time
+        edge_attr = first_graph.edge_attr # edge_attr doesn't change over time
+        for i in range(len(obs_deque)):
+            obs_cond.append(obs_deque[i].y.unsqueeze(1))
+        obs_cond = torch.cat(obs_cond, dim=1)
+        return obs_cond, edge_index, edge_attr
+
     def get_action(self, obs):
         '''
         Get action from observation
@@ -205,17 +215,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         # append x, edge_index, edge_attr from all graphs in obs to single graph
         assert len(obs) == self.dataset.obs_horizon
-        # turn deque into single graph with extra node-feature dimension
-        obs_cond = []
-        # edge_indes and edge_attr don't change
-        obs[0] = self.preprocess(obs[0])
-        obs[0] = self.masker.idxify(obs[0])
-        edge_index = obs[0].edge_index
-        edge_attr = obs[0].edge_attr
-        for i in range(len(obs)):
-            obs_cond.append(obs[i].y.unsqueeze(1))
-        obs_cond = torch.cat(obs_cond, dim=1)
-
+        obs_cond, edge_index, edge_attr = self.get_graph_from_obs(obs)
        
         self.model.eval()
 
