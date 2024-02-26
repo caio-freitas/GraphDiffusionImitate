@@ -37,7 +37,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/10)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -106,23 +106,20 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         return torch.arange(graph_size-1, -1, -1)
 
-    def node_feature_loss(self, pred, target):
+    def loss_fcn(self, pred_feats, pred_pos, target_feats, target_pos):
         '''
         Node feature loss
         '''
         lambda_joint_pos = 0.1
         lambda_joint_values = 1
 
-        pred_joint_vals = pred[:,0] # [pred_horizon, 1]
+        pred_joint_vals = pred_feats[:,0] # [pred_horizon, 1]
+        target_joint_vals = target_feats[:,0] # [pred_horizon, 1]
 
-        pred_x = pred[:,1:4] # [pred_horizon, 3]
-
-        target_joint_vals = target[:,0] # [pred_horizon, 1]
-        target_x = target[:,1:4] # [pred_horizon, 3]
-        loss_joint_pos_loss = F.pairwise_distance(pred_x, target_x, p=2).mean()
+        loss_joint_pos_loss = F.pairwise_distance(pred_pos, target_pos, p=2).mean()
         wandb.log({"loss_joint_pos_loss": loss_joint_pos_loss.item()})
         loss_joint_pos =  loss_joint_pos_loss
-        loss_joint_values = nn.L1Loss()(pred_joint_vals, target_joint_vals)
+        loss_joint_values = nn.MSELoss()(pred_joint_vals, target_joint_vals)
         wandb.log({"loss_joint_values": loss_joint_values.item()})
 
         return lambda_joint_pos * loss_joint_pos + lambda_joint_values * loss_joint_values
@@ -161,11 +158,15 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # loop over nodes
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
-
-                            joint_values = self.model(G_pred.x.float(), G_pred.edge_index, G_pred.edge_attr.float(), cond=G_0.y.float())
-                            # joint_values = node_features[0] # first node feature is joint values
+                            # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
+                            x_diffs = torch.subtract(G_pred.y[G_pred.edge_index[0,:],:3], G_pred.y[G_pred.edge_index[1,:],:3]).squeeze(1) # positions only
+                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_diffs=x_diffs, cond=G_0.y[:,:,:3].float())
+                            target_x_diffs = torch.subtract(G_pred.pos[G_pred.edge_index[0,:],:3], G_pred.pos[G_pred.edge_index[1,:],:3]).squeeze(1) # positions only
                             # mse loss for node features
-                            loss = self.node_feature_loss(joint_values, G_0.x[node_order[t],:,:].float())
+                            loss = self.loss_fcn(pred_feats=joint_values,
+                                                 pred_pos=pos,
+                                                 target_feats=G_0.x[node_order[t],:,:].float(),
+                                                 target_pos=target_x_diffs.float())
                             # TODO add loss for absolute positions, to make the model physics-informed
                             wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
@@ -213,15 +214,30 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         Get graph from observation deque
         '''
         obs_cond = []
+        pos = []
         # edge_indes and edge_attr don't change
         first_graph = self.preprocess(obs_deque[0])
         first_graph = self.masker.idxify(first_graph)
         edge_index = first_graph.edge_index # edge_index doesn't change over time
         edge_attr = first_graph.edge_attr # edge_attr doesn't change over time
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y.unsqueeze(1))
+            obs_cond.append(obs_deque[i].y)
+            pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
-        return obs_cond, edge_index, edge_attr
+        obs_pos = torch.cat(pos, dim=0)
+        return obs_cond, edge_index, edge_attr, obs_pos
+
+    def pos_from_pos_diffs(self, pos_diffs, edge_index):
+        '''
+        Calculate absolute positions from position differences between nodes
+        pos_diffs: [n_edges, 7]
+        edge_index: [2, n_edges]
+        '''
+        pos = torch.zeros((edge_index.max() + 1, 7))
+        for i in range(edge_index.max() + 1):
+            pos[i,:3] = pos_diffs[torch.logical_and(edge_index[1,:] == i, edge_index[0,:] == 0),:3]
+        return pos
+
 
     def get_action(self, obs):
         '''
@@ -230,20 +246,21 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         # append x, edge_index, edge_attr from all graphs in obs to single graph
         assert len(obs) == self.dataset.obs_horizon
-        obs_cond, edge_index, edge_attr = self.get_graph_from_obs(obs)
+        obs_cond, edge_index, edge_attr, obs_pos = self.get_graph_from_obs(obs)
        
         self.model.eval()
 
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
 
+        pos = torch.zeros((1,3))
+
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action.x[-1] = self.model(action.x.float(), action.edge_index, action.edge_attr, cond=obs_cond)
-            if self.mode == "joint-space":
-                action.x[-1,:,1:] = 0 # zero out all but first node features to avoid propagating noise
-            action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot
+            pos_diffs = torch.subtract(obs_pos[action.edge_index[0,:],:3], obs_pos[action.edge_index[1,:],:3]).squeeze(1) # positions only
+            action.x[-1], pos_diffs = self.model(action.x.float(), action.edge_index, action.edge_attr, x_diffs = pos_diffs, cond=obs_pos[:,:3])
+            action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
             if x_i == obs[0].x.shape[0]-1:

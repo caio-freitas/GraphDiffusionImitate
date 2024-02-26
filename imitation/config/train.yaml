@@ -8,9 +8,9 @@ output_dir: ./outputs
 render: False
 output_video: True
 
-pred_horizon: 4
-obs_horizon: 4
-action_horizon: 4
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
 # Training parameters
 num_epochs: 2000
 seed: 0
@@ -25,13 +25,13 @@ agent:
 
 # Evaluation during training
 eval_params:
-  eval_every: 2 # evaluate every 50 epochs
+  eval_every: 1 # evaluate every 50 epochs
   task: ${task}
   policy: ${policy}
   render: False
   output_video: True
 
-  num_episodes: 2
+  num_episodes: 5
   max_steps: 1000
   output_dir: ./outputs
 

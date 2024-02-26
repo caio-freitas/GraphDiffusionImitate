@@ -1,9 +1,9 @@
 _target_: imitation.policy.ar_graph_diffusion_policy.AutoregressiveGraphDiffusionPolicy
 dataset: ${task.dataset}
-node_feature_dim: 9 # 9 when task-joint-space, 8 otherwise
+node_feature_dim: 2
 num_edge_types: 2 # robot joints, object-robot
-lr: 0.0005
-ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_film_graph_diffusion_policy.pt
+lr: 0.001
+ckpt_path: /home/caio/workspace/GraphDiffusionImitate/weights/${task.task_name}_${task.dataset_type}_film_graph_diffusion_policy.pt
 device: cuda
 denoising_network:
   _target_: imitation.model.graph_diffusion.FiLMConditionalGraphDenoisingNetwork

@@ -72,6 +72,7 @@ class NodeMasker:
         datapoint.x = torch.cat([datapoint.x, masked_node_feature], dim=0)
         datapoint.edge_attr = torch.cat([datapoint.edge_attr, torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0])])
         datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0])]).T], dim=1)
+        datapoint.pos = torch.cat([datapoint.pos, torch.zeros(1, 7)])
         return datapoint
 
 
@@ -189,4 +190,4 @@ class NodeMasker:
         '''
         Creates an empty graph with n_nodes
         '''
-        return torch_geometric.data.Data(x=torch.ones(n_nodes, *self.node_feature_dim, dtype=torch.int32) * self.NODE_MASK, edge_index=torch.tensor([[0], [0]]), edge_attr=torch.tensor([self.EDGE_MASK]))
+        return torch_geometric.data.Data(x=torch.ones(n_nodes, *self.node_feature_dim, dtype=torch.int32) * self.NODE_MASK, edge_index=torch.tensor([[0], [0]]), edge_attr=torch.tensor([self.EDGE_MASK]), pos=torch.zeros(n_nodes, 7))

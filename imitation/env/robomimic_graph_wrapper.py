@@ -42,7 +42,7 @@ class RobomimicGraphWrapper(gym.Env):
     def __init__(self,
                  object_state_keys,
                  object_state_sizes,
-                 node_feature_dim = 8, # 3 for position, 4 for quaternion
+                 node_feature_dim = 2,
                  max_steps=5000,
                  task="Lift",
                  has_renderer=True,
@@ -110,28 +110,54 @@ class RobomimicGraphWrapper(gym.Env):
                 self.env.render()
         return obs_final, reward, done, _, info
 
+    def _get_object_feats(self, data):
+        # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
+        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
+        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
+        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
+        return obj_state_tensor
+
+    def _get_object_pos(self, data):
+        obj_state_tensor = torch.zeros((self.num_objects, 7)) # 3 for position, 4 for quaternion
+
+        for object, object_state_items in enumerate(self.object_state_keys.values()):
+            i = 0
+            for object_state in object_state_items:
+                obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][i:i + self.object_state_sizes[object_state]])
+                i += self.object_state_sizes[object_state]
+
+        return obj_state_tensor
+
+
+    def _get_node_pos(self, data):
+        node_pos = []
+        node_pos.append(calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]))
+        node_pos = torch.cat(node_pos)
+        obj_pos_tensor = self._get_object_pos(data)
+        node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
+        return node_pos
+
+    
+
     def _get_node_feats(self, data):
         '''
         Returns node features from data
         '''
         node_feats = []
         if self.mode == "end-effector":
-            node_feats = torch.cat([], dim=0)
+            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"]), torch.tensor(data["robot0_eef_quat"])], dim=0)
             node_feats = node_feats.reshape(1, -1) # add dimension
         else:
             if self.mode == "task-space":
-                node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]])).T)
+                node_feats.append(torch.zeros((1,9)))
                 node_feats = torch.cat(node_feats, dim=0).T
             elif self.mode == "joint-space":
-                node_feats.append(torch.cat([
-                    torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1),
-                    torch.zeros((6,9))])) # complete with zeros to match task-space dimensionality
+                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 node_feats = []
                 # [node, node_feats]
                 node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
-                node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]])).T)
                 node_feats = torch.cat(node_feats, dim=0).T
         return node_feats
 
@@ -168,6 +194,7 @@ class RobomimicGraphWrapper(gym.Env):
         * requires robot_joint to be "flagged" in robomimic environment
         '''
         node_feats = torch.tensor([])
+        node_pos = torch.tensor([])
         for i in range(len(self.robots)):
             j = i*39
             
@@ -188,35 +215,29 @@ class RobomimicGraphWrapper(gym.Env):
                 "robot0_joint_vel": robot_joint_vel,
                 "robot0_eef_pos": eef_pose,
                 "robot0_eef_quat": eef_quat,
-                "robot0_gripper_qpos": gripper_pose
+                "robot0_gripper_qpos": gripper_pose,
             }
             node_feats = torch.cat([node_feats, self._get_node_feats(robot_i_data)], dim=0)
+
+        robot_i_data["object"] = obs[len(self.robots)*39:]
+        node_pos = self._get_node_pos(robot_i_data)
 
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
         
-        # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        if self.mode == "task-joint-space":
-            obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim + 1)) # extra dimension to match with joint position 
-        else:
-            obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
-        # objects states
-        for object, object_state_items in enumerate(self.object_state_keys.values()):
-            i = 39*len(self.robots)
-            for object_state in object_state_items:
-                obj_state_tensor[object,i-39*len(self.robots):i-39*len(self.robots) + self.object_state_sizes[object_state]] = torch.from_numpy(obs[i:i + self.object_state_sizes[object_state]])
-                i += self.object_state_sizes[object_state]
-    
-        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
-        node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
+        obj_feats_tensor = self._get_object_feats(obs)
+        
+        node_feats = torch.cat((node_feats, obj_feats_tensor), dim=0)
 
         edge_index, edge_attrs = self._get_edges()
 
         y = node_feats
         # zero first column of node_feats (joint values, not present in task-space observation)
         y[:10,0] = 0
+
+
         # create graph
-        graph = torch_geometric.data.Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attrs, y=y)
+        graph = torch_geometric.data.Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attrs, y=y, pos=node_pos)
 
         return graph
     

@@ -8,7 +8,7 @@ from torch.nn import Linear, ReLU
 import math
 from torch_geometric.nn import MessagePassing
 
-
+from imitation.model.egnn import E_GCL
 
 class MPLayer(MessagePassing):
     '''
@@ -182,10 +182,11 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
+        self.node_pos_dim = 3 # position only
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
-        self.node_embedding = Linear(node_feature_dim*pred_horizon, hidden_dim).to(self.device)
+        self.node_embedding = Linear(self.node_feature_dim*pred_horizon, hidden_dim).to(self.device)
         self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
         # FiLM modulation https://arxiv.org/abs/1709.07871
         # predicts per-channel scale and bias
@@ -194,7 +195,7 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         for _ in range(num_layers):
             self.cond_encoders.append(nn.Sequential(
                 nn.Mish(),
-                nn.Linear(node_feature_dim*obs_horizon, self.cond_channels),
+                nn.Linear(self.node_pos_dim*obs_horizon, self.cond_channels),
                 nn.Unflatten(-1, (-1, 1))
             ).to(self.device))
 
@@ -202,7 +203,12 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
 
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
-            self.layers.append(MPLayer(hidden_dim, hidden_dim)).to(self.device)
+            self.layers.append(E_GCL(
+                input_nf=hidden_dim,
+                output_nf=hidden_dim,
+                hidden_nf=hidden_dim,
+                edges_in_d=hidden_dim,
+            ).to(self.device))
         
         self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -227,12 +233,13 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         pes[:,1::2] = torch.cos(position.float() * div_term)
         return pes
 
-    def forward(self, x, edge_index, edge_attr, cond=None, node_order=None):
+    def forward(self, x, edge_index, edge_attr, x_diffs, cond=None, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device) 
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device).flatten(start_dim=1)
+        x_diffs = x_diffs.float().to(self.device)
 
         N = x.shape[0] - 1
 
@@ -243,7 +250,7 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         h_v += self.pe[N, :].to(self.device)
 
 
-        
+        x_v = x_diffs
         # instead of convolution, run message passing
         for l in range(self.num_layers):
             # FiLM conditioning
@@ -255,7 +262,7 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
             scale = embed[:,0,...]
             bias = embed[:,1,...]
             h_v = scale * h_v + bias
-            h_v = self.layers[l](h_v, edge_index, h_e)
+            h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
         
         # graph-level embedding, from average pooling layer
@@ -271,7 +278,9 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         node_pred = node_pred[v_t]
         node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape
         
-        return node_pred
+        
+
+        return node_pred, x_v
     
 
 

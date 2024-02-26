@@ -20,7 +20,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                  object_state_keys,
                  pred_horizon=1,
                  obs_horizon=1,
-                 node_feature_dim = 8, # 3 for position, 4 for quaternion
+                 node_feature_dim = 2, # joint value and node type flag
                  mode="joint-space"):
         self.mode = mode
         self.node_feature_dim = node_feature_dim
@@ -39,8 +39,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-        self._test_dimentionality()
-
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
         try:
@@ -49,14 +47,6 @@ class RobomimicGraphDataset(InMemoryDataset):
             pass
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
-
-    def _test_dimentionality(self):
-        '''
-        Test if input dimensions add up to expected dimensionality
-        * sum of object_state_sizes in object_state_keys must be equal to node_feature_dim
-        '''
-        sum_object_state_sizes = sum([self.object_state_sizes[object_state] for object_state in list(self.object_state_keys.values())[0]])
-        assert self.node_feature_dim == sum_object_state_sizes + 1 # +1 for NODE_TYPE
 
     
     @property
@@ -69,10 +59,13 @@ class RobomimicGraphDataset(InMemoryDataset):
 
     def _get_object_feats(self, data, t):
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        if self.mode == "task-joint-space":
-            obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim + 1)) # extra dimension to match with joint position 
-        else:
-            obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
+        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
+        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
+        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
+        return obj_state_tensor
+
+    def _get_object_pos(self, data, t):
+        obj_state_tensor = torch.zeros((self.num_objects, 7)) # 3 for position, 4 for quaternion
 
         for object, object_state_items in enumerate(self.object_state_keys.values()):
             i = 0
@@ -80,10 +73,18 @@ class RobomimicGraphDataset(InMemoryDataset):
                 obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][t][i:i + self.object_state_sizes[object_state]])
                 i += self.object_state_sizes[object_state]
 
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
         return obj_state_tensor
 
+    def _get_node_pos(self, data, t):
+        node_pos = []
+        node_pos.append(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]))
+        node_pos = torch.cat(node_pos)
+        obj_pos_tensor = self._get_object_pos(data, t)
+        node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
+        return node_pos
+
+    
+    
     def _get_node_feats(self, data, t, mode):
         node_feats = []
         if mode == "end-effector":
@@ -94,18 +95,14 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats = []
                 # complete with zeros to match task-joint-space dimensionality
                 node_feats.append(torch.zeros((1,9)))
-                node_feats.append(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).T)
                 node_feats = torch.cat(node_feats).T
             elif mode == "joint-space":
-                node_feats.append(torch.cat([
-                    torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1),
-                    torch.zeros((6,9))])) # complete with zeros to match task-space dimensionality
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats).T
             elif mode == "task-joint-space":
                 node_feats = []
                 # [node, node_feats]
                 node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
-                node_feats.append(torch.tensor(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]])).T)
                 node_feats = torch.cat(node_feats, dim=0).T
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
@@ -175,7 +172,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         '''
         y = []
         for t in range(idx - horizon + 1, idx + 1):
-            y.append(self._get_node_feats(data, t, "task-space"))
+            y.append(self._get_node_pos(data, t))
         return torch.stack(y, dim=1)
 
     
@@ -193,12 +190,16 @@ class RobomimicGraphDataset(InMemoryDataset):
                 edge_index  = self._get_edge_index(node_feats.shape[0])
                 edge_attrs  = self._get_edge_attrs(edge_index)
                 y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
+                pos         = self._get_node_pos(data_raw, idx)
 
-                data  = Data(x=node_feats,
-                             edge_index=edge_index,
-                             edge_attr=edge_attrs,
-                             y=y,
-                             time=torch.tensor([idx], dtype=torch.long)/ episode_length)
+                data  = Data(
+                    x=node_feats,
+                    edge_index=edge_index,
+                    edge_attr=edge_attrs,
+                    y=y,
+                    time=torch.tensor([idx], dtype=torch.long)/ episode_length,
+                    pos=pos
+                )
 
                 torch.save(data, osp.join(self.processed_dir, f'data_{idx_global}.pt'))
                 idx_global += 1

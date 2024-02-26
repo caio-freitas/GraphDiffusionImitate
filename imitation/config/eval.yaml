@@ -3,7 +3,7 @@ defaults:
   - task: lift_graph
   - policy: graph_diffusion_policy
 
-render: False
+render: True
 output_video: True
 
 num_episodes: 20
@@ -11,9 +11,9 @@ max_steps: 1000
 output_dir: ./outputs
 
 
-pred_horizon: 4
-obs_horizon: 4
-action_horizon: 4
+pred_horizon: 1
+obs_horizon: 1
+action_horizon: 1
 
 
 env_runner: ${task.env_runner}
