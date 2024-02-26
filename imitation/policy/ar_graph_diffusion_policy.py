@@ -159,7 +159,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
                             # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            x_diffs = torch.subtract(G_pred.y[G_pred.edge_index[0,:],:3], G_pred.y[G_pred.edge_index[1,:],:3]).squeeze(1) # positions only
+                            x_diffs = torch.subtract(G_pred.y[G_pred.edge_index[0,:],:,:3], G_pred.y[G_pred.edge_index[1,:],:,:3]).squeeze(1) # positions only
                             joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_diffs=x_diffs, cond=G_0.y[:,:,:3].float())
                             target_x_diffs = torch.subtract(G_pred.pos[G_pred.edge_index[0,:],:3], G_pred.pos[G_pred.edge_index[1,:],:3]).squeeze(1) # positions only
                             # mse loss for node features
