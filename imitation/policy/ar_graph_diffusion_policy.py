@@ -159,7 +159,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
                             # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            x_diffs = torch.subtract(G_pred.y[G_pred.edge_index[0,:],:,:3], G_pred.y[G_pred.edge_index[1,:],:,:3]).squeeze(1) # positions only
+                            x_diffs = torch.subtract(G_pred.y[G_pred.edge_index[0,:],-1,:3], G_pred.y[G_pred.edge_index[1,:],-1,:3]).squeeze(1) # positions only
                             joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_diffs=x_diffs, cond=G_0.y[:,:,:3].float())
                             target_x_diffs = torch.subtract(G_pred.pos[G_pred.edge_index[0,:],:3], G_pred.pos[G_pred.edge_index[1,:],:3]).squeeze(1) # positions only
                             # mse loss for node features
@@ -221,7 +221,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         edge_index = first_graph.edge_index # edge_index doesn't change over time
         edge_attr = first_graph.edge_attr # edge_attr doesn't change over time
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y)
+            obs_cond.append(obs_deque[i].y[:,:3]) # only positions
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
@@ -259,7 +259,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action = self.preprocess(action)
             # predict node attributes for last node in action
             pos_diffs = torch.subtract(obs_pos[action.edge_index[0,:],:3], obs_pos[action.edge_index[1,:],:3]).squeeze(1) # positions only
-            action.x[-1], pos_diffs = self.model(action.x.float(), action.edge_index, action.edge_attr, x_diffs = pos_diffs, cond=obs_pos[:,:3])
+            action.x[-1], pos_diffs = self.model(action.x.float(), action.edge_index, action.edge_attr, x_diffs = pos_diffs, cond=obs_cond)
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
