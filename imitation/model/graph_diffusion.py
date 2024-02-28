@@ -208,6 +208,7 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
                 output_nf=hidden_dim,
                 hidden_nf=hidden_dim,
                 edges_in_d=hidden_dim,
+                normalize=True # helps in stability / generalization
             ).to(self.device))
         
         self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
