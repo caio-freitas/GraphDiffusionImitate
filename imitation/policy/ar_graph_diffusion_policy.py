@@ -122,7 +122,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         loss_joint_values = nn.MSELoss()(pred_joint_vals, target_joint_vals)
         wandb.log({"loss_joint_values": loss_joint_values.item()})
 
-        return lambda_joint_pos * loss_joint_pos + lambda_joint_values * loss_joint_values
+        return lambda_joint_values * loss_joint_values # + lambda_joint_pos * loss_joint_pos
 
 
 
