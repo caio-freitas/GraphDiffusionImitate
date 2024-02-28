@@ -7,7 +7,7 @@ max_steps: 1000
 
 
 obs_keys: &obs_keys ['robot0_eef_pos', 'object']
-action_keys: &action_keys ['robot0_joint_vel']
+action_keys: &action_keys ['robot0_joint_pos']
 
 # describe all the objects in the scene
 object_state_sizes: &object_state_sizes

@@ -38,7 +38,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=policy.__class__.__name__,
         group=cfg.task.task_name,
-        name=f"v1.0.4 - E_GCN",
+        name=f"v1.0.5 - noise_pred_graph_diffusion",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,

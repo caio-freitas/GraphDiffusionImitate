@@ -241,8 +241,8 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device).flatten(start_dim=1)
         x_diffs = x_diffs.float().to(self.device)
-
-        N = x.shape[0] - 1
+        
+        N = (x.shape[0] - 1) % 10 # 10 nodes per block TODO parameterize this
 
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
@@ -276,8 +276,8 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
 
         v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
         
-        node_pred = node_pred[v_t]
-        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape
+        node_pred = node_pred
+        node_pred = node_pred.reshape(-1, self.pred_horizon, self.node_feature_dim) # reshape to original shape
         
         
 
