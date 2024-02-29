@@ -37,7 +37,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/20)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -118,7 +118,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         loss_joint_pos_loss = F.pairwise_distance(pred_pos, target_pos, p=2).mean()
         wandb.log({"loss_joint_pos_loss": loss_joint_pos_loss.item()})
-        loss_joint_pos =  loss_joint_pos_loss
         loss_joint_values = nn.MSELoss()(pred_joint_vals, target_joint_vals)
         wandb.log({"loss_joint_values": loss_joint_values.item()})
 
@@ -148,6 +147,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     for nbatch in tepoch:
                         # preprocess graph
                         graph = self.preprocess(nbatch)
+                        # remove object nodes
+                        graph = self.masker.remove_node(graph, 9)
                         graph = self.masker.idxify(graph)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
                         # predictions & loss
@@ -156,17 +157,16 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         acc_loss = 0
                         
                         # loop over nodes
-                        for t in range(len(node_order)):
+                        for t in range(len(node_order) - 1):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
                             # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            x_diffs = torch.subtract(G_pred.y[G_pred.edge_index[0,:],-1,:3], G_pred.y[G_pred.edge_index[1,:],-1,:3]).squeeze(1) # positions only
-                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_diffs=x_diffs, cond=G_0.y[:,:,:3].float())
-                            target_x_diffs = torch.subtract(G_pred.pos[G_pred.edge_index[0,:],:3], G_pred.pos[G_pred.edge_index[1,:],:3]).squeeze(1) # positions only
+                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_diffs=G_pred.y[:,-1,:3], cond=G_0.y[:,:,:3].float())
+
                             # mse loss for node features
                             loss = self.loss_fcn(pred_feats=joint_values,
                                                  pred_pos=pos,
                                                  target_feats=G_0.x[node_order[t],:,:].float(),
-                                                 target_pos=target_x_diffs.float())
+                                                 target_pos=G_0.y[node_order[t],:3].float())
                             # TODO add loss for absolute positions, to make the model physics-informed
                             wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
@@ -258,8 +258,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            pos_diffs = torch.subtract(obs_pos[action.edge_index[0,:],:3], obs_pos[action.edge_index[1,:],:3]).squeeze(1) # positions only
-            action.x[-1], pos_diffs = self.model(action.x.float(), action.edge_index, action.edge_attr, x_diffs = pos_diffs, cond=obs_cond)
+            action.x[-1], pos = self.model(action.x.float(), action.edge_index, action.edge_attr, x_diffs = obs_pos[:x_i+1,:3], cond=obs_cond)
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)

@@ -22,6 +22,7 @@ agent:
 
 # Disable evaluation 
 # eval_params: "disabled"
+max_steps: 5000
 
 # Evaluation during training
 eval_params:
