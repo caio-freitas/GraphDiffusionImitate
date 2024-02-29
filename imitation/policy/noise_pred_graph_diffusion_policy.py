@@ -52,6 +52,7 @@ class DiffusionGraphPolicy(BasePolicy):
         self.obs_dim = obs_dim
         self.action_dim = action_dim
         self.ckpt_path = ckpt_path
+        self.node_feature_dim = node_feature_dim
         
         self.pred_horizon = pred_horizon
         self.obs_horizon = obs_horizon
@@ -108,20 +109,24 @@ class DiffusionGraphPolicy(BasePolicy):
 
         log.info(f"Dataset stats: {self.stats}")
 
-    def get_action(self, obs_seq):
+    def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         # nobs = normalize_data(obs_seq, stats=self.stats['obs'])
         # transform deques to numpy arrays
-        nobs = np.array(nobs)
-        
-        # device transfer
-        nobs = torch.from_numpy(nobs).to(self.device, dtype=torch.float32)
+        obs_cond = []
+        pos = []
+        G_t = obs_deque[-1]
+        for i in range(len(obs_deque)):
+            obs_cond.append(obs_deque[i].y[:,:3]) # only positions
+            pos.append(obs_deque[i].pos)
+        obs_cond = torch.cat(obs_cond, dim=1)
+        obs_pos = torch.cat(pos, dim=0)
         with torch.no_grad():
-            # reshape observation to (B,obs_horizon*obs_dim)
-            obs_cond = nobs.unsqueeze(0).flatten(start_dim=1)
             # initialize action from Guassian noise
-            noisy_action = torch.randn(
-                (B, self.pred_horizon, self.action_dim), device=self.device)
+
+
+            noisy_action = torch.randn( # +1 object
+                (self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device)
             naction = noisy_action
 
             # init scheduler
@@ -129,10 +134,12 @@ class DiffusionGraphPolicy(BasePolicy):
 
             for k in self.noise_scheduler.timesteps:
                 # predict noise
-                noise_pred = self.ema_noise_pred_net(
-                    sample=naction,
-                    timestep=k,
-                    global_cond=obs_cond
+                noise_pred, x = self.ema_noise_pred_net(
+                    x = naction,
+                    edge_index = G_t.edge_index,
+                    edge_attr = G_t.edge_attr,
+                    x_diffs = G_t.y[:,:3],
+                    cond = obs_cond
                 )
 
                 # inverse diffusion step (remove noise)
@@ -144,15 +151,12 @@ class DiffusionGraphPolicy(BasePolicy):
 
         # unnormalize action
         naction = naction.detach().to('cpu').numpy()
-        # (B, pred_horizon, action_dim)
-        naction = naction[0]
+        # 
+        action = naction[:8,:,0].T
         # action_pred = unnormalize_data(naction, stats=self.stats['action'])
-
-        # action here is an array with length pred_horizon
-        # only take action_horizon number of actions
-        action = action_pred[:self.action_horizon,:]
+        
         # (action_horizon, action_dim)
-        return action # TODO limit this in runner
+        return action
 
     def train(self, 
               dataset=None, 
