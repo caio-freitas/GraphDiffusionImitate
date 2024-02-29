@@ -160,7 +160,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for t in range(len(node_order) - 1):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
                             # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_diffs=G_pred.y[:,-1,:3], cond=G_0.y[:,:,:3].float())
+                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_coord=G_pred.y[:,-1,:3], cond=G_0.y[:,:,:3].float())
 
                             # mse loss for node features
                             loss = self.loss_fcn(pred_feats=joint_values,
@@ -258,7 +258,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action.x[-1], pos = self.model(action.x.float(), action.edge_index, action.edge_attr, x_diffs = obs_pos[:x_i+1,:3], cond=obs_cond)
+            action.x[-1], pos = self.model(action.x.float(), action.edge_index, action.edge_attr, x_coord = obs_pos[:x_i+1,:3], cond=obs_cond)
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)

@@ -234,13 +234,13 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         pes[:,1::2] = torch.cos(position.float() * div_term)
         return pes
 
-    def forward(self, x, edge_index, edge_attr, x_diffs, cond=None, node_order=None):
+    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device) 
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device).flatten(start_dim=1)
-        x_diffs = x_diffs.float().to(self.device)
+        x_coord = x_coord.float().to(self.device)
 
         N = x.shape[0] - 1
 
@@ -251,7 +251,7 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         h_v += self.pe[N, :].to(self.device)
 
 
-        x_v = x_diffs
+        x_v = x_coord
         # instead of convolution, run message passing
         for l in range(self.num_layers):
             # FiLM conditioning
