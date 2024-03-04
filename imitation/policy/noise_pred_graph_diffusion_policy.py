@@ -63,7 +63,7 @@ class DiffusionGraphPolicy(BasePolicy):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
-        self.noise_pred_net = denoising_network
+        self.noise_pred_net = denoising_network # TODO create new model for this, e.g. without pe
 
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,

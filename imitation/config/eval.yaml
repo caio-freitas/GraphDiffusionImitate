@@ -3,7 +3,7 @@ defaults:
   - task: lift_graph
   - policy: graph_diffusion_policy
 
-render: True
+render: False
 output_video: True
 
 num_episodes: 20
