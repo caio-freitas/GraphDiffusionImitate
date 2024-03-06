@@ -222,7 +222,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
                 normalize=True # helps in stability / generalization
             ).to(self.device))
         
-        self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
+        self.node_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -231,9 +231,9 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         
     def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
-        x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
-        edge_index = edge_index.to(self.device)
+        x = x.float().to(self.device).flatten(start_dim=1) # N x D
+        edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # M x E x 1
+        edge_index = edge_index.to(self.device) # 2 x M
         cond = cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
 
@@ -258,15 +258,14 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         # graph-level embedding, from average pooling layer
         graph_embedding = global_mean_pool(h_v, batch=None)
 
-        # repeat graph embedding to have the same shape as h_v
-        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+        # # repeat graph embedding to have the same shape as h_v
+        # graph_embedding = graph_embedding.repeat(h_v.shape[0], 1) # TODO appropriate pooling for parallelizing
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2*hidden_dim
 
-        v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
         
-        node_pred = node_pred[v_t]
-        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape        
+        node_pred = node_pred.reshape(-1, self.pred_horizon, self.node_feature_dim) # reshape to original shape
+                
 
         return node_pred, x_v
     

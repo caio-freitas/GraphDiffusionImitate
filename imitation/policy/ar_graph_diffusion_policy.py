@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import torch.nn as nn
 import wandb
-import torch_geometric
+from torch_geometric.loader import DataLoader
 from imitation.utils.graph_diffusion import NodeMasker
 
 import logging
@@ -70,26 +70,30 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         Generate a diffusion trajectory from graph
         - Diffuse nodes representing object first
         - Then diffuse nodes representing robot joints, from end-effector to base
+        Initially permutation variant, since node ordering is known (robot nodes first, then object node(s))
         '''
         diffusion_trajectory = []
-        '''
-            Initially permutation variant, since node ordering is known (robot nodes first, then object node(s))
-        '''
-        node_order = torch.arange(graph.x.shape[0]-1, -1, -1)
-        diffusion_trajectory.append(graph)
+        target_node_features = [] # node features that get masked, in the order they are masked
+
+        node_order = self.node_decay_ordering(graph.x.shape[0])
+
         masked_data = graph.clone()
-        for t in range(graph.x.shape[0]):
+        for t in range(len(node_order)):
             node = node_order[t]
-            masked_data = masked_data.clone().to(self.device)
-            
+            masked_data = masked_data.clone()
+            target_node_features.append(masked_data.x[node])
             masked_data = self.masker.mask_node(masked_data, node)
+            masked_data.x = masked_data.x.float().to(self.device)
+            masked_data.edge_attr = masked_data.edge_attr.long().to(self.device)
+            masked_data.edge_index = masked_data.edge_index.long().to(self.device)
+            masked_data.y = masked_data.y.float().to(self.device)
+            masked_data.pos = masked_data.pos.float().to(self.device)
             diffusion_trajectory.append(masked_data)
             # don't remove last node
             if t < len(node_order)-1:
                 masked_data = self.masker.remove_node(masked_data, node)
                 node_order = [n-1 if n > node else n for n in node_order] # update node order to account for removed node
-
-        return diffusion_trajectory
+        return diffusion_trajectory, target_node_features
 
     @torch.jit.export
     def preprocess(self, graph):
@@ -98,8 +102,11 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         graph = graph.clone()
         graph = self.masker.fully_connect(graph)
-        graph.x = graph.x.float()
-        graph.edge_attr = graph.edge_attr.long()
+        graph.x = graph.x.float().to(self.device)
+        graph.edge_attr = graph.edge_attr.long().to(self.device)
+        graph.edge_index = graph.edge_index.long().to(self.device)
+        # graph.y = graph.y.float().to(self.device)
+        # graph.pos = graph.pos.float().to(self.device)
         return graph
 
     # cache function results, as it is called multiple times
@@ -198,29 +205,30 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                             graph = self.masker.remove_node(graph, obj_node)
                         graph = self.masker.idxify(graph)
-                        diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
+                        diffusion_trajectory, target_node_features = self.generate_diffusion_trajectory(graph)
+                        target_node_features = torch.stack(target_node_features, dim=0) # [n_nodes, pred_horizon, n_features]
+                        dataloader = DataLoader(dataset=diffusion_trajectory, batch_size=len(diffusion_trajectory), shuffle=False)
+                        G_pred = next(iter(dataloader)).to(self.device)
                         # predictions & loss
                         G_0 = diffusion_trajectory[0].to(self.device)
-                        node_order = self.node_decay_ordering(G_0.x.shape[0])
                         acc_loss = 0
                         
-                        # loop over nodes
-                        for t in range(len(node_order)):
-                            G_pred = diffusion_trajectory[t+1].clone().to(self.device)
-                            # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3], cond=G_0.y[:,:,3:].float()) # only use quaternions, since pos is x_coord
+                        # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
+                        joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3], cond=G_0.y[:,:,3:].float()) # only use quaternions, since pos is x_coord
+                        # get elements from G_pred.ptr
+                        joint_values = joint_values[G_pred.ptr[1:] - 1]
+                        # mse loss for node features
+                        loss = self.loss_fcn(pred_feats=joint_values,
+                                                pred_pos=pos,
+                                                target_feats=target_node_features.float(),
+                                                target_pos=G_pred.y[:,-1,:3].float())
+                        # TODO add loss for absolute positions, to make the model physics-informed
+                        wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
-                            # mse loss for node features
-                            loss = self.loss_fcn(pred_feats=joint_values,
-                                                 pred_pos=pos,
-                                                 target_feats=G_0.x[node_order[t],:,:].float(),
-                                                 target_pos=G_0.pos[:G_pred.x.shape[0],:3].float())
-                            # TODO add loss for absolute positions, to make the model physics-informed
-                            wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
-
-                            acc_loss += loss.item()
-                            # backprop (accumulated gradients)
-                            loss.backward()
+                        acc_loss += loss.item()
+                        # backprop (accumulated gradients)
+                        loss.backward(retain_graph=True)
+                        batch_i += 1
                         # update weights
                         self.optimizer.step()
                         self.optimizer.zero_grad()
@@ -318,18 +326,22 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0] - 1): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action.x[-1], pos = self.model(
+            action_pred, pos = self.model(
                 action.x.float(),
                 action.edge_index,
                 action.edge_attr,
                 x_coord = obs_pos[:action.x.shape[0],:3],
                 cond=obs_cond[:,:,3:] # only use quaternions, since pos is x_coord
             )
+            action.x[-1,:,:] = action_pred[-1,:,:]
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
             if x_i == obs[0].x.shape[0] - 1 - 1: # TODO remove objects
                 break
+            action.x = action.x.detach().cpu()
+            action.edge_attr = action.edge_attr.detach().cpu()
+            action.edge_index = action.edge_index.detach().cpu()
             action = self.masker.add_masked_node(action)
             
         joint_values_t = self.get_joint_values(action.x.detach().cpu().numpy())
