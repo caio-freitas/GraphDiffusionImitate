@@ -191,7 +191,7 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
                 normalize=True # helps in stability / generalization
             ).to(self.device))
         
-        self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
+        self.node_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -214,29 +214,24 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
         pes[:,1::2] = torch.cos(position.float() * div_term)
         return pes
 
-    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
-        # make sure x and edge_attr are of type float, for the MLPs
-        x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device) 
-        edge_index = edge_index.to(self.device)
+    def forward(self, graph, x_coord, cond=None, node_order=None):
+        graph_idx = graph.batch # G x 1, for parallelizing
+
+        x = graph.x.float().to(self.device).flatten(start_dim=1) # N x D
+        edge_attr = graph.edge_attr.float().to(self.device) # M x E 
+        edge_index = graph.edge_index.to(self.device) # 2 x M
         cond = cond.float().to(self.device).flatten(start_dim=1)
         x_coord = x_coord.float().to(self.device)
 
-        N = x.shape[0] - 1
-
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
-        
-         # # Positional encoding
-        h_v += self.pe[N, :].to(self.device)
-
 
         x_v = x_coord
         # instead of convolution, run message passing
         for l in range(self.num_layers):
             # FiLM conditioning
             embed = self.cond_encoders[l](cond)
-            # pooling over graph nodes, to get a graph-level conditioning vector
+            # pooling over observation graph nodes, to get a graph-level conditioning vector
             embed = torch.mean(embed, dim=0)
             embed = embed.reshape(
                 1, 2, self.hidden_dim)
@@ -246,18 +241,16 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
             h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
         
-        # graph-level embedding, from average pooling layer
-        graph_embedding = torch.mean(h_v, dim=0)
+        # # graph-level embedding, from average pooling layer
+        # graph_embedding = torch.mean(h_v, dim=0) # TODO appropriate pooling for parallelizing
 
-        # repeat graph embedding to have the same shape as h_v
-        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+        # # repeat graph embedding to have the same shape as h_v
+        # graph_embedding = graph_embedding.repeat(h_v.shape[0], 1) # TODO appropriate pooling for parallelizing
 
-        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
+        node_pred = self.node_pred_layer(h_v) # 2*hidden_dim
 
-        v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
         
-        node_pred = node_pred[v_t]
-        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape
+        node_pred = node_pred.reshape(-1, self.pred_horizon, self.node_feature_dim) # reshape to original shape
         
         
 
