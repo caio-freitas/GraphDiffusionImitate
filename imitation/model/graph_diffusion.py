@@ -91,9 +91,9 @@ class DenoisingNetwork(nn.Module):
 
         
     def forward(self, x, edge_index, edge_attr, v_t=None, h_v=None):
-        # make sure x and edge_attr are of type float, for the MLPs
-        x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device)
+        # make sure x and edge_attr are of type double, for the MLPs
+        x = x.double().to(self.device).flatten(start_dim=1)
+        edge_attr = edge_attr.double().to(self.device)
         edge_index = edge_index.to(self.device)
 
         if h_v is None: # use given node embeddings when available
@@ -229,7 +229,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
             Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
         
-    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
+    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None, batch=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1) # N x D
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # M x E x 1
@@ -258,12 +258,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         # graph-level embedding, from average pooling layer
         graph_embedding = global_mean_pool(h_v, batch=None)
 
-            # return to original shape repeating mean graph embedding
-            graph_embedding = graph_embedding[graph_idx]
-        else:
-            graph_embedding = torch.mean(h_v, dim=0)
-            # repeat graph embedding to have the same shape as h_v
-            graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+        # return to original shape repeating mean graph embedding
+        graph_embedding = graph_embedding[batch]
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2*hidden_dim
 
