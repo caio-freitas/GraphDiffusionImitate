@@ -11,6 +11,7 @@ dependencies:
   - torchvision==0.15.1
   - pip:
     - pytorchvideo
+    - torch_scatter==2.1.2
     - gymnasium==0.28.1
     - gym
     - -e git+https://github.com/ARISE-Initiative/robomimic@main#egg=robomimic
