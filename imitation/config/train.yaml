@@ -26,13 +26,13 @@ max_steps: 5000
 
 # Evaluation during training
 eval_params:
-  eval_every: 1 # evaluate every 50 epochs
+  eval_every: 50 # evaluate every 50 epochs
   task: ${task}
   policy: ${policy}
   render: False
   output_video: True
 
-  num_episodes: 5
+  num_episodes: 50
   max_steps: 1000
   output_dir: ./outputs
 
