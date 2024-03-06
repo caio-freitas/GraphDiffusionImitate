@@ -8,6 +8,7 @@ import math
 from torch_geometric.nn import MessagePassing
 
 from imitation.model.egnn import E_GCL
+from torch_scatter import scatter_mean
 
 class MPLayer(MessagePassing):
     '''
@@ -191,7 +192,7 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
                 normalize=True # helps in stability / generalization
             ).to(self.device))
         
-        self.node_pred_layer = nn.Sequential(Linear(hidden_dim, hidden_dim),
+        self.node_pred_layer = nn.Sequential(Linear(2*hidden_dim, hidden_dim),
             nn.ReLU(),
             Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -226,6 +227,16 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
 
+        if graph_idx != None:
+            # calculate length of each graph in the batch
+            lengths = graph.ptr
+            # repeat positional encoding to match the length of each graph in the batch
+            lengths = lengths[graph_idx]
+            h_v += self.pe[lengths] # add positional encoding
+        else:
+            h_v += self.pe[x.shape[0]]
+
+
         x_v = x_coord
         # instead of convolution, run message passing
         for l in range(self.num_layers):
@@ -240,14 +251,19 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
             h_v = scale * h_v + bias
             h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
-        
-        # # graph-level embedding, from average pooling layer
-        # graph_embedding = torch.mean(h_v, dim=0) # TODO appropriate pooling for parallelizing
+        if graph_idx != None:
+            # # graph-level embedding, from average pooling layer
+            graph_embedding = torch.zeros(graph_idx.max() + 1, h_v.size(1), device=h_v.device)
+            graph_embedding = scatter_mean(h_v, graph_idx, dim=0, out=graph_embedding)
 
-        # # repeat graph embedding to have the same shape as h_v
-        # graph_embedding = graph_embedding.repeat(h_v.shape[0], 1) # TODO appropriate pooling for parallelizing
+            # return to original shape repeating mean graph embedding
+            graph_embedding = graph_embedding[graph_idx]
+        else:
+            graph_embedding = torch.mean(h_v, dim=0)
+            # repeat graph embedding to have the same shape as h_v
+            graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
 
-        node_pred = self.node_pred_layer(h_v) # 2*hidden_dim
+        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1))
 
         
         node_pred = node_pred.reshape(-1, self.pred_horizon, self.node_feature_dim) # reshape to original shape

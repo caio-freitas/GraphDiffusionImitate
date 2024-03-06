@@ -120,15 +120,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         lambda_joint_pos = 0.1
         lambda_joint_values = 1
 
-        pred_joint_vals = pred_feats[:,0] # [pred_horizon, 1]
-        target_joint_vals = target_feats[:,0] # [pred_horizon, 1]
-
+        pred_joint_vals = pred_feats[:,:,0] # [pred_horizon, 1]
+        target_joint_vals = target_feats[:,:,0] # [pred_horizon, 1]
         loss_joint_pos_loss = F.pairwise_distance(pred_pos, target_pos, p=2).mean()
         wandb.log({"loss_joint_pos_loss": loss_joint_pos_loss.item()})
         loss_joint_values = nn.MSELoss()(pred_joint_vals, target_joint_vals)
         wandb.log({"loss_joint_values": loss_joint_values.item()})
 
-        return lambda_joint_values * loss_joint_values # + lambda_joint_pos * loss_joint_pos
+        return lambda_joint_values * loss_joint_values + lambda_joint_pos * loss_joint_pos_loss
 
 
 
@@ -153,7 +152,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # preprocess graph
                         graph = self.preprocess(nbatch)
                         # remove object nodes
-                        graph = self.masker.remove_node(graph, 9)
+                        graph = self.masker.remove_node(graph, 9) # TODO properly remove object nodes
                         graph = self.masker.idxify(graph)
                         diffusion_trajectory, target_node_features = self.generate_diffusion_trajectory(graph)
                         target_node_features = torch.stack(target_node_features, dim=0) # [n_nodes, pred_horizon, n_features]
@@ -227,8 +226,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for i in range(len(obs_deque)):
             obs_cond.append(obs_deque[i].y[:,:3]) # only positions
             pos.append(obs_deque[i].pos)
-        obs_cond = torch.cat(obs_cond, dim=1)
-        obs_pos = torch.cat(pos, dim=0)
+        obs_cond = torch.stack(obs_cond, dim=1)
+        obs_pos = torch.stack(pos, dim=1)
         return obs_cond, edge_index, edge_attr, obs_pos
 
     def pos_from_pos_diffs(self, pos_diffs, edge_index):
@@ -250,7 +249,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         # append x, edge_index, edge_attr from all graphs in obs to single graph
         assert len(obs) == self.dataset.obs_horizon
+        # TODO add asserts for node feature dimensio, edge feature dimensions, poses, etc.
         obs_cond, edge_index, edge_attr, obs_pos = self.get_graph_from_obs(obs)
+
+        assert obs_pos.shape[0] == obs[0].x.shape[0]
+        assert obs_pos.shape[1] == self.dataset.obs_horizon
+        assert obs_cond.shape[0] == obs[0].y.shape[0]
+        assert obs_cond.shape[1] == self.dataset.obs_horizon
+        assert edge_attr.shape[0] == edge_index.shape[1]
        
         self.model.eval()
 
@@ -262,7 +268,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         for x_i in range(obs[0].x.shape[0]): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
             # predict node attributes for last node in action
-            action_pred, pos = self.model(action, x_coord = obs_pos[:x_i+1,:3], cond=obs_cond)
+            action_pred, pos = self.model(action, x_coord = obs_pos[:x_i+1,-1,:3], cond=obs_cond[:,:,:3])
             action.x[-1,:,:] = action_pred[-1,:,:]
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
