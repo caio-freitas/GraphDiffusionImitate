@@ -93,9 +93,9 @@ class DenoisingNetwork(nn.Module):
 
         
     def forward(self, x, edge_index, edge_attr, v_t=None, h_v=None):
-        # make sure x and edge_attr are of type float, for the MLPs
-        x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device)
+        # make sure x and edge_attr are of type double, for the MLPs
+        x = x.double().to(self.device).flatten(start_dim=1)
+        edge_attr = edge_attr.double().to(self.device)
         edge_index = edge_index.to(self.device)
 
         if h_v is None: # use given node embeddings when available
@@ -209,20 +209,20 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
         l_t = lengths # .max() # use when parallelizing
         pes = torch.zeros([l_t, self.hidden_dim], device=self.device)
         position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
-        div_term = torch.exp((torch.arange(0, self.hidden_dim, 2, dtype=torch.float, device=self.device) *
+        div_term = torch.exp((torch.arange(0, self.hidden_dim, 2, dtype=torch.double, device=self.device) *
                               -(math.log(10000.0) / self.hidden_dim)))
-        pes[:,0::2] = torch.sin(position.float() * div_term)
-        pes[:,1::2] = torch.cos(position.float() * div_term)
+        pes[:,0::2] = torch.sin(position.double() * div_term)
+        pes[:,1::2] = torch.cos(position.double() * div_term)
         return pes
 
-    def forward(self, graph, x_coord, cond=None, node_order=None):
+    def forward(self, graph, x_coord, cond=None):
         graph_idx = graph.batch # G x 1, for parallelizing
 
-        x = graph.x.float().to(self.device).flatten(start_dim=1) # N x D
-        edge_attr = graph.edge_attr.float().to(self.device) # M x E 
+        x = graph.x.double().to(self.device).flatten(start_dim=1) # N x D
+        edge_attr = graph.edge_attr.double().to(self.device) # M x E 
         edge_index = graph.edge_index.to(self.device) # 2 x M
-        cond = cond.float().to(self.device).flatten(start_dim=1)
-        x_coord = x_coord.float().to(self.device)
+        cond = cond.to(self.device).flatten(start_dim=1).double() # Convert to Float
+        x_coord = x_coord.to(self.device).double() # Convert to Float
 
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
@@ -249,11 +249,11 @@ class ConditionalGraphDenoisingNetwork(nn.Module):
             scale = embed[:,0,...]
             bias = embed[:,1,...]
             h_v = scale * h_v + bias
-            h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
+            h_v, x_v, _ = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
         if graph_idx != None:
             # # graph-level embedding, from average pooling layer
-            graph_embedding = torch.zeros(graph_idx.max() + 1, h_v.size(1), device=h_v.device)
+            graph_embedding = torch.zeros(graph_idx.max() + 1, h_v.size(1), device=h_v.device, dtype=h_v.dtype)
             graph_embedding = scatter_mean(h_v, graph_idx, dim=0, out=graph_embedding)
 
             # return to original shape repeating mean graph embedding
