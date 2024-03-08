@@ -101,6 +101,10 @@ class RobomimicGraphWrapper(gym.Env):
             q_diff = np.array(tgt_jpos) - joint_pos[:len(tgt_jpos)]
             q_diff_max = np.max(abs(q_diff))
 
+            # binarize last action dimension (gripper)
+            # print(f"q_diff: {q_diff[-1]}")
+            q_diff[-1] = -1 if q_diff[-1] < -0.03 else 0
+            
             action = list(q_diff)
             assert len(action) == 8, len(action)
             obs_final, reward, done, _, info = self.env.step(action)
