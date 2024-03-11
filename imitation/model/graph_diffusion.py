@@ -140,7 +140,7 @@ class DenoisingNetwork(nn.Module):
         return node_pred, p_e, h_v
     
 
-class ConditionalGraphDenoisingNetwork(nn.Module):
+class EConditionalGraphDenoisingNetwork(nn.Module):
     def __init__(self,
                 node_feature_dim,
                 obs_horizon,
