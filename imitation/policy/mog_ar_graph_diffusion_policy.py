@@ -184,7 +184,7 @@ class StochAutoregressiveGraphDiffusionPolicy(nn.Module):
             pass
         self.optimizer.zero_grad()
         self.model.train()
-        batch_size = 5
+        batch_size = 1
 
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:

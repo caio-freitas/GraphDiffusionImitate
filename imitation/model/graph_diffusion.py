@@ -160,7 +160,7 @@ class DenoisingNetwork(nn.Module):
         return node_pred, p_e, h_v
     
 
-class FiLMConditionalGraphDenoisingNetwork(nn.Module):
+class MoGConditionalGraphDenoisingNetwork(nn.Module):
     def __init__(self,
                 node_feature_dim,
                 obs_horizon,
@@ -169,6 +169,7 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
                 num_edge_types,
                 num_layers=5,
                 hidden_dim=256,
+                num_mixtures=1,
                 device=None):
         '''
         Denoising GNN (based on GraphARM) with FiLM conditioning on 
@@ -185,7 +186,8 @@ class FiLMConditionalGraphDenoisingNetwork(nn.Module):
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
-        self.num_mixtures = 2 # make sure it's power of 2
+        assert num_mixtures & (num_mixtures - 1) == 0, "num_mixtures should be a power of 2"
+        self.num_mixtures = num_mixtures
 
         # Node embedding
         self.node_embedding = Linear(node_feature_dim*pred_horizon, self.hidden_dim).to(self.device)
