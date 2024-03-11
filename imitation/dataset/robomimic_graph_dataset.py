@@ -88,7 +88,7 @@ class RobomimicGraphDataset(InMemoryDataset):
     def _get_node_feats(self, data, t, mode):
         node_feats = []
         # apply threshold to gripper qpos, so that it's binary
-        gripper_binary = np.array([-1 if data["robot0_gripper_qpos"][t][0] < -0.03 else 0])
+        gripper_binary = np.array([-1 if gripper_val < -0.03 else 0 for gripper_val in data["robot0_gripper_qpos"][t]])
         if mode == "end-effector":
             node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t]), torch.tensor(data["robot0_eef_quat"][t])], dim=0)
             node_feats = node_feats.reshape(1, -1) # add dimension
