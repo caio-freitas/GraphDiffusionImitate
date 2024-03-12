@@ -1,9 +1,9 @@
 defaults:
   - _self_
   - task: lift_graph
-  - policy: graph_diffusion_policy
+  - policy: mog_graph_diffusion_policy
 
-render: False
+render: True
 output_video: True
 
 num_episodes: 20

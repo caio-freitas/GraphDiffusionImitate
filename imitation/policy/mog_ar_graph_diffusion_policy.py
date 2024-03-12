@@ -35,7 +35,7 @@ class StochAutoregressiveGraphDiffusionPolicy(nn.Module):
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=50, factor=0.5, verbose=True, min_lr=lr/100)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.6, verbose=True, min_lr=lr/10)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -100,17 +100,17 @@ class StochAutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         return torch.arange(graph.x.shape[0]-1, -1, -1)
 
-    def nll_loss(self, G_0, node_features, node):
+    def nll_loss(self, G_0, dist_params, node):
         n_i = G_0.x.shape[0]
         # get likelihood of joint values
-        log_likelihood = self.get_distribution_likelihood(node_features, G_0.x[node,:,:])
+        log_likelihood = self.get_distribution_likelihood(dist_params, G_0.x[node,:,:])
         loss = - log_likelihood
         return loss
 
     
     def get_distribution_likelihood(self, dist_params, joint_values):
             '''
-            Returns the likelihood of joint values given a Mixture of Gaussians (MoG) distribution.
+            Returns the likelihood of joint values given a Gaussian Mixture Model (GMM) distribution.
             Args:
                 dist_params: A tensor containing parameters for the MoG distribution.
                 This should be in the format [means, variances, mixing_weights],
@@ -120,8 +120,10 @@ class StochAutoregressiveGraphDiffusionPolicy(nn.Module):
             '''
             # Extract parameters
             means = dist_params[0].to(self.device).double()
-            variances = dist_params[1].to(self.device).double()
-            mixing_weights = dist_params[2].to(self.device).double()
+            # variances = dist_params[1].to(self.device).double()
+            variances = torch.zeros_like(means).to(self.device).double() + 0.01
+            # mixing_weights = dist_params[2].to(self.device).double()
+            mixing_weights = dist_params[2].to(self.device).double() 
 
             # Reshape mixing_weights for broadcasting
             mixing_weights = mixing_weights.unsqueeze(0).unsqueeze(0)  # Add two dimensions to the front
@@ -130,12 +132,17 @@ class StochAutoregressiveGraphDiffusionPolicy(nn.Module):
             repeated_joint_values = joint_values.unsqueeze(2).repeat(1, 1, mixing_weights.shape[2])
             squared_diffs = (repeated_joint_values - means) ** 2 / variances
 
-            # Calculate exponential terms and multiply with mixing weights
-            exp_terms = torch.exp(-0.5 * squared_diffs) * mixing_weights
+            # Calculate exponential terms
+            exp_terms = torch.exp(-0.5 * squared_diffs)
 
             # Calculate likelihoods and sum over mixtures
             likelihoods = exp_terms / torch.sqrt(2 * np.pi * variances)
+            # Multiply by mixing weights
+            likelihoods = likelihoods * mixing_weights
             likelihood_sum = torch.sum(likelihoods, dim=2)  # sum over mixtures
+
+            # avoid numerical instability
+            likelihood_sum = torch.clamp(likelihood_sum, min=1e-20)
 
             # Calculate and return log-likelihood
             return torch.sum(torch.log(likelihood_sum))
