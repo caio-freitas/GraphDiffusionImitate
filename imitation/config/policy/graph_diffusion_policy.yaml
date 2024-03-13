@@ -13,4 +13,4 @@ denoising_network:
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
   num_layers: 5
-  hidden_dim: 256
+  hidden_dim: 128
