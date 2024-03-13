@@ -162,7 +162,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.node_pos_dim = 3 # position only
+        self.node_pos_dim = 7
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
