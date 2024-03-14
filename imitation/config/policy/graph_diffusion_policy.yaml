@@ -2,7 +2,7 @@ _target_: imitation.policy.ar_graph_diffusion_policy.AutoregressiveGraphDiffusio
 dataset: ${task.dataset}
 node_feature_dim: 2
 num_edge_types: 2 # robot joints, object-robot
-lr: 0.00005
+lr: 0.0001
 ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_en_graph_diffusion_policy.pt
 device: cuda
 denoising_network:
