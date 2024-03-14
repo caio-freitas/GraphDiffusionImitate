@@ -33,14 +33,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.dataset = dataset
         self.node_feature_dim = node_feature_dim
         self.num_edge_types = num_edge_types
-        self.model = denoising_network.double().to(self.device)
+        self.model = denoising_network.float().to(self.device)
         # no need for diffusion ordering network
 
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.5, verbose=True, min_lr=lr/20)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.5, verbose=True, min_lr=lr/10)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -83,13 +83,13 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             node = node_order[t]
             masked_data = masked_data.clone()
             target_node_features.append(masked_data.x[node])
-            x_pos.append(masked_data.y[:masked_data.x.shape[0],-1,:3])
+            x_pos.append(masked_data.y[:masked_data.x.shape[0],-1,:3].to(self.device))
             masked_data = self.masker.mask_node(masked_data, node)
-            masked_data.x = masked_data.x.double().to(self.device)
+            masked_data.x = masked_data.x.float().to(self.device)
             masked_data.edge_attr = masked_data.edge_attr.long().to(self.device)
             masked_data.edge_index = masked_data.edge_index.long().to(self.device)
-            masked_data.y = masked_data.y.double().to(self.device)
-            masked_data.pos = masked_data.pos.double().to(self.device)
+            masked_data.y = masked_data.y.float().to(self.device)
+            masked_data.pos = masked_data.pos.float().to(self.device)
             diffusion_trajectory.append(masked_data)
             # don't remove last node
             if t < len(node_order)-1:
@@ -105,11 +105,11 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         graph = graph.clone()
         graph = self.masker.fully_connect(graph)
-        graph.x = graph.x.double().to(self.device)
+        graph.x = graph.x.float().to(self.device)
         graph.edge_attr = graph.edge_attr.long().to(self.device)
         graph.edge_index = graph.edge_index.long().to(self.device)
-        # graph.y = graph.y.double().to(self.device)
-        # graph.pos = graph.pos.double().to(self.device)
+        # graph.y = graph.y.float().to(self.device)
+        # graph.pos = graph.pos.float().to(self.device)
         return graph
 
     # cache function results, as it is called multiple times
@@ -135,7 +135,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         loss_joint_values = nn.MSELoss()(pred_joint_vals, target_joint_vals)
         wandb.log({"loss_joint_values": loss_joint_values.item()})
 
-        return lambda_joint_values * loss_joint_values + lambda_joint_pos * loss_joint_pos_loss
+        return lambda_joint_values * loss_joint_values # + lambda_joint_pos * loss_joint_pos_loss
 
 
 
@@ -170,14 +170,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # predictions & loss
                         G_0 = diffusion_trajectory[0].to(self.device)
                         acc_loss = 0                  
-                        joint_values, pos = self.model(G_pred, x_coord=x_pos.double(), cond=G_0.y.double())
+                        joint_values, pos = self.model(G_pred, x_coord=x_pos.float(), cond=G_0.y.float())
                         # get elements from G_pred.ptr
                         joint_values = joint_values[G_pred.ptr[1:] - 1]
                         # mse loss for node features
                         loss = self.loss_fcn(pred_feats=joint_values,
                                                 pred_pos=pos,
-                                                target_feats=target_node_features.double(),
-                                                target_pos=G_pred.y[:G_pred.x.shape[0],-1,:3].double())
+                                                target_feats=target_node_features.float(),
+                                                target_pos=G_pred.y[:G_pred.x.shape[0],-1,:3].float())
                         # TODO add loss for absolute positions, to make the model physics-informed
                         wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
@@ -213,7 +213,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         Lookup edge attributes from obs to action
         '''
-        # edge_attr = edge_attr.double()
+        # edge_attr = edge_attr.float()
         action_edge_attr = torch.zeros(action_edge_index.shape[1])
         for i in range(action_edge_index.shape[1]):
             # find edge in obs
@@ -280,7 +280,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         assert obs_cond.shape[1] == self.dataset.obs_horizon
         assert edge_attr.shape[0] == edge_index.shape[1]
        
-        self.model.double()
+        self.model.float()
         self.model.eval()
         
 
@@ -292,7 +292,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action = self.preprocess(action)            
             with torch.no_grad():
                 # predict node attributes for last node in action
-                action_pred, pos = self.model(action, x_coord = obs_pos[:action.x.shape[0],-1,:3].double(), cond=obs_cond.double())
+                action_pred, pos = self.model(action, x_coord = obs_pos[:action.x.shape[0],-1,:3].float(), cond=obs_cond.float())
             action.x[-1,:,:] = action_pred[-1,:,:]
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
