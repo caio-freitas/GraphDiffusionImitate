@@ -25,7 +25,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                  obs_horizon=1,
                  node_feature_dim = 2, # joint value and node type flag
                  mode="joint-space"):
-        self.mode                   = mode
+        self.mode                   : str = mode
         self.node_feature_dim       : int = node_feature_dim
         self.action_keys            : List = action_keys
         self.pred_horizon           : int = pred_horizon
