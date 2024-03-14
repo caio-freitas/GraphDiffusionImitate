@@ -95,15 +95,12 @@ class RobomimicGraphWrapper(gym.Env):
 
     def control_loop(self, tgt_jpos, max_n=1, eps=0.02):
         obs = self.env._get_observations()
+        tgt_jpos[-1] = -0.1 if tgt_jpos[-1] < -0.03 else 0.1
         for i in range(max_n):
             obs = self.env._get_observations()
             joint_pos = np.array([*obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][1]])  # use only last action for gripper
             q_diff = np.array(tgt_jpos) - joint_pos[:len(tgt_jpos)]
             q_diff_max = np.max(abs(q_diff))
-
-            # binarize last action dimension (gripper)
-            # print(f"q_diff: {q_diff[-1]}")
-            q_diff[-1] = -1 if q_diff[-1] < -0.03 else 0
             
             action = list(q_diff)
             assert len(action) == 8, len(action)
