@@ -74,6 +74,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         diffusion_trajectory = []
         target_node_features = [] # node features that get masked, in the order they are masked
+        x_pos = []
 
         node_order = self.node_decay_ordering(graph.x.shape[0])
 
@@ -82,6 +83,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             node = node_order[t]
             masked_data = masked_data.clone()
             target_node_features.append(masked_data.x[node])
+            x_pos.append(masked_data.y[:masked_data.x.shape[0],-1,:3])
             masked_data = self.masker.mask_node(masked_data, node)
             masked_data.x = masked_data.x.double().to(self.device)
             masked_data.edge_attr = masked_data.edge_attr.long().to(self.device)
@@ -93,7 +95,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             if t < len(node_order)-1:
                 masked_data = self.masker.remove_node(masked_data, node)
                 node_order = [n-1 if n > node else n for n in node_order] # update node order to account for removed node
-        return diffusion_trajectory, target_node_features
+        x_pos = torch.cat(x_pos, dim=0)
+        return diffusion_trajectory, target_node_features, x_pos
 
     @torch.jit.export
     def preprocess(self, graph):
@@ -204,7 +207,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                             graph = self.masker.remove_node(graph, obj_node)
                         graph = self.masker.idxify(graph)
-                        diffusion_trajectory, target_node_features = self.generate_diffusion_trajectory(graph)
+                        diffusion_trajectory, target_node_features, x_pos = self.generate_diffusion_trajectory(graph)
                         target_node_features = torch.stack(target_node_features, dim=0) # [n_nodes, pred_horizon, n_features]
                         dataloader = DataLoader(dataset=diffusion_trajectory, batch_size=len(diffusion_trajectory), shuffle=False)
                         G_pred = next(iter(dataloader)).to(self.device)
@@ -220,7 +223,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         loss = self.loss_fcn(pred_feats=joint_values,
                                                 pred_pos=pos,
                                                 target_feats=target_node_features.double(),
-                                                target_pos=G_pred.y[:,-1,:3].double())
+                                                target_pos=G_pred.y[:G_pred.x.shape[0],-1,:3].double())
                         # TODO add loss for absolute positions, to make the model physics-informed
                         wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
