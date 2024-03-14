@@ -2,15 +2,15 @@ _target_: imitation.policy.ar_graph_diffusion_policy.AutoregressiveGraphDiffusio
 dataset: ${task.dataset}
 node_feature_dim: 2
 num_edge_types: 2 # robot joints, object-robot
-lr: 0.00005
+lr: 0.0005
 ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_en_graph_diffusion_policy.pt
 device: cuda
 denoising_network:
-  _target_: imitation.model.graph_diffusion.ConditionalGraphDenoisingNetwork
+  _target_: imitation.model.graph_diffusion.EConditionalGraphDenoisingNetwork
   node_feature_dim: ${policy.node_feature_dim}
   obs_horizon: ${obs_horizon}
   pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
   num_layers: 5
-  hidden_dim: 256
+  hidden_dim: 128
