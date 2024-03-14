@@ -38,11 +38,11 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=policy.__class__.__name__,
         group=cfg.task.task_name,
-        name=f"v1.1.0 - GCN Encoder ",
+        name=f"v1.1.0 - GCN Encoder",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
-            "dataset_type": "Overfit Single Graph",
+            "dataset_type": cfg.task.dataset_type,
             "n_epochs": cfg.num_epochs,
             "seed": cfg.seed,
             "lr": cfg.policy.lr,
