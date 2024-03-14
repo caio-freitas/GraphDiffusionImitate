@@ -154,12 +154,12 @@ class RobomimicGraphWrapper(gym.Env):
                 node_feats.append(torch.zeros((1,9)))
                 node_feats = torch.cat(node_feats, dim=0).T
             elif self.mode == "joint-space":
-                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *gripper_binary]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 node_feats = []
                 # [node, node_feats]
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *gripper_binary]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats, dim=0).T
         return node_feats
 
