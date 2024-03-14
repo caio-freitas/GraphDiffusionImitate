@@ -1,11 +1,12 @@
 import torch
 from torch import nn
-from torch_geometric.nn.pool import global_mean_pool
+from torch_geometric.nn.pool import global_mean_pool, MemPooling
 from torch_geometric.utils import add_self_loops, degree
 from torch.nn import functional as F
 from torch.nn import Linear, ReLU
 import math
 from torch_geometric.nn import MessagePassing
+from torch_geometric.nn.conv import GCNConv
 
 from imitation.model.egnn import E_GCL
 
@@ -139,6 +140,42 @@ class DenoisingNetwork(nn.Module):
 
         return node_pred, p_e, h_v
     
+class GraphConditionEncoder(nn.Module):
+    '''
+    Graph Convolutional Network (GCN) for encoding the graph-level conditioning vector
+    '''
+    def __init__(self, input_dim, output_dim, hidden_dim, device=None):
+        super().__init__()
+        if device == None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+        self.graph_encoder = GCNConv(input_dim, hidden_dim).to(self.device)
+        self.layers = nn.ModuleList()
+        for _ in range(2):
+            self.layers.append(GCNConv(hidden_dim, hidden_dim).to(self.device))
+        self.pool = global_mean_pool
+        # self.pool = MemPooling(
+        #     in_channels=hidden_dim,
+        #     out_channels=hidden_dim,
+        #     heads=5,
+        #     num_clusters=2
+        # ).to(self.device)
+        self.fc = Linear(hidden_dim, output_dim).to(self.device)
+
+    def forward(self, x, edge_index, edge_attr):
+        x = x.float().to(self.device).flatten(start_dim=1)
+        edge_attr = edge_attr.float().to(self.device)
+        edge_index = edge_index.to(self.device)
+        h_v = self.graph_encoder(x, edge_index, edge_attr)
+        for layer in self.layers:
+            h_v = layer(h_v, edge_index, edge_attr)
+        g_v = self.pool(h_v,batch=None)
+        h_v = self.fc(g_v)
+        return h_v
 
 class EConditionalGraphDenoisingNetwork(nn.Module):
     def __init__(self,
@@ -162,7 +199,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.node_pos_dim = 7
+        self.cond_feature_dim = 7 # position only # TODO separate node positions from observation node features
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
@@ -171,14 +208,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         # FiLM modulation https://arxiv.org/abs/1709.07871
         # predicts per-channel scale and bias
         self.cond_channels = hidden_dim * 2
-        self.cond_encoders = nn.ModuleList()
-        for _ in range(num_layers):
-            self.cond_encoders.append(nn.Sequential(
-                nn.Mish(),
-                nn.Linear(self.node_pos_dim*obs_horizon, self.cond_channels),
-                nn.Unflatten(-1, (-1, 1))
-            ).to(self.device))
-
+        self.cond_encoder = GraphConditionEncoder(input_dim = self.cond_feature_dim * self.obs_horizon, output_dim = self.cond_channels, hidden_dim = hidden_dim, device=self.device)
 
 
         self.layers = nn.ModuleList()
@@ -217,10 +247,12 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
     def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device) 
+        edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device).flatten(start_dim=1)
         x_coord = x_coord.float().to(self.device)
+
+        assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
 
         N = x.shape[0] - 1
 
@@ -230,29 +262,27 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
          # # Positional encoding
         h_v += self.pe[N, :].to(self.device)
 
-
+        embed = self.cond_encoder(cond, edge_index, edge_attr)
+        # pooling over graph nodes, to get a graph-level conditioning vector
+        embed = embed.reshape(
+            1, 2, self.hidden_dim)
+        scale = embed[:,0,...]
+        bias = embed[:,1,...]
         x_v = x_coord
         # instead of convolution, run message passing
         for l in range(self.num_layers):
             # FiLM conditioning
-            embed = self.cond_encoders[l](cond)
-            # pooling over graph nodes, to get a graph-level conditioning vector
-            embed = torch.mean(embed, dim=0)
-            embed = embed.reshape(
-                1, 2, self.hidden_dim)
-            scale = embed[:,0,...]
-            bias = embed[:,1,...]
             h_v = scale * h_v + bias
             h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
         
         # graph-level embedding, from average pooling layer
-        graph_embedding = torch.mean(h_v, dim=0)
+        graph_embedding = global_mean_pool(h_v, batch=None)
 
         # repeat graph embedding to have the same shape as h_v
         graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
 
-        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
+        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2*hidden_dim
 
         v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
         

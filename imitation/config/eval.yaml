@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: lift_graph
+  - task: square_graph
   - policy: graph_diffusion_policy
 
 render: False
