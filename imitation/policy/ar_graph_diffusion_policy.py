@@ -74,6 +74,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         diffusion_trajectory = []
         target_node_features = [] # node features that get masked, in the order they are masked
+        x_pos = []
 
         node_order = self.node_decay_ordering(graph.x.shape[0])
 
@@ -82,6 +83,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             node = node_order[t]
             masked_data = masked_data.clone()
             target_node_features.append(masked_data.x[node])
+            x_pos.append(masked_data.y[:masked_data.x.shape[0],-1,:3])
             masked_data = self.masker.mask_node(masked_data, node)
             masked_data.x = masked_data.x.double().to(self.device)
             masked_data.edge_attr = masked_data.edge_attr.long().to(self.device)
@@ -93,7 +95,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             if t < len(node_order)-1:
                 masked_data = self.masker.remove_node(masked_data, node)
                 node_order = [n-1 if n > node else n for n in node_order] # update node order to account for removed node
-        return diffusion_trajectory, target_node_features
+        x_pos = torch.cat(x_pos, dim=0)
+        return diffusion_trajectory, target_node_features, x_pos
 
     @torch.jit.export
     def preprocess(self, graph):
@@ -158,22 +161,21 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # remove object nodes
                         graph = self.masker.remove_node(graph, 9) # TODO properly remove object nodes
                         graph = self.masker.idxify(graph)
-                        diffusion_trajectory, target_node_features = self.generate_diffusion_trajectory(graph)
+                        diffusion_trajectory, target_node_features, x_pos = self.generate_diffusion_trajectory(graph)
                         target_node_features = torch.stack(target_node_features, dim=0) # [n_nodes, pred_horizon, n_features]
                         dataloader = DataLoader(dataset=diffusion_trajectory, batch_size=len(diffusion_trajectory), shuffle=False)
                         G_pred = next(iter(dataloader)).to(self.device)
                         # predictions & loss
                         G_0 = diffusion_trajectory[0].to(self.device)
-                        acc_loss = 0
-                        # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                        joint_values, pos = self.model(G_pred, x_coord=G_pred.y[:,-1,:3].double(), cond=G_0.y.double())
+                        acc_loss = 0                  
+                        joint_values, pos = self.model(G_pred, x_coord=x_pos.double(), cond=G_0.y.double())
                         # get elements from G_pred.ptr
                         joint_values = joint_values[G_pred.ptr[1:] - 1]
                         # mse loss for node features
                         loss = self.loss_fcn(pred_feats=joint_values,
                                                 pred_pos=pos,
                                                 target_feats=target_node_features.double(),
-                                                target_pos=G_pred.y[:,-1,:3].double())
+                                                target_pos=G_pred.y[:G_pred.x.shape[0],-1,:3].double())
                         # TODO add loss for absolute positions, to make the model physics-informed
                         wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
@@ -285,10 +287,10 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
 
         for x_i in range(obs[0].x.shape[0] - 1): # number of nodes in action graph TODO remove objects
-            action = self.preprocess(action)
+            action = self.preprocess(action)            
             with torch.no_grad():
                 # predict node attributes for last node in action
-                action_pred, pos = self.model(action, x_coord = obs_pos[:x_i+1,-1,:3].double(), cond=obs_cond[:,:,:3].double())
+                action_pred, pos = self.model(action, x_coord = obs_pos[:action.x.shape[0],-1,:3].double(), cond=obs_cond.double())
             action.x[-1,:,:] = action_pred[-1,:,:]
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
