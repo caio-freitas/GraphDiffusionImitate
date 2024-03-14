@@ -160,7 +160,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # preprocess graph
                         graph = self.preprocess(nbatch)
                         # remove object nodes
-                        graph = self.masker.remove_node(graph, 9) # TODO properly remove object nodes
+                        for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
+                            graph = self.masker.remove_node(graph, obj_node)
                         graph = self.masker.idxify(graph)
                         diffusion_trajectory, target_node_features, x_pos = self.generate_diffusion_trajectory(graph)
                         target_node_features = torch.stack(target_node_features, dim=0) # [n_nodes, pred_horizon, n_features]
