@@ -120,6 +120,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         return torch.arange(graph_size-1, -1, -1)
 
+    @torch.jit.export
     def loss_fcn(self, pred_feats, pred_pos, target_feats, target_pos):
         '''
         Node feature loss
