@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: square_graph
+  - task: lift_graph
   - policy: graph_diffusion_policy
 
 output_dir: ./outputs

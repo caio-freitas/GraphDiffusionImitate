@@ -165,7 +165,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
                             # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3], cond=G_0.y.float())
+                            joint_values, pos = self.model(G_pred.x, G_pred.edge_index, G_pred.edge_attr, x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3], cond=G_0.y[:,:,3:].float()) # only use quaternions, since pos is x_coord
 
                             # mse loss for node features
                             loss = self.loss_fcn(pred_feats=joint_values,
@@ -282,7 +282,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                 action.edge_index,
                 action.edge_attr,
                 x_coord = obs_pos[:action.x.shape[0],:3],
-                cond=obs_cond
+                cond=obs_cond[:,:,3:] # only use quaternions, since pos is x_coord
             )
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
