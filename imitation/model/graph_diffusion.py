@@ -1,12 +1,10 @@
 import torch
 from torch import nn
-from torch_geometric.nn.pool import global_mean_pool, MemPooling
-from torch_geometric.utils import add_self_loops, degree
 from torch.nn import functional as F
-from torch.nn import Linear, ReLU
-import math
+from torch.nn import Linear
 from torch_geometric.nn import MessagePassing
-from torch_geometric.nn.conv import GCNConv
+from torch_geometric.nn.pool import global_mean_pool
+import math
 
 from imitation.model.egnn import E_GCL, EGNN
 
