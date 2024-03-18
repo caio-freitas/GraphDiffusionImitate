@@ -149,8 +149,6 @@ class RobomimicGraphWrapper(gym.Env):
         Returns node features from data
         '''
         node_feats = []
-        # apply threshold to gripper qpos, so that it's binary
-        gripper_binary = np.array([-1 if gripper_val < -0.03 else 0 for gripper_val in data["robot0_gripper_qpos"]])
         if self.mode == "end-effector":
             node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"]), torch.tensor(data["robot0_eef_quat"])], dim=0)
             node_feats = node_feats.reshape(1, -1) # add dimension
@@ -159,12 +157,12 @@ class RobomimicGraphWrapper(gym.Env):
                 node_feats.append(torch.zeros((1,9)))
                 node_feats = torch.cat(node_feats, dim=0).T
             elif self.mode == "joint-space":
-                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *gripper_binary]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats).T
             elif self.mode == "task-joint-space":
                 node_feats = []
                 # [node, node_feats]
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *gripper_binary]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats, dim=0).T
         return node_feats
 
