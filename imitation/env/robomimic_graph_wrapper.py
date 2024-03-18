@@ -93,15 +93,13 @@ class RobomimicGraphWrapper(gym.Env):
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
 
-    def sigmoid(self, x):
-        return 1 / (1+np.exp(-x))
 
-    def scaled_sigmoid(self, x, max_val=0.04, min_val=-0.1, k=200, threshold=-0.03):
-        return (max_val - min_val) * self.sigmoid(k * (x - threshold)) + min_val
+    def scaled_tanh(self, x, max_val=0.04, min_val=-0.1, k=200, threshold=-0.03):
+        return np.tanh(k * (x - threshold)) * (max_val - min_val) / 2 + (max_val + min_val) / 2
 
     def control_loop(self, tgt_jpos, max_n=1, eps=0.02):
         obs = self.env._get_observations()
-        tgt_jpos[-1] = self.scaled_sigmoid(tgt_jpos[-1])
+        tgt_jpos[-1] = self.scaled_tanh(tgt_jpos[-1])
         for i in range(max_n):
             obs = self.env._get_observations()
             joint_pos = np.array([*obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][1]])  # use only last action for gripper
