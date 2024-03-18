@@ -138,42 +138,6 @@ class DenoisingNetwork(nn.Module):
 
         return node_pred, p_e, h_v
     
-class GraphConditionEncoder(nn.Module):
-    '''
-    Graph Convolutional Network (GCN) for encoding the graph-level conditioning vector
-    '''
-    def __init__(self, input_dim, output_dim, hidden_dim, device=None):
-        super().__init__()
-        if device == None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = device
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.hidden_dim = hidden_dim
-        self.graph_encoder = GCNConv(input_dim, hidden_dim).to(self.device)
-        self.layers = nn.ModuleList()
-        for _ in range(2):
-            self.layers.append(GCNConv(hidden_dim, hidden_dim).to(self.device))
-        self.pool = global_mean_pool
-        # self.pool = MemPooling(
-        #     in_channels=hidden_dim,
-        #     out_channels=hidden_dim,
-        #     heads=5,
-        #     num_clusters=2
-        # ).to(self.device)
-        self.fc = Linear(hidden_dim, output_dim).to(self.device)
-
-    def forward(self, x, edge_index, edge_attr):
-        x = x.float().to(self.device).flatten(start_dim=1)
-        edge_attr = edge_attr.float().to(self.device)
-        edge_index = edge_index.to(self.device)
-        h_v = self.graph_encoder(x, edge_index, edge_attr)
-        for layer in self.layers:
-            h_v = layer(h_v, edge_index, edge_attr)
-        g_v = self.pool(h_v,batch=None)
-        h_v = self.fc(g_v)
-        return h_v
 
 class EGraphConditionEncoder(nn.Module):
     '''
@@ -246,6 +210,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
             hidden_dim = hidden_dim, 
             device=self.device
         )
+
 
         self.layers = nn.ModuleList()
         for _ in range(num_layers):

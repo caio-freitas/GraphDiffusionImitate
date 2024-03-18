@@ -3,11 +3,11 @@ defaults:
   - task: lift_graph
   - policy: graph_diffusion_policy
 
-render: False
+render: True
 output_video: True
 
 num_episodes: 20
-max_steps: 2000
+max_steps: 1000
 output_dir: ./outputs
 
 

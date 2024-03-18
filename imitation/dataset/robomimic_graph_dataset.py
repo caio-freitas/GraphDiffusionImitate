@@ -90,7 +90,6 @@ class RobomimicGraphDataset(InMemoryDataset):
     def _get_node_feats(self, data, t, mode):
         node_feats = []
         # apply threshold to gripper qpos, so that it's binary
-        gripper_binary = np.array([-0.1 if gripper_val < -0.03 else 0.1 for gripper_val in data["robot0_gripper_qpos"][t]])
         if mode == "end-effector":
             node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t]), torch.tensor(data["robot0_eef_quat"][t])], dim=0)
             node_feats = node_feats.reshape(1, -1) # add dimension
@@ -101,12 +100,12 @@ class RobomimicGraphDataset(InMemoryDataset):
                 node_feats.append(torch.zeros((1,9)))
                 node_feats = torch.cat(node_feats).T
             elif mode == "joint-space":
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *gripper_binary]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats).T
             elif mode == "task-joint-space":
                 node_feats = []
                 # [node, node_feats]
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *gripper_binary]).reshape(1,-1))
+                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
                 node_feats = torch.cat(node_feats, dim=0).T
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
@@ -318,3 +317,4 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
             else:
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
+    
