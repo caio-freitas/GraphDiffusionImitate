@@ -85,7 +85,7 @@ class RobomimicEnvRunner(BaseRunner):
                 
                 if self.render:
                     self.env.render()
-                    time.sleep(1/self.fps)
+                    # time.sleep(1/self.fps) # TODO properly fix the rendering speed or not
 
                 if self.output_video:
                     # We need to directly grab full observations so we can get image data
