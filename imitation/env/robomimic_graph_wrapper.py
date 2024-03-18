@@ -59,7 +59,9 @@ class RobomimicGraphWrapper(gym.Env):
         self.node_feature_dim = node_feature_dim
         controller_config = load_controller_config(default_controller="JOINT_POSITION")
         # tune up controller gains
-        controller_config["kp"] = 100 # default is 50
+        controller_config["kp"] = 50 # default is 50
+        controller_config["interpolation"] = "linear"
+        controller_config["ramp_ratio"] = 0.2
         self.robots = [*robots] # gambiarra to make it work with robots list
         keys = [ "robot0_proprio-state", 
                 *[f"robot{i}_proprio-state" for i in range(1, len(self.robots))],
@@ -94,10 +96,10 @@ class RobomimicGraphWrapper(gym.Env):
         self.OBJECT_ROBOT_EDGE = 2
 
 
-    def scaled_tanh(self, x, max_val=0.02, min_val=-0.076, k=200, threshold=-0.03):
+    def scaled_tanh(self, x, max_val=0.01, min_val=-0.07, k=200, threshold=-0.03):
         return np.tanh(k * (x - threshold)) * (max_val - min_val) / 2 + (max_val + min_val) / 2
 
-    def control_loop(self, tgt_jpos, max_n=10, eps=0.02):
+    def control_loop(self, tgt_jpos, max_n=20, eps=0.02):
         obs = self.env._get_observations()
         tgt_jpos[-1] = self.scaled_tanh(tgt_jpos[-1])
         for i in range(max_n):
