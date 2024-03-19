@@ -10,7 +10,6 @@ from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import wandb
 
-from imitation.model.graph_diffusion import FiLMConditionalGraphDenoisingNetwork
 from imitation.policy.base_policy import BasePolicy
 
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
@@ -63,7 +62,7 @@ class DiffusionGraphPolicy(BasePolicy):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
-        self.noise_pred_net = denoising_network # TODO create new model for this, e.g. without pe
+        self.noise_pred_net = denoising_network
 
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
@@ -92,16 +91,19 @@ class DiffusionGraphPolicy(BasePolicy):
         if ckpt_path is None:
             log.info('No pretrained weights given.')
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
-            return
+            
         if not os.path.isfile(ckpt_path):
             log.error(f"Pretrained weights not found at {ckpt_path}. ")
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
-            return
-        state_dict = torch.load(ckpt_path, map_location=self.device)
-        self.ema_noise_pred_net = self.noise_pred_net
-        self.ema_noise_pred_net.load_state_dict(state_dict)
-        self.ema_noise_pred_net.to(self.device)
-        log.info( 'Pretrained weights loaded.')
+        try: 
+            state_dict = torch.load(ckpt_path, map_location=self.device)
+            self.ema_noise_pred_net = self.noise_pred_net
+            self.ema_noise_pred_net.load_state_dict(state_dict)
+            self.ema_noise_pred_net.to(self.device)
+            log.info( 'Pretrained weights loaded.')
+        except:
+            log.error('Error loading pretrained weights.')
+            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
 
     def _init_stats(self):
         # save training data statistics (min, max) for each dim
@@ -117,7 +119,7 @@ class DiffusionGraphPolicy(BasePolicy):
         pos = []
         G_t = obs_deque[-1]
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y[:,:3]) # only positions
+            obs_cond.append(obs_deque[i].y[:,3:]) # only quaternions
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
@@ -138,7 +140,7 @@ class DiffusionGraphPolicy(BasePolicy):
                     x = naction,
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
-                    x_diffs = G_t.y[:,:3],
+                    x_coord = G_t.y[:,:3],
                     cond = obs_cond
                 )
 
@@ -152,7 +154,7 @@ class DiffusionGraphPolicy(BasePolicy):
         # unnormalize action
         naction = naction.detach().to('cpu').numpy()
         # 
-        action = naction[:8,:,0].T
+        action = naction[:9,:,0].T
         # action_pred = unnormalize_data(naction, stats=self.stats['action'])
         
         # (action_horizon, action_dim)
@@ -203,7 +205,7 @@ class DiffusionGraphPolicy(BasePolicy):
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
-                        obs_cond = nobs[:,:,:3]
+                        obs_cond = nobs[:,:,3:] # only quaternions
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=2)
 
@@ -228,7 +230,7 @@ class DiffusionGraphPolicy(BasePolicy):
 
                         # predict the noise residual
                         noise_pred, x = self.noise_pred_net(
-                            noisy_actions, batch.edge_index, batch.edge_attr, x_diffs = batch.y[:,-1,:3], cond=obs_cond)
+                            noisy_actions, batch.edge_index, batch.edge_attr, x_coord = batch.y[:,-1,:3], cond=obs_cond)
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)

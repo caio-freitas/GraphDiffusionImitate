@@ -9,13 +9,13 @@ action_horizon: ${action_horizon}
 num_diffusion_iters: 100
 dataset: ${task.dataset}
 denoising_network:
-  _target_: imitation.model.graph_diffusion.FiLMConditionalGraphDenoisingNetwork
+  _target_: imitation.model.graph_diffusion.EConditionalGraphDenoisingNetwork
   node_feature_dim: ${policy.node_feature_dim}
   obs_horizon: ${obs_horizon}
   pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
-  num_layers: 5
-  hidden_dim: 256
+  num_layers: 3
+  hidden_dim: 128
 ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_type}.pt
 lr: 0.00001
