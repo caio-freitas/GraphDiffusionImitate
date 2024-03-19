@@ -30,7 +30,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=cfg.policy,
         group=cfg.task.task_name,
-        name=f"v1.1.3 - E_GNN Encoder",
+        name=f"v1.1.4 - E_GNN Encoder",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
@@ -100,8 +100,9 @@ if __name__ == "__main__":
             "control_mode": {"values": ["JOINT_VELOCITY", "JOINT_POSITION"]}
         },
     }
-        # 3: Start the sweep
+    # 3: Start the sweep
     sweep_id = wandb.sweep(sweep=sweep_configuration, project="E-GNN-Encoder-Sweep")
-    wandb.agent(sweep_id, function=train, count=20)
+    # sweep_id = "atfrdhoj"
+    wandb.agent(sweep_id, function=train, count=20, project="E-GNN-Encoder-Sweep")
 
 
