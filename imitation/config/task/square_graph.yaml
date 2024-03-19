@@ -30,6 +30,7 @@ env_runner:
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
   render: ${render}
+  output_video: ${output_video}
   env:
     _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
     object_state_sizes: *object_state_sizes
