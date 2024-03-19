@@ -8,9 +8,9 @@ output_dir: ./outputs
 render: False
 output_video: True
 
-pred_horizon: 4
+pred_horizon: 16
 obs_horizon: 4
-action_horizon: 4
+action_horizon: 8
 # Training parameters
 num_epochs: 2000
 seed: 0
@@ -22,7 +22,7 @@ agent:
 
 # Disable evaluation 
 # eval_params: "disabled"
-max_steps: 5000
+max_steps: 500
 
 # Evaluation during training
 eval_params:
@@ -32,7 +32,7 @@ eval_params:
   render: False
   output_video: True
 
-  num_episodes: 5
+  num_episodes: 2
   max_steps: ${max_steps}
   output_dir: ./outputs
 
