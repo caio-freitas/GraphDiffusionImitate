@@ -47,6 +47,7 @@ def train(cfg: DictConfig) -> None:
     cfg.policy.denoising_network.hidden_dim = wandb.config.hidden_dim
     cfg.policy.denoising_network.num_layers = wandb.config.num_layers
     cfg.policy.ckpt_path = cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}"
+    cfg.task.control_mode = wandb.config.control_mode
 
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy)
@@ -93,12 +94,10 @@ if __name__ == "__main__":
         "method": "random",
         "metric": {"name": "loss", "goal": "minimize"},
         "parameters": {
-            "num_epochs": 2,
-            "task": "lift_graph",
-            "policy": "graph_diffusion_policy",
             "lr": {"values": [0.0005, 0.0001, 0.00001, 0.000005]},
             "hidden_dim": {"values": [16, 32, 64, 128]},
             "num_layers": {"values": [1, 2, 3, 4, 5]},
+            "control_mode": {"values": ["JOINT_VELOCITY", "JOINT_POSITION"]}
         },
     }
         # 3: Start the sweep
