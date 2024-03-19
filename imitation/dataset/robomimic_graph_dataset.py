@@ -8,6 +8,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from typing import List, Dict
+
+from functools import lru_cache
 from imitation.utils.generic import calculate_panda_joints_positions
 
 log = logging.getLogger(__name__)
@@ -21,26 +24,25 @@ class RobomimicGraphDataset(InMemoryDataset):
                  pred_horizon=1,
                  obs_horizon=1,
                  node_feature_dim = 2, # joint value and node type flag
-                 mode="joint-space"):
-        self.mode = mode
-        self.node_feature_dim = node_feature_dim
-        self.action_keys = action_keys
-        self.pred_horizon = pred_horizon
-        self.obs_horizon = obs_horizon
-        self.object_state_sizes = object_state_sizes # can be taken from https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
-        self.object_state_keys = object_state_keys
-        self.num_objects = len(object_state_keys)
-        self._processed_dir = dataset_path.replace(".hdf5", f"_{self.mode}_processed")
-        self.step_size = 2 # avoid idling by skipping frames
+                 control_mode="JOINT_VELOCITY"):
+        self.control_mode           : str = control_mode
+        self.node_feature_dim       : int = node_feature_dim
+        self.action_keys            : List = action_keys
+        self.pred_horizon           : int = pred_horizon
+        self.obs_horizon            : int = obs_horizon
+        self.object_state_sizes     : Dict = object_state_sizes # can be taken from https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
+        self.object_state_keys      : Dict = object_state_keys
+        self.num_objects            : int = len(object_state_keys)
+        self._processed_dir         : str = dataset_path.replace(".hdf5", f"_{self.control_mode}_processed_{self.obs_horizon}_{self.pred_horizon}")
 
-        self.ROBOT_NODE_TYPE = 1
-        self.OBJECT_NODE_TYPE = -1
+        self.ROBOT_NODE_TYPE        : int = 1
+        self.OBJECT_NODE_TYPE       : int = -1
 
-        self.ROBOT_LINK_EDGE = 1
-        self.OBJECT_ROBOT_EDGE = 2
+        self.ROBOT_LINK_EDGE        : int = 1
+        self.OBJECT_ROBOT_EDGE      : int = 2
 
-        self.dataset_root = h5py.File(dataset_path, 'r')
-        self.dataset_keys = list(self.dataset_root["data"].keys())
+        self.dataset_root           : str = h5py.File(dataset_path, 'r')
+        self.dataset_keys           : List = list(self.dataset_root["data"].keys())
         try:
             self.dataset_keys.remove("mask")
         except:
@@ -57,11 +59,12 @@ class RobomimicGraphDataset(InMemoryDataset):
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
-    def _get_object_feats(self, data, t):
+    @lru_cache(maxsize=None)
+    def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint values
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
+        obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
+        obj_state_tensor[:,:,-1] = OBJECT_NODE_TYPE
         return obj_state_tensor
 
     def _get_object_pos(self, data, t):
@@ -82,32 +85,27 @@ class RobomimicGraphDataset(InMemoryDataset):
         obj_pos_tensor = self._get_object_pos(data, t)
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
-
     
-    
-    def _get_node_feats(self, data, t, mode):
+    def _get_node_feats(self, data, t_vals):
+        '''
+        Calculate node features for time steps t_vals
+        t_vals: list of time steps
+        '''
+        T = len(t_vals)
         node_feats = []
-        if mode == "end-effector":
-            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t]), torch.tensor(data["robot0_eef_quat"][t])], dim=0)
-            node_feats = node_feats.reshape(1, -1) # add dimension
-        else:
-            if mode == "task-space":
-                node_feats = []
-                # complete with zeros to match task-joint-space dimensionality
-                node_feats.append(torch.zeros((1,9)))
-                node_feats = torch.cat(node_feats).T
-            elif mode == "joint-space":
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
-                node_feats = torch.cat(node_feats).T
-            elif mode == "task-joint-space":
-                node_feats = []
-                # [node, node_feats]
-                node_feats.append(torch.tensor([*data[f"robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]).reshape(1,-1))
-                node_feats = torch.cat(node_feats, dim=0).T
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
+        if self.control_mode == "OSC_POSE":
+            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=0)
+            node_feats = node_feats.reshape(T, -1) # add dimension
+        if self.control_mode == "JOINT_VELOCITY":
+            node_feats = torch.cat([torch.tensor(data[f"robot0_joint_vel"][t_vals]), torch.tensor(data["robot0_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2)
+        elif self.control_mode == "JOINT_POSITION":
+            # [node, node_feats]
+            node_feats = torch.cat([torch.tensor(data[f"robot0_joint_pos"][t_vals]), torch.tensor(data["robot0_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2)
+
+        # add dimension for NODE_TYPE flag, which is 0 for robot and 1 for objects
+        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],node_feats.shape[1],1))), dim=2)
         
-        obj_state_tensor = self._get_object_feats(data, t)
+        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, self.OBJECT_NODE_TYPE, T)
         
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
 
@@ -120,16 +118,11 @@ class RobomimicGraphDataset(InMemoryDataset):
         '''
         node_feats = []
         episode_length = data["object"].shape[0]
-        for t in range(idx - horizon + 1, idx + 1, self.step_size):
-            if t + horizon*self.step_size >= episode_length:
-                if t < episode_length:
-                    node_feats.append(self._get_node_feats(data, t, self.mode))
-                else:
-                    node_feats.append(self._get_node_feats(data, episode_length - 1, self.mode)) 
-            else:
-                node_feats.append(self._get_node_feats(data, t, self.mode))
-        return torch.stack(node_feats, dim=1)
-
+        # calculate node features for timesteps idx to idx + horizon
+        t_vals = list(range(idx, idx + horizon))
+        node_feats = self._get_node_feats(data, t_vals)
+        return node_feats
+    
     def _get_edge_attrs(self, edge_index):
         '''
         Attribute edge types to edges
@@ -171,8 +164,11 @@ class RobomimicGraphDataset(InMemoryDataset):
         Get y (observation) for time step t. Should contain only task-space joint positions.
         '''
         y = []
-        for t in range(idx - horizon + 1, idx + 1):
-            y.append(self._get_node_pos(data, t))
+        for t in range(idx, idx - horizon,-1):
+            if t < 0:
+                y.append(self._get_node_pos(data, 0)) # use fixed first observation for beginning of episode
+            else:
+                y.append(self._get_node_pos(data, t))
         return torch.stack(y, dim=1)
 
     
@@ -183,10 +179,9 @@ class RobomimicGraphDataset(InMemoryDataset):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
             
             for idx in range(episode_length - self.pred_horizon):
-                if idx - self.obs_horizon <= 0:
-                    continue
+                
                 data_raw = self.dataset_root["data"][key]["obs"]
-                node_feats  = self._get_node_feats_horizon(data_raw, idx + self.pred_horizon*self.step_size, self.pred_horizon*self.step_size)
+                node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon)
                 edge_index  = self._get_edge_index(node_feats.shape[0])
                 edge_attrs  = self._get_edge_attrs(edge_index)
                 y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
@@ -208,7 +203,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         # calculate length of dataset based on self.dataset_root
         length = 0
         for key in self.dataset_keys:
-            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon*self.step_size - self.obs_horizon*self.step_size - 1
+            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon - self.obs_horizon - 1
         return length
     
     def get(self, idx):
@@ -229,7 +224,7 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
                  pred_horizon=1,
                  obs_horizon=1,
                  node_feature_dim = 8,
-                 mode="joint-space"):
+                 mode="joint-space"): # TODO update according to RobomimicGraphDataset
         self.num_robots = len(robots)
         self.eef_idx = [0, 7, 13]
         super().__init__(dataset_path=dataset_path,
@@ -275,7 +270,7 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
 
-        obj_state_tensor = self._get_object_feats(data, t)
+        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, self.OBJECT_NODE_TYPE)
 
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
         return node_feats
@@ -314,4 +309,4 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
             else:
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
-        
+    
