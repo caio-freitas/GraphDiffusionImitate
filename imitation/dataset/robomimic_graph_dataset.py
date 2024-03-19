@@ -316,4 +316,4 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
             else:
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
-        
+    

@@ -20,7 +20,7 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 @hydra.main(
         version_base=None,
-        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
+        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')),
         config_name="train" # use train parameters as base
         )
 def train(cfg: DictConfig) -> None:
@@ -103,7 +103,6 @@ if __name__ == "__main__":
     }
         # 3: Start the sweep
     sweep_id = wandb.sweep(sweep=sweep_configuration, project="E-GNN-Encoder-Sweep")
-
     wandb.agent(sweep_id, function=train, count=20)
 
 
