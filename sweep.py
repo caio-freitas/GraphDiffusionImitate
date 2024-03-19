@@ -20,8 +20,8 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 @hydra.main(
         version_base=None,
-        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
-        config_name="train"
+        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')),
+        config_name="train" # use train parameters as base
         )
 def train(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
@@ -30,16 +30,13 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=cfg.policy,
         group=cfg.task.task_name,
-        name=f"v1.1.1 - E_GNN Encoder",
+        name=f"v1.1.2 - E_GNN Encoder",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
             "dataset_type": cfg.task.dataset_type,
             "n_epochs": cfg.num_epochs,
             "seed": cfg.seed,
-            # "lr": wandb.config.lr,
-            # "hidden_dim": wandb.config.hidden_dim,
-            # "num_layers": wandb.config.num_layers,
             "task": cfg.task.task_name,
         },
         # mode="disabled",
@@ -49,6 +46,7 @@ def train(cfg: DictConfig) -> None:
     cfg.policy.lr = wandb.config.lr
     cfg.policy.denoising_network.hidden_dim = wandb.config.hidden_dim
     cfg.policy.denoising_network.num_layers = wandb.config.num_layers
+    cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}"
 
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy)
@@ -73,7 +71,7 @@ def train(cfg: DictConfig) -> None:
         # train policy
         policy.train(dataset=policy.dataset.shuffle(),
                     num_epochs=E,
-                    model_path=cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}",
+                    model_path=cfg.policy.ckpt_path ,
                     seed=cfg.seed)
         if cfg.eval_params != "disabled":
             eval_main(cfg.eval_params)
@@ -81,7 +79,7 @@ def train(cfg: DictConfig) -> None:
     # final epochs and evaluation
     policy.train(dataset=policy.dataset.shuffle(),
                     num_epochs=cfg.num_epochs % E,
-                    model_path=cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}",
+                    model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
     eval_main(cfg.eval_params)
 
@@ -92,17 +90,19 @@ if __name__ == "__main__":
 
 
     sweep_configuration = {
-        "method": "bayes",
+        "method": "random",
         "metric": {"name": "loss", "goal": "minimize"},
         "parameters": {
-            "lr": {"values": [0.0001, 0.00001, 0.000001]},
+            "num_epochs": 2,
+            "task": "lift_graph",
+            "policy": "graph_diffusion_policy",
+            "lr": {"values": [0.0005, 0.0001, 0.00001, 0.000005]},
             "hidden_dim": {"values": [16, 32, 64, 128]},
             "num_layers": {"values": [1, 2, 3, 4, 5]},
         },
     }
         # 3: Start the sweep
     sweep_id = wandb.sweep(sweep=sweep_configuration, project="E-GNN-Encoder-Sweep")
-
-    wandb.agent(sweep_id, function=train, count=10)
+    wandb.agent(sweep_id, function=train, count=20)
 
 
