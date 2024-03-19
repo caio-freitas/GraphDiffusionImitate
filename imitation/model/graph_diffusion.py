@@ -228,23 +228,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
             nn.ReLU(),
             Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
-        self.pe = self.positionalencoding(100).to(self.device) # max length of 100
         
-
-    def positionalencoding(self, lengths):
-        '''
-        From Chen, et al. 2021 (Order Matters: Probabilistic Modeling of Node Sequences for Graph Generation)
-        * lengths: length(s) of graph in the batch
-        '''
-        l_t = lengths # .max() # use when parallelizing
-        pes = torch.zeros([l_t, self.hidden_dim], device=self.device)
-        position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
-        div_term = torch.exp((torch.arange(0, self.hidden_dim, 2, dtype=torch.float, device=self.device) *
-                              -(math.log(10000.0) / self.hidden_dim)))
-        pes[:,0::2] = torch.sin(position.float() * div_term)
-        pes[:,1::2] = torch.cos(position.float() * div_term)
-        return pes
-
     def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
@@ -255,13 +239,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
 
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
 
-        N = x.shape[0] - 1
-
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
-        
-         # # Positional encoding
-        h_v += self.pe[N, :].to(self.device)
 
         # FiLM generator
         embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr)
