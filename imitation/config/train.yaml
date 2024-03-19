@@ -33,7 +33,7 @@ eval_params:
   output_video: True
 
   num_episodes: 5
-  max_steps: 1000
+  max_steps: ${max_steps}
   output_dir: ./outputs
 
 
