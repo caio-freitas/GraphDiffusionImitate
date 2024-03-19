@@ -197,7 +197,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - end-effector: raise NotImplementedError
         '''
         if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:8,:,0].T # all (joint-representing) nodes, all timesteps, first value
+            return x[:9,:,0].T # all (joint-representing) nodes, all timesteps, first value
         elif self.mode == 'end-effector':
             raise NotImplementedError
         else:

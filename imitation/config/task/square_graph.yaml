@@ -5,6 +5,7 @@ dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_di
 
 max_steps: ${max_steps}
 
+control_mode: "JOINT_VELOCITY"
 
 obs_keys: &obs_keys ['robot0_eef_pos', 'object']
 action_keys: &action_keys ['robot0_joint_vel']
@@ -38,7 +39,10 @@ env_runner:
     has_renderer: ${render}
     robots: ["Panda"]
     output_video: ${output_video}
-    mode: ${task.dataset.mode}
+    control_mode: ${task.control_mode}
+    controller_config:
+      interpolation: "linear"
+      ramp_ratio: 0.2
 
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
@@ -48,4 +52,4 @@ dataset:
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys:  *object_state_keys
-  mode: "task-joint-space"
+  control_mode: ${task.control_mode}
