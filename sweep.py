@@ -46,7 +46,7 @@ def train(cfg: DictConfig) -> None:
     cfg.policy.lr = wandb.config.lr
     cfg.policy.denoising_network.hidden_dim = wandb.config.hidden_dim
     cfg.policy.denoising_network.num_layers = wandb.config.num_layers
-    cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}"
+    cfg.policy.ckpt_path = cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}"
 
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy)
