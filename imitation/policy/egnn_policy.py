@@ -76,15 +76,15 @@ class EGNNPolicy(BasePolicy):
         for obs in obs_deque:
             nobs.append(obs.y)
         y = torch.stack(nobs, dim=1).to(self.device).float()
-        nobs = y.flatten(start_dim=1)
-
+        nobs = y[:,:,3:].flatten(start_dim=1)
+        # import pdb; pdb.set_trace()
         pred, x = self.model(h=nobs, 
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
                             x=y[:,-1,:3].to(self.device).float(),
         )
         pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-        return pred[:8,:,0].T.detach().cpu().numpy() # return joint values only
+        return pred[:9,:,0].T.detach().cpu().numpy() # return joint values only
 
     def train(self, dataset, num_epochs, model_path, seed=0):
         '''Train the policy on the given dataset for the given number of epochs.
@@ -108,7 +108,7 @@ class EGNNPolicy(BasePolicy):
             for epoch in pbar:
                 with tqdm(self.dataloader, desc="Batch", leave=False) as pbar:
                     for nbatch in pbar:
-                        nobs = nbatch.y.to(self.device).float()
+                        nobs = nbatch.y[:,:,3:].to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
                         action = nbatch.x.to(self.device).float()
 
