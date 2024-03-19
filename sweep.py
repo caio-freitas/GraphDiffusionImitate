@@ -30,7 +30,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=cfg.policy,
         group=cfg.task.task_name,
-        name=f"v1.1.2 - E_GNN Encoder",
+        name=f"v1.1.3 - E_GNN Encoder",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
