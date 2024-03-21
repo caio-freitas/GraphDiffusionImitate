@@ -79,20 +79,19 @@ class RobomimicLowdimPolicy(BasePolicy):
             algo_name=algo_name,
             hdf5_type=obs_type,
             task_name=task_name,
-            dataset_type=dataset_type)
+            dataset_type=dataset_type,)
         with config.unlocked():
             config.observation.modalities.obs.low_dim = [obs_key]
         
         ObsUtils.initialize_obs_utils_with_config(config)
-        model: PolicyAlgo = algo_factory(
+        self.model = algo_factory(
                 algo_name=config.algo_name,
                 config=config,
                 obs_key_shapes={obs_key: [obs_dim]},
                 ac_dim=action_dim,
                 device=self.device,
             )
-        self.model = model
-        self.nets = model.nets
+        self.nets = self.model.nets
         self.normalizer = self.dataset.get_normalizer()
         self.obs_key = obs_key
         self.config = config
@@ -100,17 +99,6 @@ class RobomimicLowdimPolicy(BasePolicy):
         # load model from ckpt
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
-        # create dataloader
-        self.dataloader = torch.utils.data.DataLoader(
-            self.dataset,
-            batch_size=32,
-            num_workers=1,
-            shuffle=True,
-            # accelerate cpu-gpu transfer
-            pin_memory=True,
-            # don't kill worker process afte each epoch
-            persistent_workers=True,
-        )
 
         self.global_epoch = 0
 
@@ -126,7 +114,6 @@ class RobomimicLowdimPolicy(BasePolicy):
             self.model.deserialize(torch.load(ckpt_path))
         except Exception as e:
             log.error(f"Could not load model from {ckpt_path}. Error: {e}")
-            raise e
 
     # =========== inference =============
     def get_action(self, obs):
@@ -147,9 +134,21 @@ class RobomimicLowdimPolicy(BasePolicy):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
     def train(self, dataset, num_epochs, model_path, seed=0):
+        # create dataloader
+        
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=32,
+            num_workers=1,
+            shuffle=True,
+            # accelerate cpu-gpu transfer
+            pin_memory=True,
+            # don't kill worker process afte each epoch
+            persistent_workers=True,
+        )
         with tqdm(range(num_epochs)) as pbar:
             for epoch in pbar:
-                for batch in self.dataloader:
+                for batch in dataloader:
                     nbatch = self.normalizer.normalize(batch)
                     robomimic_batch = {
                         'obs': {self.obs_key: nbatch['obs']},
@@ -167,5 +166,5 @@ class RobomimicLowdimPolicy(BasePolicy):
                 self.global_epoch += 1
                 
         torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
-        
+
         return info
