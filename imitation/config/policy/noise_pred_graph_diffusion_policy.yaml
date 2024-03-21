@@ -6,7 +6,7 @@ num_edge_types: 2 # robot joints, object-robot
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
-num_diffusion_iters: 100
+num_diffusion_iters: 200
 dataset: ${task.dataset}
 denoising_network:
   _target_: imitation.model.graph_diffusion.EConditionalGraphDenoisingNetwork
