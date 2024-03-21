@@ -229,13 +229,14 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
             Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
         
-    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
+    def forward(self, x, edge_index, edge_attr, x_coord, cond, batch=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
+        batch = batch.to(self.device)
 
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
 
@@ -256,17 +257,14 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
 
         
         # graph-level embedding, from average pooling layer
-        graph_embedding = global_mean_pool(h_v, batch=None)
+        graph_embedding = global_mean_pool(h_v, batch=batch)
 
         # repeat graph embedding to have the same shape as h_v
-        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+        graph_embedding = graph_embedding[batch]
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2*hidden_dim
-
-        v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
         
-        node_pred = node_pred[v_t]
-        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape        
+        node_pred = node_pred.reshape(-1, self.pred_horizon, self.node_feature_dim) # reshape to original shape        
 
         return node_pred, x_v
     

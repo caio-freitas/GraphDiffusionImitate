@@ -15,7 +15,7 @@ denoising_network:
   pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
-  num_layers: 3
-  hidden_dim: 128
+  num_layers: 5
+  hidden_dim: 256
 ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_type}.pt
-lr: 0.00001
+lr: 1e-4

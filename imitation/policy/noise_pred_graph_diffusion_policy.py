@@ -82,7 +82,7 @@ class DiffusionGraphPolicy(BasePolicy):
         # create dataloader
         self.dataloader = DataLoader(
             self.dataset,
-            batch_size=32,
+            batch_size=4,
             shuffle=True,
         )
 
@@ -141,7 +141,8 @@ class DiffusionGraphPolicy(BasePolicy):
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
                     x_coord = G_t.y[:,:3],
-                    cond = obs_cond
+                    cond = obs_cond,
+                    batch = G_t.batch
                 )
 
                 # inverse diffusion step (remove noise)
@@ -230,7 +231,12 @@ class DiffusionGraphPolicy(BasePolicy):
 
                         # predict the noise residual
                         noise_pred, x = self.noise_pred_net(
-                            noisy_actions, batch.edge_index, batch.edge_attr, x_coord = batch.y[:,-1,:3], cond=obs_cond)
+                            noisy_actions, 
+                            batch.edge_index, 
+                            batch.edge_attr, 
+                            x_coord = batch.y[:,-1,:3], 
+                            cond=obs_cond,
+                            batch=batch.batch)
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)
