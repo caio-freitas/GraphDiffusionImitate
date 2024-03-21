@@ -162,14 +162,14 @@ class EGraphConditionEncoder(nn.Module):
         self.pool = global_mean_pool
         self.fc = Linear(hidden_dim, output_dim).to(self.device)
 
-    def forward(self, x, edge_index, coord, edge_attr):
+    def forward(self, x, edge_index, coord, edge_attr, batch=None):
         x = x.float().to(self.device).flatten(start_dim=1)
         coord = coord.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
         edge_index = edge_index.to(self.device)
 
         h_v, x = self.graph_encoder(x, coord, edge_index, edge_attr)
-        g_v = self.pool(h_v,batch=None)
+        g_v = self.pool(h_v,batch=batch)
         h_v = self.fc(g_v)
         return h_v
 
@@ -236,7 +236,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
-        batch = batch.to(self.device)
+        batch = batch.long().to(self.device)
+        batch_size = batch[-1] + 1
 
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
 
@@ -244,15 +245,15 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
 
         # FiLM generator
-        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr)
-        embed = embed.reshape(self.num_layers, 2, self.hidden_dim)
-        scales = embed[:,0,...]
-        biases = embed[:,1,...]
+        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr, batch=batch)
+        embed = embed.reshape(self.num_layers, batch_size, 2, self.hidden_dim)
+        scales = embed[:,:,0,...]
+        biases = embed[:,:,1,...]
         x_v = x_coord
         # instead of convolution, run message passing
         for l in range(self.num_layers):
             # FiLM conditioning
-            h_v = scales[l] * h_v + biases[l]
+            h_v = scales[l,batch] * h_v + biases[l,batch]
             h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
         

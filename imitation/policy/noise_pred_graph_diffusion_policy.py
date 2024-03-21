@@ -142,7 +142,7 @@ class DiffusionGraphPolicy(BasePolicy):
                     edge_attr = G_t.edge_attr,
                     x_coord = G_t.y[:,:3],
                     cond = obs_cond,
-                    batch = G_t.batch
+                    batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
 
                 # inverse diffusion step (remove noise)
