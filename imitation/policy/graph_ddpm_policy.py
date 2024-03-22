@@ -30,7 +30,7 @@ def unnormalize_data(ndata, stats):
 # TODO use normalization
 
 
-class DiffusionGraphPolicy(BasePolicy):
+class GraphConditionalDDPMPolicy(BasePolicy):
     def __init__(self, 
                     obs_dim: int,
                     action_dim: int,
@@ -82,7 +82,7 @@ class DiffusionGraphPolicy(BasePolicy):
         # create dataloader
         self.dataloader = DataLoader(
             self.dataset,
-            batch_size=4,
+            batch_size=self.batch_size,
             shuffle=True,
         )
 
@@ -113,7 +113,6 @@ class DiffusionGraphPolicy(BasePolicy):
 
     def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
-        # nobs = normalize_data(obs_seq, stats=self.stats['obs'])
         # transform deques to numpy arrays
         obs_cond = []
         pos = []
@@ -123,6 +122,7 @@ class DiffusionGraphPolicy(BasePolicy):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
+        # nobs = normalize_data(obs_seq, stats=self.stats['obs'])
         with torch.no_grad():
             # initialize action from Guassian noise
 
@@ -201,6 +201,8 @@ class DiffusionGraphPolicy(BasePolicy):
                     for batch in tepoch:
                         # device transfer
                         nobs = batch.y.to(self.device)
+                        # normalize action
+                        # naction = normalize_data(batch.x, stats=self.stats['action'])
                         naction = batch.x.to(self.device)
                         B = 1 # fixed to one, 
 
