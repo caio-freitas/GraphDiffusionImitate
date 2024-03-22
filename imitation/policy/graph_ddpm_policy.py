@@ -252,7 +252,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)
-                        wandb.log({'noise_pred_loss': loss})
+                        wandb.log({'noise_pred_loss': loss, 'lr': lr_scheduler.get_last_lr()[0]})
 
                         # optimize
                         loss.backward()
