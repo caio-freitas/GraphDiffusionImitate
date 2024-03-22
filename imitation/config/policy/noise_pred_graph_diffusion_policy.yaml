@@ -17,5 +17,5 @@ denoising_network:
   num_edge_types: ${policy.num_edge_types}
   num_layers: 3
   hidden_dim: 128
-ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_type}_${policy.num_diffusion_iters}iters.pt
+ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_type}_${task.control_mode}_${policy.num_diffusion_iters}iters.pt
 lr: 5e-5
