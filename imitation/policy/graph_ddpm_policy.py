@@ -85,6 +85,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             batch_size=self.batch_size,
             shuffle=True,
         )
+        self.global_epoch = 0
 
 
     def load_nets(self, ckpt_path):
@@ -204,16 +205,13 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         # normalize action
                         # naction = normalize_data(batch.x, stats=self.stats['action'])
                         naction = batch.x.to(self.device)
-                        B = 1 # fixed to one, 
+                        B = batch.num_graphs
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
                         obs_cond = nobs[:,:,3:] # only quaternions
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=2)
-
-                        # sample noise to add to actions
-                        noise = torch.randn(naction.shape, device=self.device)
 
                         # sample a diffusion iteration for each data point
                         timesteps = torch.randint(
@@ -223,6 +221,14 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         # add noise to the clean images according to the noise magnitude at each diffusion iteration
                         # (this is the forward diffusion process)
+                        # split naction into (B, N_nodes, pred_horizon, node_feature_dim), selecting the items from each batch.batch
+
+                        naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
+
+                        # sample noise to add to actions
+                        noise = torch.randn(naction.shape, device=self.device)
+                        
+
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
 
@@ -230,6 +236,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         noisy_actions = noisy_actions.float()
                         obs_cond = obs_cond.float()       
 
+                        # stack the batch dimension
+                        noisy_actions = noisy_actions.flatten(end_dim=1)
+                        # stack noise in the batch dimension
+                        noise = noise.flatten(end_dim=1)
 
                         # predict the noise residual
                         noise_pred, x = self.noise_pred_net(
@@ -259,9 +269,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         epoch_loss.append(loss_cpu)
                         tepoch.set_postfix(loss=loss_cpu)
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
-                wandb.log({'epoch_loss': np.mean(epoch_loss)})
+                wandb.log({'epoch': self.global_epoch, 'epoch_loss': np.mean(epoch_loss)})
                 # save model checkpoint
                 torch.save(self.noise_pred_net.state_dict(), model_path)
+                self.global_epoch += 1
+                tglobal.set_description(f"Epoch: {self.global_epoch}")
 
         # Weights of the EMA model
         # is used for inference
