@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from torch.nn import Linear
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.pool import global_mean_pool
+from torch_geometric.utils import add_self_loops
 import math
 
 from imitation.model.egnn import E_GCL, EGNN
@@ -229,6 +230,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
             Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
         
+        self.FILL_VALUE = 0.0
+
     def forward(self, x, edge_index, edge_attr, x_coord, cond, batch=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
@@ -240,6 +243,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         batch_size = batch[-1] + 1
 
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
+
+        edge_index, edge_attr = add_self_loops(edge_index, edge_attr, num_nodes=x.shape[0], fill_value=self.FILL_VALUE)
 
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
