@@ -73,7 +73,17 @@ class VAEPolicy(BasePolicy):
         '''Get latent space distribution from dataset'''
         # set dataloader batch size to 1
         latents = []
-        with tqdm(self.dataset) as pbar:
+        dataloader = torch.utils.data.DataLoader(
+            self.dataset,
+            batch_size=1,
+            num_workers=1,
+            shuffle=False, # tp overfit
+            # accelerate cpu-gpu transfer
+            pin_memory=True,
+            # don't kill worker process afte each epoch
+            persistent_workers=True,
+        )
+        with tqdm(dataloader) as pbar:
             for nbatch in pbar:
                 action = nbatch['action'].to(self.device).float()
                 # get first action
@@ -99,12 +109,23 @@ class VAEPolicy(BasePolicy):
         '''
         Calculate validation loss for noise prediction model in the given dataset
         '''
-        loss_fn = nn.MSELoss()
+        # create dataloader
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=4,
+            num_workers=1,
+            shuffle=False, # tp overfit
+            # accelerate cpu-gpu transfer
+            pin_memory=True,
+            # don't kill worker process afte each epoch
+            persistent_workers=True,
+        )
+
         self.model.load_state_dict(torch.load(model_path))
         self.model.eval()
         val_loss = 0
         with torch.no_grad():
-            with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
+            with tqdm(dataloader, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
                     action = nbatch['action'].to(self.device).float()
                     action = action.flatten(start_dim=1)
@@ -161,7 +182,5 @@ class VAEPolicy(BasePolicy):
                 # save model
                 torch.save(self.model.state_dict(), model_path)
                 pbar.set_description(f"Epoch: {epoch}, Loss: {loss.item()}")
-
-        wandb.finish()
 
         torch.save(self.model.state_dict(), model_path + f'{num_epochs}_ep.pt')
