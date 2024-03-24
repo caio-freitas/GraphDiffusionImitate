@@ -71,12 +71,13 @@ def train(cfg: DictConfig) -> None:
                     num_epochs=E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
-        if cfg.eval_params != "disabled":
-            val_loss = policy.validate(
+        log.info(f"Calculating validation loss...")
+        val_loss = policy.validate(
                 dataset=val_dataset,
                 model_path=cfg.policy.ckpt_path,
             )
-            wandb.log({"validation_loss": val_loss})
+        wandb.log({"validation_loss": val_loss})
+        if cfg.eval_params != "disabled":
             eval_main(cfg.eval_params)
 
     # final epochs and evaluation
@@ -84,12 +85,14 @@ def train(cfg: DictConfig) -> None:
                     num_epochs=cfg.num_epochs % E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
+    log.info(f"Calculating validation loss...")
     val_loss = policy.validate(
         dataset=val_dataset,
         model_path=cfg.policy.ckpt_path,
     )
     wandb.log({"validation_loss": val_loss})
-    eval_main(cfg.eval_params)
+    if cfg.eval_params != "disabled":
+        eval_main(cfg.eval_params)
 
     wandb.finish()
 
