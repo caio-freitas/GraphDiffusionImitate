@@ -8,6 +8,7 @@ import os
 import pathlib
 
 import hydra
+import torch
 import wandb
 
 from eval import eval_main
@@ -54,6 +55,11 @@ def train(cfg: DictConfig) -> None:
     # wandb.watch(policy.model, log="all")
 
 
+    # Split the dataset into train and validation
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
+    )
+
     E = cfg.num_epochs
     if cfg.eval_params != "disabled":
         E = cfg.eval_params.eval_every
@@ -61,18 +67,28 @@ def train(cfg: DictConfig) -> None:
      # evaluate every E epochs
     for i in range(cfg.num_epochs // E):
         # train policy
-        policy.train(dataset=policy.dataset.shuffle(),
+        policy.train(dataset=train_dataset,
                     num_epochs=E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
         if cfg.eval_params != "disabled":
+            val_loss = policy.validate(
+                dataset=val_dataset,
+                model_path=cfg.policy.ckpt_path,
+            )
+            wandb.log({"validation_loss": val_loss})
             eval_main(cfg.eval_params)
 
     # final epochs and evaluation
-    policy.train(dataset=policy.dataset,
+    policy.train(dataset=train_dataset,
                     num_epochs=cfg.num_epochs % E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
+    val_loss = policy.validate(
+        dataset=val_dataset,
+        model_path=cfg.policy.ckpt_path,
+    )
+    wandb.log({"validation_loss": val_loss})
     eval_main(cfg.eval_params)
 
     wandb.finish()
