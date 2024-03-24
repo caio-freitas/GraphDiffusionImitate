@@ -172,6 +172,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         '''
         Train noise prediction model
         '''
+
+        # set seed
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            
         try:
             self.load_nets(model_path)
         except:
