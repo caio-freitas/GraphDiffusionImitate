@@ -39,17 +39,6 @@ class VAEPolicy(BasePolicy):
         # load model from ckpt
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
-        # create dataloader
-        self.dataloader = torch.utils.data.DataLoader(
-            self.dataset,
-            batch_size=4,
-            num_workers=1,
-            shuffle=False, # tp overfit
-            # accelerate cpu-gpu transfer
-            pin_memory=True,
-            # don't kill worker process afte each epoch
-            persistent_workers=True,
-        )
 
         self.ckpt_path = ckpt_path
 
@@ -84,7 +73,7 @@ class VAEPolicy(BasePolicy):
         '''Get latent space distribution from dataset'''
         # set dataloader batch size to 1
         latents = []
-        with tqdm(self.dataloader) as pbar:
+        with tqdm(self.dataset) as pbar:
             for nbatch in pbar:
                 action = nbatch['action'].to(self.device).float()
                 # get first action
@@ -106,6 +95,25 @@ class VAEPolicy(BasePolicy):
         wandb.log({"KLD": KLD.item(), "reconstruction_loss": reconstruction_loss.item()})
         return reconstruction_loss + KLD
 
+    def validate(self, dataset, model_path):
+        '''
+        Calculate validation loss for noise prediction model in the given dataset
+        '''
+        loss_fn = nn.MSELoss()
+        self.model.load_state_dict(torch.load(model_path))
+        self.model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
+                for nbatch in tbatch:
+                    action = nbatch['action'].to(self.device).float()
+                    action = action.flatten(start_dim=1)
+                    x_hat, mean, log_var = self.model(action)
+                    loss = self.elbo_loss(action, x_hat, mean, log_var)
+                    val_loss += loss.item()
+        val_loss /= len(dataset)
+        return val_loss
+
     def train(self, dataset, num_epochs, model_path, seed=0):
         '''Train the Variation Autoencoder Model on the given dataset for the given number of epochs.
         '''
@@ -115,11 +123,23 @@ class VAEPolicy(BasePolicy):
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
 
+        # create dataloader
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=4,
+            num_workers=1,
+            shuffle=False, # tp overfit
+            # accelerate cpu-gpu transfer
+            pin_memory=True,
+            # don't kill worker process afte each epoch
+            persistent_workers=True,
+        )
+
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # visualize data in batch
-        batch = next(iter(self.dataloader))
+        batch = next(iter(dataloader))
         log.info(f"batch['obs'].shape:{batch['obs'].shape}")
         log.info(f"batch['action'].shape: {batch['action'].shape}")
 
@@ -127,7 +147,7 @@ class VAEPolicy(BasePolicy):
 
         with tqdm(range(num_epochs)) as pbar:
             for epoch in pbar:
-                for nbatch in self.dataloader:
+                for nbatch in dataloader:
                     action = nbatch['action'].to(self.device).float()
                     action = action.flatten(start_dim=1)
                     x_hat, mean, log_var = self.model(action)
