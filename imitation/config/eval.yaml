@@ -13,7 +13,7 @@ output_dir: ./outputs
 
 pred_horizon: 16
 obs_horizon: 4
-action_horizon: 4
+action_horizon: 8
 
 
 env_runner: ${task.env_runner}
@@ -24,3 +24,4 @@ seed: 0
 agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
   env: ${task.env_runner}
+  
