@@ -18,16 +18,28 @@ from torch_geometric.data import DataLoader
 log = logging.getLogger(__name__)
 
 def normalize_data(data, stats):
-    for obs in data:
-        obs = (obs - stats['min']) / (stats['max'] - stats['min'])
-        obs = obs * 2 - 1
+    # avoid division by zero by skipping normalization
+    with torch.no_grad():
+        data = data.clone()
+        constant_stats = stats['max'] == stats['min']
+        stats['max'][constant_stats] = 1
+        stats['min'][constant_stats] = 0
+        for t in range(data.shape[1]):
+            data[:,t,:] = (data[:,t,:] - stats['min']) / (stats['max'] - stats['min'])
+            data[:,t,:] = data[:,t,:] * 2 - 1
     return data
 
-def unnormalize_data(ndata, stats):
-    ndata = (ndata + 1) / 2
-    data = ndata * (stats['max'] - stats['min']) + stats['min']
+def unnormalize_data(data, stats):
+    # avoid division by zero by skipping normalization
+    with torch.no_grad():
+        data = data.clone()
+        constant_stats = stats['max'] == stats['min']
+        stats['max'][constant_stats] = 1
+        stats['min'][constant_stats] = 0
+        for t in range(data.shape[1]):
+            data[:,t,:] = (data[:,t,:] + 1) / 2
+            data[:,t,:] = data[:,t,:] * (stats['max'] - stats['min']) + stats['min']
     return data
-# TODO use normalization
 
 
 class GraphConditionalDDPMPolicy(BasePolicy):
@@ -76,7 +88,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         )
         
 
-        # self._init_stats()
+        self._init_stats()
         self.load_nets(self.ckpt_path)
 
         # create dataloader
@@ -110,7 +122,18 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         # save training data statistics (min, max) for each dim
         self.stats = self.dataset.stats
 
+        # duplicate stats for each batch
+        for key in self.stats:
+            stats = self.stats[key]
+            if self.batch_size > 1:
+                stats["min"] = stats["min"].repeat(self.batch_size, 1)
+                stats["max"] = stats["max"].repeat(self.batch_size, 1)
+
+        # remove positions from y stats
+        self.stats['y']['min'] = self.stats['y']['min']
+        self.stats['y']['max'] = self.stats['y']['max']
         log.info(f"Dataset stats: {self.stats}")
+        
 
     def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
@@ -119,14 +142,13 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         pos = []
         G_t = obs_deque[-1]
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y[:,3:]) # only quaternions
+            obs_cond.append(obs_deque[i].y.unsqueeze(1)) # only quaternions
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
-        # nobs = normalize_data(obs_seq, stats=self.stats['obs'])
+        nobs = normalize_data(obs_cond, stats=self.stats['y']) # TODO fix observation normalization
         with torch.no_grad():
             # initialize action from Guassian noise
-
 
             noisy_action = torch.randn( # +1 object
                 (self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device)
@@ -141,8 +163,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     x = naction,
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
-                    x_coord = G_t.y[:,:3],
-                    cond = obs_cond,
+                    x_coord = nobs[:,-1,:3],
+                    cond = nobs[:,:,3:],
                     batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
 
@@ -153,11 +175,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     sample=naction
                 ).prev_sample
 
-        # unnormalize action
-        naction = naction.detach().to('cpu').numpy()
-        # 
-        action = naction[:9,:,0].T
-        # action_pred = unnormalize_data(naction, stats=self.stats['action'])
+        naction = naction.detach().to('cpu')
+        # unnormalize action 
+        action_pred = unnormalize_data(naction, stats=self.stats['x']).numpy()
+        action = action_pred[:9,:,0].T
         
         # (action_horizon, action_dim)
         return action
@@ -200,11 +221,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 # batch loop
                 with tqdm(self.dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
-                        # device transfer
-                        nobs = batch.y.to(self.device)
+                        # normalize observation
+                        nobs = normalize_data(batch.y, stats=self.stats['y']).to(self.device)
                         # normalize action
-                        # naction = normalize_data(batch.x, stats=self.stats['action'])
-                        naction = batch.x.to(self.device)
+                        naction = normalize_data(batch.x, stats=self.stats['x']).to(self.device)
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
