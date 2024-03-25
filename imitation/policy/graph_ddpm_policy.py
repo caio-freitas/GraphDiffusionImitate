@@ -143,7 +143,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
-        nobs = normalize_data(obs_cond, stats=self.stats['y']) # TODO fix observation normalization
+        nobs = normalize_data(obs_cond, stats=self.stats['y'])
         with torch.no_grad():
             # initialize action from Guassian noise
 

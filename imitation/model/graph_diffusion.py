@@ -183,6 +183,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
                 num_edge_types,
                 num_layers=5,
                 hidden_dim=256,
+                diffusion_step_embed_dim=32,
+                num_diffusion_steps=200,
                 device=None):
         '''
         Denoising GNN (based on GraphARM) with FiLM conditioning on 
@@ -200,11 +202,13 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
+        self.diffusion_step_embed_dim = diffusion_step_embed_dim
+        self.num_diffusion_steps = num_diffusion_steps # TODO parameterize
         self.node_embedding = Linear(self.node_feature_dim*pred_horizon, hidden_dim).to(self.device)
         self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
         # FiLM modulation https://arxiv.org/abs/1709.07871
         # predicts per-channel scale and bias
-        self.cond_channels = hidden_dim * 2 * self.num_layers
+        self.cond_channels = (hidden_dim + self.diffusion_step_embed_dim) * 2 * self.num_layers
         self.cond_encoder = EGraphConditionEncoder(
             input_dim = self.cond_feature_dim * self.obs_horizon, 
             output_dim = self.cond_channels, 
@@ -216,42 +220,71 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
             self.layers.append(E_GCL(
-                input_nf=hidden_dim,
-                output_nf=hidden_dim,
+                input_nf=hidden_dim + self.diffusion_step_embed_dim,
+                output_nf=hidden_dim + self.diffusion_step_embed_dim,
                 hidden_nf=hidden_dim,
                 edges_in_d=hidden_dim,
                 normalize=True # helps in stability / generalization
             ).to(self.device))
         
-        self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
+        self.node_pred_layer = nn.Sequential(Linear(2 * (hidden_dim + self.diffusion_step_embed_dim) , hidden_dim),
             nn.ReLU(),
             Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
         
-        self.FILL_VALUE = 0.0
+        self.diffusion_step_encoder = nn.Sequential(
+            Linear(self.diffusion_step_embed_dim, self.diffusion_step_embed_dim * 4),
+            nn.Mish(),
+            Linear(self.diffusion_step_embed_dim * 4, self.diffusion_step_embed_dim)
+        ).to(self.device)
 
-    def forward(self, x, edge_index, edge_attr, x_coord, cond, batch=None):
+        self.FILL_VALUE = 0.0
+        self.pe = self.positionalencoding(self.num_diffusion_steps)
+
+    def positionalencoding(self, lengths):
+        '''
+        From Chen, et al. 2021 (Order Matters: Probabilistic Modeling of Node Sequences for Graph Generation)
+        * lengths: length(s) of graph in the batch
+        '''
+        l_t = lengths # .max() # use when parallelizing
+        pes = torch.zeros([l_t, self.diffusion_step_embed_dim], device=self.device)
+        position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
+        div_term = torch.exp((torch.arange(0, self.diffusion_step_embed_dim, 2, dtype=torch.float, device=self.device) *
+                              -(math.log(10000.0) / self.diffusion_step_embed_dim)))
+        pes[:,0::2] = torch.sin(position.float() * div_term)
+        pes[:,1::2] = torch.cos(position.float() * div_term)
+        return pes
+
+
+    def forward(self, x, edge_index, edge_attr, x_coord, cond, timesteps, batch=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
+        timesteps = timesteps.to(self.device)
         batch = batch.long().to(self.device)
         batch_size = batch[-1] + 1
+
+        timesteps_embed = self.diffusion_step_encoder(self.pe[timesteps])
+        timesteps_embed = timesteps_embed[batch]
 
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
 
         edge_index, edge_attr = add_self_loops(edge_index, edge_attr, num_nodes=x.shape[0], fill_value=self.FILL_VALUE)
 
         h_v = self.node_embedding(x)
+
+        h_v = torch.cat([h_v, timesteps_embed], dim=-1)
+
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
 
         # FiLM generator
         embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr, batch=batch)
-        embed = embed.reshape(self.num_layers, batch_size, 2, self.hidden_dim)
+        embed = embed.reshape(self.num_layers, batch_size, 2, (self.hidden_dim + self.diffusion_step_embed_dim))
         scales = embed[:,:,0,...]
         biases = embed[:,:,1,...]
         x_v = x_coord
