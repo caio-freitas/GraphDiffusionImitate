@@ -157,7 +157,7 @@ class RobomimicLowdimPolicy(BasePolicy):
                     input_batch = self.model.process_batch_for_training(
                         robomimic_batch)
                     info = self.model.train_on_batch(
-                        batch=input_batch, epoch=epoch, validate=True)
+                        batch=input_batch, epoch=epoch, validate=False)
                 wandb.log({"epoch": self.global_epoch,
                         "loss": info['losses']['action_loss'],
                         "log_probs": info['losses']['log_probs']})
