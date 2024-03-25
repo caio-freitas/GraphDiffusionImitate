@@ -17,10 +17,14 @@ from torch_geometric.data import DataLoader
 
 log = logging.getLogger(__name__)
 
-def normalize_data(data, stats):
+def normalize_data(data, stats, batch_size=1):
     # avoid division by zero by skipping normalization
     with torch.no_grad():
+        # duplicate stats for each batch
         data = data.clone()
+        stats = stats.copy()
+        stats["min"] = stats["min"].repeat(batch_size, 1)
+        stats["max"] = stats["max"].repeat(batch_size, 1)
         constant_stats = stats['max'] == stats['min']
         stats['max'][constant_stats] = 1
         stats['min'][constant_stats] = 0
@@ -29,9 +33,12 @@ def normalize_data(data, stats):
             data[:,t,:] = data[:,t,:] * 2 - 1
     return data
 
-def unnormalize_data(data, stats):
+def unnormalize_data(data, stats, batch_size=1):
     # avoid division by zero by skipping normalization
     with torch.no_grad():
+        # duplicate stats for each batch
+        stats["min"] = stats["min"].repeat(batch_size, 1)
+        stats["max"] = stats["max"].repeat(batch_size, 1)
         data = data.clone()
         constant_stats = stats['max'] == stats['min']
         stats['max'][constant_stats] = 1
@@ -122,16 +129,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         # save training data statistics (min, max) for each dim
         self.stats = self.dataset.stats
 
-        # duplicate stats for each batch
-        for key in self.stats:
-            stats = self.stats[key]
-            if self.batch_size > 1:
-                stats["min"] = stats["min"].repeat(self.batch_size, 1)
-                stats["max"] = stats["max"].repeat(self.batch_size, 1)
-
-        # remove positions from y stats
-        self.stats['y']['min'] = self.stats['y']['min']
-        self.stats['y']['max'] = self.stats['y']['max']
         log.info(f"Dataset stats: {self.stats}")
         
 
@@ -165,6 +162,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     edge_attr = G_t.edge_attr,
                     x_coord = nobs[:,-1,:3],
                     cond = nobs[:,:,3:],
+                    timesteps = torch.tensor([k], dtype=torch.long, device=self.device),
                     batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
 
@@ -222,16 +220,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 with tqdm(self.dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
                         # normalize observation
-                        nobs = normalize_data(batch.y, stats=self.stats['y']).to(self.device)
+                        nobs = normalize_data(batch.y, stats=self.stats['y'], batch_size=batch.num_graphs).to(self.device)
                         # normalize action
-                        naction = normalize_data(batch.x, stats=self.stats['x']).to(self.device)
+                        naction = normalize_data(batch.x, stats=self.stats['x'], batch_size=batch.num_graphs).to(self.device)
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
                         obs_cond = nobs[:,:,3:] # only quaternions
                         # (B, obs_horizon * obs_dim)
-                        obs_cond = obs_cond.flatten(start_dim=2)
+                        obs_cond = obs_cond.flatten(start_dim=1)
 
                         # sample a diffusion iteration for each data point
                         timesteps = torch.randint(
@@ -268,6 +266,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             batch.edge_attr, 
                             x_coord = batch.y[:,-1,:3], 
                             cond=obs_cond,
+                            timesteps=timesteps,
                             batch=batch.batch)
 
                         # L2 loss
