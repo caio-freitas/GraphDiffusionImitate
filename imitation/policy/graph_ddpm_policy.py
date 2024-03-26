@@ -102,7 +102,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.dataloader = DataLoader(
             self.dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
         )
         self.global_epoch = 0
 
