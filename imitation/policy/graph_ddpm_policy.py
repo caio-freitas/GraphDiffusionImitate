@@ -106,6 +106,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         )
         self.global_epoch = 0
 
+        # initialize last action to be average from stats
+        self.last_action = self.stats['x']['min'] + (self.stats['x']['max'] - self.stats['x']['min']) / 2
+
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
@@ -132,7 +135,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         log.info(f"Dataset stats: {self.stats}")
         
 
-    def get_action(self, obs_deque):
+    def get_action(self, obs_deque, last_action=None):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         # transform deques to numpy arrays
         obs_cond = []
@@ -143,7 +146,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
-        nobs = normalize_data(obs_cond, stats=self.stats['y'])
+        # nobs = normalize_data(obs_cond, stats=self.stats['y'])
+        nobs = obs_cond
         with torch.no_grad():
             # initialize action from Guassian noise
 
@@ -155,6 +159,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             self.noise_scheduler.set_timesteps(self.num_diffusion_iters)
 
             for k in self.noise_scheduler.timesteps:
+                # fix first noisy action to be last observed action
+                naction[:,0,:] = self.last_action
+                naction[:,:,1] = self.last_action[:,1] # fix flag
                 # predict noise
                 noise_pred, x = self.ema_noise_pred_net(
                     x = naction,
@@ -175,7 +182,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
         naction = naction.detach().to('cpu')
         # unnormalize action 
-        action_pred = unnormalize_data(naction, stats=self.stats['x']).numpy()
+        # action_pred = unnormalize_data(naction, stats=self.stats['x']).numpy()
+        action_pred = naction.numpy()
         action = action_pred[:9,:,0].T
         
         # (action_horizon, action_dim)
@@ -220,9 +228,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 with tqdm(self.dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
                         # normalize observation
-                        nobs = normalize_data(batch.y, stats=self.stats['y'], batch_size=batch.num_graphs).to(self.device)
+                        # nobs = normalize_data(batch.y, stats=self.stats['y'], batch_size=batch.num_graphs).to(self.device)
+                        nobs = batch.y.to(self.device)
                         # normalize action
-                        naction = normalize_data(batch.x, stats=self.stats['x'], batch_size=batch.num_graphs).to(self.device)
+                        # naction = normalize_data(batch.x, stats=self.stats['x'], batch_size=batch.num_graphs).to(self.device)
+                        naction = batch.x.to(self.device)
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
@@ -250,9 +260,12 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
 
+                        noisy_actions[:,:,0,:] = naction[:,:,0,:] # fix first action to be last observed action
+                        noisy_actions[:,:,1] = naction[:,:,1] # fix flag
                         # guarantees it to be float32
                         noisy_actions = noisy_actions.float()
                         obs_cond = obs_cond.float()       
+
 
                         # stack the batch dimension
                         noisy_actions = noisy_actions.flatten(end_dim=1)
