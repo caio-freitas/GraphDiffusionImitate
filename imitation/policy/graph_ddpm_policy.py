@@ -161,7 +161,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for k in self.noise_scheduler.timesteps:
                 # fix first noisy action to be last observed action
                 naction[:,0,:] = self.last_action
-                naction[:,:,1] = self.last_action[:,1] # fix flag
+                naction[:,:,1] = self.last_action[:,1].unsqueeze(1) # fix flag
                 # predict noise
                 noise_pred, x = self.ema_noise_pred_net(
                     x = naction,
@@ -216,7 +216,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         lr_scheduler = get_scheduler(
             name='cosine',
             optimizer=optimizer,
-            num_warmup_steps=500,
+            num_warmup_steps=200,
             num_training_steps=len(self.dataloader) * num_epochs
         )
 
