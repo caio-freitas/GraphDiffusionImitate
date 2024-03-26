@@ -55,7 +55,7 @@ class RobomimicPretrainedWrapper:
         }
         return self.policy(ob=obs_dict)
 
-class RobomimicLowdimPolicy(BasePolicy):
+class RobomimicLowdimPolicy(nn.Module):
     def __init__(self, 
             action_dim, 
             obs_dim,
@@ -84,13 +84,14 @@ class RobomimicLowdimPolicy(BasePolicy):
             config.observation.modalities.obs.low_dim = [obs_key]
         
         ObsUtils.initialize_obs_utils_with_config(config)
-        self.model = algo_factory(
+        model: PolicyAlgo = algo_factory(
                 algo_name=config.algo_name,
                 config=config,
                 obs_key_shapes={obs_key: [obs_dim]},
                 ac_dim=action_dim,
                 device=self.device,
             )
+        self.model = model
         self.nets = self.model.nets
         self.normalizer = self.dataset.get_normalizer()
         self.obs_key = obs_key
@@ -133,14 +134,16 @@ class RobomimicLowdimPolicy(BasePolicy):
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
-    def train(self, dataset, num_epochs, model_path, seed=0):
+    def train_on_dataset(self, dataset, num_epochs, model_path, seed=0):
         # create dataloader
-        
+        self.to(self.device)
+        self.train()
+        # self.model.set_train()
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=32,
+            batch_size=64,
             num_workers=1,
-            shuffle=True,
+            shuffle=False,
             # accelerate cpu-gpu transfer
             pin_memory=True,
             # don't kill worker process afte each epoch
@@ -158,13 +161,17 @@ class RobomimicLowdimPolicy(BasePolicy):
                         robomimic_batch)
                     info = self.model.train_on_batch(
                         batch=input_batch, epoch=epoch, validate=False)
-                wandb.log({"epoch": self.global_epoch,
-                        "loss": info['losses']['action_loss'],
-                        "log_probs": info['losses']['log_probs']})
+                    wandb.log({"epoch": self.global_epoch,
+                            "loss": info['losses']['action_loss'],
+                            "log_probs": info['losses']['log_probs']})
                 # save model from dict in self.model.serialize()
                 torch.save(self.model.serialize(), model_path)
                 self.global_epoch += 1
                 
         torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
-
+        self.eval()
         return info
+    
+    def get_optimizer(self):
+        return self.model.optimizers['policy']
+
