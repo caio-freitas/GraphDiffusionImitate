@@ -8,6 +8,7 @@ import torch.nn as nn
 from tqdm.auto import tqdm
 from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from diffusers.training_utils import EMAModel
 import wandb
 
 from imitation.policy.base_policy import BasePolicy
@@ -197,6 +198,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
 
+        ema = EMAModel(
+            parameters=self.noise_pred_net.parameters(),
+            power=0.75)
+
         # Standard ADAM optimizer
         # Note that EMA parameters are not optimized
         self.noise_pred_net.to(self.device)
@@ -282,6 +287,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         # this is different from standard pytorch behavior
                         lr_scheduler.step()
 
+                        ema.step(self.noise_pred_net.parameters())
+
 
                         # logging
                         loss_cpu = loss.item()
@@ -290,11 +297,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
                 wandb.log({'epoch': self.global_epoch, 'epoch_loss': np.mean(epoch_loss)})
                 # save model checkpoint
-                torch.save(self.noise_pred_net.state_dict(), model_path)
+                # use weights of the EMA model for inference
+                ema_noise_pred_net = self.noise_pred_net
+                ema.copy_to(ema_noise_pred_net.parameters())
+                torch.save(ema_noise_pred_net.state_dict(), model_path)
                 self.global_epoch += 1
                 tglobal.set_description(f"Epoch: {self.global_epoch}")
 
-        # Weights of the EMA model
-        # is used for inference
-        # ema_noise_pred_net = ema.averaged_model
-        self.ema_noise_pred_net = self.noise_pred_net
+        
