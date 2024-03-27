@@ -128,26 +128,69 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         return lambda_joint_values * loss_joint_values # + lambda_joint_pos * loss_joint_pos
 
 
+    def validate(self, dataset, model_path=None):
+        '''
+        Calculate validation loss for noise prediction model in the given dataset
+        '''
+        self.load_nets(model_path)
+        self.model.eval()
 
+        with torch.no_grad():
+            total_loss = 0
+            with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
+                for nbatch in tbatch:
+                    graph = self.preprocess(nbatch)
+                    # remove object nodes
+                    for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
+                        graph = self.masker.remove_node(graph, obj_node)
+                    graph = self.masker.idxify(graph)
+                    diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
+                    # predictions & loss
+                    G_0 = diffusion_trajectory[0].to(self.device)
+                    node_order = self.node_decay_ordering(G_0.x.shape[0])
+                    acc_loss = 0
+                    for t in range(len(node_order)):
+                        G_pred = diffusion_trajectory[t+1].clone().to(self.device)
+                        # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
+                        joint_values, pos = self.model(G_pred.x,
+                                                       G_pred.edge_index,
+                                                       G_pred.edge_attr,
+                                                       x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3],
+                                                       cond=G_0.y[:,:,3:].float())
+                        
+                        # calculate loss
+                        loss = self.loss_fcn(pred_feats=joint_values,
+                                             pred_pos=pos,
+                                             target_feats=G_0.x[node_order[t],:,:].float(),
+                                             target_pos=G_0.pos[:G_pred.x.shape[0],:3].float())
+                        acc_loss += loss.item()
+                    total_loss += acc_loss
+            return total_loss / len(dataset)
         
 
     def train(self, dataset, num_epochs=100, model_path=None, seed=0):
         '''
         Train noise prediction model
         '''
+
+        # set seed
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            
         try:
             self.load_nets(model_path)
         except:
             pass
         self.optimizer.zero_grad()
         self.model.train()
-        batch_size = 1
+
+        dataloader = torch_geometric.data.DataLoader(dataset, batch_size=1, shuffle=True)
 
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:
-                batch_i = 0
                 # batch loop
-                with tqdm(dataset, desc='Batch', leave=False) as tepoch:
+                with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for nbatch in tepoch:
                         # preprocess graph
                         graph = self.preprocess(nbatch)
@@ -178,14 +221,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
                             loss.backward()
-                        batch_i += 1
                         # update weights
-                        if batch_i % batch_size == 0:
-                            self.optimizer.step()
-                            self.optimizer.zero_grad()
-                            self.scheduler.step(acc_loss)
-                            self.save_nets(model_path)
-                            wandb.log({"batch_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
+                        self.optimizer.step()
+                        self.optimizer.zero_grad()
+                        self.scheduler.step(acc_loss)
+                        self.save_nets(model_path)
+                        wandb.log({"graph_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
