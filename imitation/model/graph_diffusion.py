@@ -174,7 +174,7 @@ class EGraphConditionEncoder(nn.Module):
         h_v = self.fc(g_v)
         return h_v
 
-class EConditionalGraphDenoisingNetwork(nn.Module):
+class EConditionalGraphNoisePred(nn.Module):
     def __init__(self,
                 node_feature_dim,
                 obs_horizon,
@@ -187,8 +187,8 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
                 num_diffusion_steps=200,
                 device=None):
         '''
-        Denoising GNN (based on GraphARM) with FiLM conditioning on 
-        "global" conditioning vector (encoded observation)
+        Denoising EGNN with FiLM conditioning on 
+        graph-level conditioning vector (encoded observation)
         '''
         super().__init__()
         if device == None:
