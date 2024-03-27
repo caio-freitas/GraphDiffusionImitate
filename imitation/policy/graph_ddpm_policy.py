@@ -182,6 +182,71 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         # (action_horizon, action_dim)
         return action
 
+    def validate(self, dataset=None, model_path="last.pt"):
+        '''
+        Validates the noise prediction network, using self.dataset
+        '''
+        log.info('Validating noise prediction network.')
+        self.load_nets(model_path)
+        self.ema_noise_pred_net.eval()
+        with torch.no_grad():
+            val_loss = list()
+            for batch in self.dataloader:
+                # normalize observation
+                nobs = normalize_data(batch.y, stats=self.stats['y'], batch_size=batch.num_graphs).to(self.device)
+                # normalize action
+                naction = normalize_data(batch.x, stats=self.stats['x'], batch_size=batch.num_graphs).to(self.device)
+                B = batch.num_graphs
+
+                # observation as FiLM conditioning
+                # (B, node, obs_horizon, obs_dim)
+                obs_cond = nobs[:,:,3:]
+                # (B, obs_horizon * obs_dim)
+                obs_cond = obs_cond.flatten(start_dim=1)
+
+                # sample a diffusion iteration for each data point
+                timesteps = torch.randint(
+                    0, self.noise_scheduler.config.num_train_timesteps,
+                    (B,), device=self.device
+                ).long()
+
+                # add noise to the clean images according to the noise magnitude at each diffusion iteration
+                # (this is the forward diffusion process)
+
+                # split naction into (B, N_nodes, pred_horizon, node_feature_dim), selecting the items from each batch.batch
+                naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
+
+                # sample noise to add to actions
+                noise = torch.randn(naction.shape, device=self.device)
+
+                noisy_actions = self.noise_scheduler.add_noise(
+                    naction, noise, timesteps)
+                
+                # guarantees it to be float32
+                noisy_actions = noisy_actions.float()
+                obs_cond = obs_cond.float()
+
+                # stack the batch dimension
+                noisy_actions = noisy_actions.flatten(end_dim=1)
+                # stack noise in the batch dimension
+                noise = noise.flatten(end_dim=1)
+
+                # predict the noise residual
+                noise_pred, x = self.ema_noise_pred_net(
+                    noisy_actions, 
+                    batch.edge_index, 
+                    batch.edge_attr, 
+                    x_coord = batch.y[:,-1,:3], 
+                    cond=obs_cond,
+                    timesteps=timesteps,
+                    batch=batch.batch)
+                
+                # L2 loss
+                loss = nn.functional.mse_loss(noise_pred, noise)
+                val_loss.append(loss.item())
+        return np.mean(val_loss)
+    
+
     def train(self, 
               dataset=None, 
               num_epochs=100,
