@@ -227,7 +227,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
                 normalize=True # helps in stability / generalization
             ).to(self.device))
         
-        self.node_pred_layer = nn.Sequential(Linear(2 * (hidden_dim + self.diffusion_step_embed_dim) , hidden_dim),
+        self.node_pred_layer = nn.Sequential(Linear(hidden_dim + self.diffusion_step_embed_dim , hidden_dim),
             nn.ReLU(),
             Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -294,14 +294,7 @@ class EConditionalGraphDenoisingNetwork(nn.Module):
             h_v = scales[l,batch] * h_v + biases[l,batch]
             h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
 
-        
-        # graph-level embedding, from average pooling layer
-        graph_embedding = global_mean_pool(h_v, batch=batch)
-
-        # repeat graph embedding to have the same shape as h_v
-        graph_embedding = graph_embedding[batch]
-
-        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2*hidden_dim
+        node_pred = self.node_pred_layer(h_v) # hidden_dim
         
         node_pred = node_pred.reshape(-1, self.pred_horizon, self.node_feature_dim) # reshape to original shape        
 
