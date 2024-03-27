@@ -9,7 +9,7 @@ action_horizon: ${action_horizon}
 num_diffusion_iters: 200
 dataset: ${task.dataset}
 denoising_network:
-  _target_: imitation.model.graph_diffusion.EConditionalGraphDenoisingNetwork
+  _target_: imitation.model.graph_diffusion.ConditionalGraphNoisePred
   node_feature_dim: ${policy.node_feature_dim}
   obs_horizon: ${obs_horizon}
   pred_horizon: ${pred_horizon}

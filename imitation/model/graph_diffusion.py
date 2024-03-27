@@ -174,7 +174,104 @@ class EGraphConditionEncoder(nn.Module):
         h_v = self.fc(g_v)
         return h_v
 
-class EConditionalGraphNoisePred(nn.Module):
+class ConditionalARGDenoising(nn.Module):
+    def __init__(self,
+                node_feature_dim,
+                obs_horizon,
+                pred_horizon,
+                edge_feature_dim,
+                num_edge_types,
+                num_layers=5,
+                hidden_dim=256,
+                device=None):
+        '''
+        Denoising GNN (based on GraphARM) with FiLM conditioning on 
+        "global" conditioning vector (encoded observation)
+        '''
+        super().__init__()
+        if device == None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
+        num_edge_types += 1
+        self.num_layers = num_layers
+        self.node_feature_dim = node_feature_dim
+        self.cond_feature_dim = 4 # quaternions only, since positions are x_coord
+        self.obs_horizon = obs_horizon
+        self.pred_horizon = pred_horizon
+        self.hidden_dim = hidden_dim    
+        self.node_embedding = Linear(self.node_feature_dim*pred_horizon, hidden_dim).to(self.device)
+        self.edge_embedding = Linear(edge_feature_dim, hidden_dim).to(self.device)
+        # FiLM modulation https://arxiv.org/abs/1709.07871
+        # predicts per-channel scale and bias
+        self.cond_channels = hidden_dim * 2 * self.num_layers
+        self.cond_encoder = EGraphConditionEncoder(
+            input_dim = self.cond_feature_dim * self.obs_horizon, 
+            output_dim = self.cond_channels, 
+            hidden_dim = hidden_dim, 
+            device=self.device
+        )
+
+
+        self.layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.layers.append(E_GCL(
+                input_nf=hidden_dim,
+                output_nf=hidden_dim,
+                hidden_nf=hidden_dim,
+                edges_in_d=hidden_dim,
+                normalize=True # helps in stability / generalization
+            ).to(self.device))
+        
+        self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
+        ).to(self.device)
+        
+    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
+        # make sure x and edge_attr are of type float, for the MLPs
+        x = x.float().to(self.device).flatten(start_dim=1)
+        edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
+        edge_index = edge_index.to(self.device)
+        cond = cond.float().to(self.device)
+        x_coord = x_coord.float().to(self.device)
+
+        assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
+
+        h_v = self.node_embedding(x)
+        h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
+
+        # FiLM generator
+        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr)
+        embed = embed.reshape(self.num_layers, 2, self.hidden_dim)
+        scales = embed[:,0,...]
+        biases = embed[:,1,...]
+        x_v = x_coord
+        # instead of convolution, run message passing
+        for l in range(self.num_layers):
+            # FiLM conditioning
+            h_v = scales[l] * h_v + biases[l]
+            h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
+
+        
+        # graph-level embedding, from average pooling layer
+        graph_embedding = global_mean_pool(h_v, batch=None)
+
+        # repeat graph embedding to have the same shape as h_v
+        graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
+
+        node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # 2*hidden_dim
+
+        v_t = h_v.shape[0] - 1  # node being masked, this assumes that the masked node is the last node in the graph
+        
+        node_pred = node_pred[v_t]
+        node_pred = node_pred.reshape(self.pred_horizon, self.node_feature_dim) # reshape to original shape        
+
+        return node_pred, x_v
+
+class ConditionalGraphNoisePred(nn.Module):
     def __init__(self,
                 node_feature_dim,
                 obs_horizon,
