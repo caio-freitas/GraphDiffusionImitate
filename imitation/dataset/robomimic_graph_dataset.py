@@ -49,7 +49,9 @@ class RobomimicGraphDataset(InMemoryDataset):
             pass
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
-
+        self.stats = {}
+        self.stats["y"] = self.get_data_stats("y")
+        self.stats["x"] = self.get_data_stats("x")
     
     @property
     def processed_file_names(self):
@@ -210,6 +212,19 @@ class RobomimicGraphDataset(InMemoryDataset):
         data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
         return data
     
+    def get_data_stats(self, key):
+        '''
+        Returns min and max of data
+        Used for normalizing data 
+        '''
+        data = []
+        for idx in range(self.len()):
+            data.append(torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))[key])
+        data = torch.cat(data, dim=1)
+        return {
+            "min": torch.min(data, dim=1).values,
+            "max": torch.max(data, dim=1).values
+        }
 
 class MultiRobotGraphDataset(RobomimicGraphDataset):
     '''

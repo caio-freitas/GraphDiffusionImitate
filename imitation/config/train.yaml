@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - task: lift_graph
-  - policy: graph_diffusion_policy
+  - policy: graph_ddpm_policy
 
 output_dir: ./outputs
 # on evaluating, for environment wrapper
@@ -27,7 +27,7 @@ max_steps: 500
 
 # Evaluation during training
 eval_params:
-  eval_every: 1 # evaluate every 50 epochs
+  eval_every: 20 # evaluate every 50 epochs
   task: ${task}
   policy: ${policy}
   render: False

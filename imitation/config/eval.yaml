@@ -1,13 +1,13 @@
 defaults:
   - _self_
   - task: lift_graph
-  - policy: graph_diffusion_policy
+  - policy: graph_ddpm_policy
 
 render: True
 output_video: True
 
 num_episodes: 20
-max_steps: 1000
+max_steps: 500
 output_dir: ./outputs
 
 
@@ -24,3 +24,4 @@ seed: 0
 agent:
   _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
   env: ${task.env_runner}
+  
