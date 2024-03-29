@@ -55,7 +55,7 @@ class RobomimicPretrainedWrapper:
         }
         return self.policy(ob=obs_dict)
 
-class RobomimicLowdimPolicy(nn.Module):
+class RobomimicLowdimPolicy(BasePolicy):
     def __init__(self, 
             action_dim, 
             obs_dim,
@@ -134,11 +134,9 @@ class RobomimicLowdimPolicy(nn.Module):
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
-    def train_on_dataset(self, dataset, num_epochs, model_path, seed=0):
+    def train(self, dataset, num_epochs, model_path, seed=0):
         # create dataloader
-        self.to(self.device)
-        self.train()
-        # self.model.set_train()
+        self.model.nets.train()
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=64,
@@ -155,7 +153,7 @@ class RobomimicLowdimPolicy(nn.Module):
                     nbatch = self.normalizer.normalize(batch)
                     robomimic_batch = {
                         'obs': {self.obs_key: nbatch['obs']},
-                        'actions': nbatch['action']
+                        'actions': nbatch['action'].squeeze(1)  # (B, T, Da) -> (B, Da)
                     }
                     input_batch = self.model.process_batch_for_training(
                         robomimic_batch)
@@ -169,7 +167,7 @@ class RobomimicLowdimPolicy(nn.Module):
                 self.global_epoch += 1
                 
         torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
-        self.eval()
+        self.model.nets.eval()
         return info
     
     def get_optimizer(self):

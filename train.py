@@ -58,7 +58,7 @@ def train(cfg: DictConfig) -> None:
      # evaluate every E epochs
     for i in range(cfg.num_epochs // E):
         # train policy
-        policy.train_on_dataset(dataset=policy.dataset,
+        policy.train(dataset=policy.dataset,
                     num_epochs=E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
@@ -66,7 +66,7 @@ def train(cfg: DictConfig) -> None:
             eval_main(cfg.eval_params)
 
     # final epochs and evaluation
-    policy.train_on_dataset(dataset=policy.dataset,
+    policy.train(dataset=policy.dataset,
                     num_epochs=cfg.num_epochs % E,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
