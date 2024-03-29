@@ -26,7 +26,7 @@ env_runner:
     robots: ["Panda"]
     output_video: ${output_video}
 dataset:
- _target_: imitation.dataset.robomimic_eef_dataset.RobomimicEefDataset # OSC_POSE actions
+  _target_: imitation.dataset.robomimic_eef_dataset.RobomimicEefDataset # OSC_POSE actions
   dataset_path: ${task.dataset_path}
   obs_keys: *obs_keys
   pred_horizon: ${pred_horizon}
