@@ -13,6 +13,7 @@ obs_horizon: 1
 action_horizon: 1
 # Training parameters
 num_epochs: 2000
+val_fraction: 0.1
 seed: 0
 
 env_runner: ${task.env_runner}

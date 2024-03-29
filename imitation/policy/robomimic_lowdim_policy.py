@@ -134,6 +134,34 @@ class RobomimicLowdimPolicy(BasePolicy):
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
+    def validate(self, dataset, model_path):
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=64,
+            num_workers=1,
+            shuffle=False,
+            # accelerate cpu-gpu transfer
+            pin_memory=True,
+            # don't kill worker process afte each epoch
+            persistent_workers=True,
+        )
+        val_loss = 0
+        for batch in dataloader:
+            nbatch = self.normalizer.normalize(batch)
+            assert len(nbatch["action"].shape) == 3
+            robomimic_batch = {
+                'obs': {self.obs_key: nbatch['obs']},
+                'actions': nbatch['action']
+            }
+            input_batch = self.model.process_batch_for_training(
+                robomimic_batch)
+            info = self.model.train_on_batch(
+                batch=input_batch, epoch=self.global_epoch, validate=True)
+            wandb.log({"val_loss": info['losses']['action_loss']})
+            val_loss += info['losses']['action_loss']
+        val_loss /= len(dataloader)
+        return val_loss
+
     def train(self, dataset, num_epochs, model_path, seed=0):
         # create dataloader
         self.model.nets.train()
@@ -168,7 +196,6 @@ class RobomimicLowdimPolicy(BasePolicy):
                 self.global_epoch += 1
                 
         torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
-        self.model.nets.eval()
         return info
     
     def get_optimizer(self):
