@@ -10,7 +10,7 @@ from diffusion_policy.model.common.normalizer import LinearNormalizer
 
 log = logging.getLogger(__name__)
 
-class RobomimicLowdimDataset(torch.utils.data.Dataset):
+class RobomimicEefDataset(torch.utils.data.Dataset):
     '''
     Dataset class for SE2 task (and robomimic), with structure from robomimic.
     https://robomimic.github.io/docs/datasets/overview.html
@@ -18,7 +18,6 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
     def __init__(self, 
                  dataset_path,
                  obs_keys,
-                 action_keys,
                  pred_horizon=1,
                  obs_horizon=1,
                  action_horizon=1):
@@ -34,7 +33,6 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         except:
               pass
         self.obs_keys = obs_keys
-        self.action_keys = action_keys
         self.indices = []
         self.data_at_indices = []
         # if indices file exists, load it
@@ -87,14 +85,10 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                 data_obs_keys = []
                 for obs_key in self.obs_keys:
                     data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx - self.obs_horizon:idx, :])
-                data_action_keys = []
-                for action_key in self.action_keys:
-                    data_action_keys.append(self.dataset_root[f"data/{key}/obs/{action_key}"][idx:idx+self.pred_horizon, :])
                 data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
-                data_action_keys = np.concatenate(data_action_keys, axis=-1)
                 self.data_at_indices.append({
                     "obs": data_obs_keys,
-                    "action": data_action_keys
+                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.pred_horizon, :] # OSC_POSE actions
                 })
             idx_global += episode_length
         self.indices = np.array(self.indices)
