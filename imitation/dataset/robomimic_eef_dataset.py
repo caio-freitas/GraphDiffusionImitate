@@ -85,13 +85,10 @@ class RobomimicEefDataset(torch.utils.data.Dataset):
                 data_obs_keys = []
                 for obs_key in self.obs_keys:
                     data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx - self.obs_horizon:idx, :])
-                data_action_keys = []
-                data_action_keys.append(self.dataset_root[f"data/{key}/actions"][idx:idx+self.pred_horizon, :])
                 data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
-                data_action_keys = np.array(data_action_keys)
                 self.data_at_indices.append({
                     "obs": data_obs_keys,
-                    "action": data_action_keys
+                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.pred_horizon, :] # OSC_POSE actions
                 })
             idx_global += episode_length
         self.indices = np.array(self.indices)

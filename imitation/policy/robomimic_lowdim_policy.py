@@ -151,9 +151,10 @@ class RobomimicLowdimPolicy(BasePolicy):
             for epoch in pbar:
                 for batch in dataloader:
                     nbatch = self.normalizer.normalize(batch)
+                    assert len(nbatch["action"].shape) == 3
                     robomimic_batch = {
                         'obs': {self.obs_key: nbatch['obs']},
-                        'actions': nbatch['action'].squeeze(1)  # (B, T, Da) -> (B, Da)
+                        'actions': nbatch['action']
                     }
                     input_batch = self.model.process_batch_for_training(
                         robomimic_batch)
