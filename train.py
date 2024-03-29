@@ -64,10 +64,10 @@ def train(cfg: DictConfig) -> None:
      # evaluate every E epochs
     for i in range(cfg.num_epochs // E):
         # train policy
-        # policy.train(dataset=train_dataset,
-        #             num_epochs=E,
-        #             model_path=cfg.policy.ckpt_path,
-        #             seed=cfg.seed)
+        policy.train(dataset=train_dataset,
+                    num_epochs=E,
+                    model_path=cfg.policy.ckpt_path,
+                    seed=cfg.seed)
         log.info(f"Calculating validation loss...")
         val_loss = policy.validate(
             dataset=val_dataset,
