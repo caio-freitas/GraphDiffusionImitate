@@ -22,11 +22,11 @@ env_runner:
   env:
     _target_: imitation.env.robomimic_eef_wrapper.RobomimicEefWrapper
     max_steps: ${task.max_steps}
-    task: "Lift"
+    task: "NutAssemblySquare"
     robots: ["Panda"]
     output_video: ${output_video}
 dataset:
-  _target_: imitation.dataset.robomimic_eef_dataset.RobomimicEefDataset
+ _target_: imitation.dataset.robomimic_eef_dataset.RobomimicEefDataset # OSC_POSE actions
   dataset_path: ${task.dataset_path}
   obs_keys: *obs_keys
   pred_horizon: ${pred_horizon}
