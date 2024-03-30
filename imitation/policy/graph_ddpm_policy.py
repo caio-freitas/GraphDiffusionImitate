@@ -136,6 +136,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     sample=naction
                 ).prev_sample
 
+        # add node dimension, to pass through normalizer
+        naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
         naction = naction.detach().to('cpu')
         # unnormalize action 
         action_pred = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
@@ -158,6 +160,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
                 # normalize action
                 naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
+                naction = naction[:,:,:1] # single node feature dim
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
@@ -255,6 +258,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
                         # normalize action
                         naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
+                        naction = naction[:,:,:1]
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
