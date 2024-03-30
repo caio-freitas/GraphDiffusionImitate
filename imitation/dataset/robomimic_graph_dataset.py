@@ -59,6 +59,11 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.stats = {}
         self.stats["y"] = self.get_data_stats("y")
         self.stats["x"] = self.get_data_stats("x")
+
+        self.constant_stats = {
+            "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
+            "x": torch.tensor([False, True]) # node type flag is constant
+        }
         
 
     @property
@@ -244,16 +249,17 @@ class RobomimicGraphDataset(InMemoryDataset):
         # avoid division by zero by skipping normalization
         with torch.no_grad():
             # duplicate stats for each batch
-            data = data.clone()
+            data = data.clone().to(dtype=torch.float64)
             stats = self.stats[stats_key].copy()
             stats["min"] = stats["min"].repeat(batch_size, 1)
             stats["max"] = stats["max"].repeat(batch_size, 1)
-            constant_stats = stats['max'] == stats['min']
-            stats['max'][constant_stats] = 1
-            stats['min'][constant_stats] = 0
+            to_normalize = ~self.constant_stats[stats_key]
+            constant_stats = stats["max"] == stats["min"]
+            stats["min"][constant_stats] = 0
+            stats["max"][constant_stats] = 1
             for t in range(data.shape[1]):
-                data[:,t,:] = (data[:,t,:] - stats['min']) / (stats['max'] - stats['min'])
-                data[:,t,:] = data[:,t,:] * 2 - 1
+                data[:,t,to_normalize] = (data[:,t,to_normalize] - stats['min'][:,to_normalize]) / (stats['max'][:,to_normalize] - stats['min'][:,to_normalize])
+                data[:,t,to_normalize] = data[:,t,to_normalize] * 2 - 1
         return data
 
     def unnormalize_data(self, data, stats_key, batch_size=1):
@@ -263,13 +269,14 @@ class RobomimicGraphDataset(InMemoryDataset):
             # duplicate stats for each batch
             stats["min"] = stats["min"].repeat(batch_size, 1)
             stats["max"] = stats["max"].repeat(batch_size, 1)
-            data = data.clone()
-            constant_stats = stats['max'] == stats['min']
-            stats['max'][constant_stats] = 1
-            stats['min'][constant_stats] = 0
+            data = data.clone().to(dtype=torch.float64)
+            to_normalize = ~self.constant_stats[stats_key]
+            constant_stats = stats["max"] == stats["min"]
+            stats["min"][constant_stats] = 0
+            stats["max"][constant_stats] = 1
             for t in range(data.shape[1]):
-                data[:,t,:] = (data[:,t,:] + 1) / 2
-                data[:,t,:] = data[:,t,:] * (stats['max'] - stats['min']) + stats['min']
+                data[:,t,to_normalize] = (data[:,t,to_normalize] + 1) / 2
+                data[:,t,to_normalize] = data[:,t,to_normalize] * (stats['max'][:,to_normalize] - stats['min'][:,to_normalize]) + stats['min'][:,to_normalize]
         return data
 
 class MultiRobotGraphDataset(RobomimicGraphDataset):
