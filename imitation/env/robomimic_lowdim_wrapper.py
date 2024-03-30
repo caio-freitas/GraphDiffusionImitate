@@ -6,6 +6,9 @@ import robosuite as suite
 from robosuite.controllers import load_controller_config
 from robosuite.wrappers.gym_wrapper import GymWrapper
 
+from diffusion_policy.model.common.rotation_transformer import RotationTransformer
+
+
 import logging
 from tqdm import tqdm
 
@@ -65,6 +68,10 @@ class RobomimicLowdimWrapper(gym.Env):
         self.env.reset()
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
+        self.rotation_transformer = RotationTransformer(
+            from_rep="quaternion",
+            to_rep="rotation_6d"
+        )
         # self._test_routine() # for testing purposes
         
 
@@ -87,9 +94,10 @@ class RobomimicLowdimWrapper(gym.Env):
             robot_joint_vel = obs[j + 21:j + 28]
             eef_pose = obs[j + 28:j + 31]
             eef_quat = obs[j + 31:j + 35]
+            eef_6d = self.rotation_transformer.forward(eef_quat)
             gripper_pose = obs[j + 35:j + 37]
             # Skip 2  - gripper joint velocities
-            robot_i = [*robot_joint_pos, *robot_joint_vel, *eef_pose, *eef_quat, *gripper_pose]
+            robot_i = [*robot_joint_pos, *robot_joint_vel, *eef_pose, *eef_6d, *gripper_pose]
             final_obs = [*final_obs, *robot_i]
         
         objects = obs[39*len(self.robots):]
