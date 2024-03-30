@@ -5,10 +5,11 @@ defaults:
 
 output_video: False
 render: True
+output_video: False
 
 seed: 0
 num_episodes: 5
-max_steps: 5000
+max_steps: 500
 output_dir: ./outputs
 
 pred_horizon: 4

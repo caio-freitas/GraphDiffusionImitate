@@ -1,0 +1,46 @@
+
+task_name: &task_name transport
+dataset_type: &dataset_type ph
+dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
+
+max_steps: 1000
+
+obs_dim: 59
+action_dim: 14
+
+
+obs_keys: &obs_keys ['robot0_eef_pos',
+                    'robot0_eef_quat',
+                    'robot0_gripper_qpos',
+                    'robot1_eef_pos',
+                    'robot1_eef_quat',
+                    'robot1_gripper_qpos',
+                    'object']
+robots: &robots ["Panda", "Panda"]
+action_keys: &action_keys ['robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos',
+                          'robot1_eef_pos', 'robot1_eef_quat', 'robot1_gripper_qpos']
+
+
+
+
+env_runner: 
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+  render: ${render}
+  output_video: ${output_video}
+  env:
+    _target_: imitation.env.robomimic_eef_wrapper.RobomimicEefWrapper
+    max_steps: ${task.max_steps}
+    task: "TwoArmTransport"
+    robots: *robots
+    output_video: ${output_video}
+
+dataset:
+  _target_: imitation.dataset.robomimic_eef_dataset.RobomimicEefDataset # OSC_POSE actions
+  dataset_path: ${task.dataset_path}
+  obs_keys: *obs_keys
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  action_horizon: ${action_horizon}
