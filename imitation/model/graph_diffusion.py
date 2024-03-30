@@ -196,7 +196,7 @@ class ConditionalARGDenoising(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.cond_feature_dim = 4 # quaternions only, since positions are x_coord
+        self.cond_feature_dim = 6 # 6D rotation only, since positions are x_coord
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
@@ -295,7 +295,7 @@ class ConditionalGraphNoisePred(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.cond_feature_dim = 4 # quaternions only, since positions are x_coord
+        self.cond_feature_dim = 6 # 6D rotation only, since positions are x_coord
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    

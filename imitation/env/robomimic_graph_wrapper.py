@@ -12,6 +12,8 @@ import torch_geometric
 import logging
 from tqdm import tqdm
 
+from diffusion_policy.model.common.rotation_transformer import RotationTransformer
+
 from imitation.utils.generic import calculate_panda_joints_positions
 
 log = logging.getLogger(__name__)
@@ -50,6 +52,7 @@ class RobomimicGraphWrapper(gym.Env):
                  output_video=False,
                  control_mode="JOINT_VELOCITY",
                  controller_config=None,
+                 base_link_shift=[0.0, 0.0, 0.0]
                  ):
         '''
         Environment wrapper for Robomimic's GraphDiffusionImitate dataset in the same Graph representation as 
@@ -88,12 +91,16 @@ class RobomimicGraphWrapper(gym.Env):
         self.num_objects = len(object_state_keys)
 
         self.NUM_GRAPH_NODES = 9 + self.num_objects # TODO add multi-robot support
-
+        self.BASE_LINK_SHIFT = base_link_shift
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
 
         self.ROBOT_LINK_EDGE = 1
         self.OBJECT_ROBOT_EDGE = 2
+        self.rotation_transformer = RotationTransformer(
+            from_rep="quaternion",
+            to_rep="rotation_6d"
+        )
 
 
     def scaled_tanh(self, x, max_val=0.01, min_val=-0.07, k=200, threshold=-0.03):
@@ -137,11 +144,12 @@ class RobomimicGraphWrapper(gym.Env):
 
 
     def _get_node_pos(self, data):
-        node_pos = []
-        node_pos.append(calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]]))
-        node_pos = torch.cat(node_pos)
+        node_pos = calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]])
+        node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT)
         obj_pos_tensor = self._get_object_pos(data)
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
+        # use rotation transformer to convert quaternion to 6d rotation
+        node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
         return node_pos
 
     
@@ -209,6 +217,7 @@ class RobomimicGraphWrapper(gym.Env):
             robot_joint_vel = obs[j + 21:j + 28]
             eef_pose = obs[j + 28:j + 31]
             eef_quat = obs[j + 31:j + 35]
+            eef_6d = self.rotation_transformer.forward(eef_quat)
             gripper_pose = obs[j + 35:j + 37]
             gripper_vel = obs[j + 37:j + 39]
             # Skip 2  - gripper joint velocities
@@ -216,7 +225,7 @@ class RobomimicGraphWrapper(gym.Env):
                 "robot0_joint_pos": robot_joint_pos,
                 "robot0_joint_vel": robot_joint_vel,
                 "robot0_eef_pos": eef_pose,
-                "robot0_eef_quat": eef_quat,
+                "robot0_eef_quat": eef_6d,
                 "robot0_gripper_qpos": gripper_pose,
                 "robot0_gripper_qvel": gripper_vel
             }
