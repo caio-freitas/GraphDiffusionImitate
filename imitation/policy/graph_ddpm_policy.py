@@ -18,37 +18,6 @@ from torch_geometric.data import DataLoader
 
 log = logging.getLogger(__name__)
 
-def normalize_data(data, stats, batch_size=1):
-    # avoid division by zero by skipping normalization
-    with torch.no_grad():
-        # duplicate stats for each batch
-        data = data.clone()
-        stats = stats.copy()
-        stats["min"] = stats["min"].repeat(batch_size, 1)
-        stats["max"] = stats["max"].repeat(batch_size, 1)
-        constant_stats = stats['max'] == stats['min']
-        stats['max'][constant_stats] = 1
-        stats['min'][constant_stats] = 0
-        for t in range(data.shape[1]):
-            data[:,t,:] = (data[:,t,:] - stats['min']) / (stats['max'] - stats['min'])
-            data[:,t,:] = data[:,t,:] * 2 - 1
-    return data
-
-def unnormalize_data(data, stats, batch_size=1):
-    # avoid division by zero by skipping normalization
-    with torch.no_grad():
-        # duplicate stats for each batch
-        stats["min"] = stats["min"].repeat(batch_size, 1)
-        stats["max"] = stats["max"].repeat(batch_size, 1)
-        data = data.clone()
-        constant_stats = stats['max'] == stats['min']
-        stats['max'][constant_stats] = 1
-        stats['min'][constant_stats] = 0
-        for t in range(data.shape[1]):
-            data[:,t,:] = (data[:,t,:] + 1) / 2
-            data[:,t,:] = data[:,t,:] * (stats['max'] - stats['min']) + stats['min']
-    return data
-
 
 class GraphConditionalDDPMPolicy(BasePolicy):
     def __init__(self, 
@@ -96,7 +65,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         )
         
 
-        self._init_stats()
         self.load_nets(self.ckpt_path)
 
         # create dataloader
@@ -125,12 +93,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         except:
             log.error('Error loading pretrained weights.')
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
-
-    def _init_stats(self):
-        # save training data statistics (min, max) for each dim
-        self.stats = self.dataset.stats
-
-        log.info(f"Dataset stats: {self.stats}")
         
 
     def get_action(self, obs_deque):
@@ -144,7 +106,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
-        nobs = normalize_data(obs_cond, stats=self.stats['y'])
+        nobs = self.dataset.normalize_data(obs_cond, stats_key='y')
         with torch.no_grad():
             # initialize action from Guassian noise
 
@@ -176,7 +138,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
         naction = naction.detach().to('cpu')
         # unnormalize action 
-        action_pred = unnormalize_data(naction, stats=self.stats['x']).numpy()
+        action_pred = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
         action = action_pred[:9,:,0].T
         
         # (action_horizon, action_dim)
@@ -193,9 +155,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             val_loss = list()
             for batch in self.dataloader:
                 # normalize observation
-                nobs = normalize_data(batch.y, stats=self.stats['y'], batch_size=batch.num_graphs).to(self.device)
+                nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
                 # normalize action
-                naction = normalize_data(batch.x, stats=self.stats['x'], batch_size=batch.num_graphs).to(self.device)
+                naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
@@ -290,14 +252,14 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 with tqdm(self.dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
                         # normalize observation
-                        nobs = normalize_data(batch.y, stats=self.stats['y'], batch_size=batch.num_graphs).to(self.device)
+                        nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
                         # normalize action
-                        naction = normalize_data(batch.x, stats=self.stats['x'], batch_size=batch.num_graphs).to(self.device)
+                        naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
-                        obs_cond = nobs[:,:,3:] # only quaternions
+                        obs_cond = nobs[:,:,3:] # only 6D rotation
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=1)
 
