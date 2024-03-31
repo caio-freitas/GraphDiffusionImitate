@@ -33,7 +33,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     denoising_network: nn.Module,
                     ckpt_path= None,
                     lr: float = 1e-4,
-                    batch_size: int = 256):
+                    batch_size: int = 256,
+                    use_normalization: bool = True,):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -47,6 +48,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.action_horizon = action_horizon
         self.num_diffusion_iters = num_diffusion_iters
         self.lr = lr
+        self.use_normalization = use_normalization
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
@@ -99,7 +101,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
-        nobs = self.dataset.normalize_data(obs_cond, stats_key='y')
+        if self.use_normalization:
+            nobs = self.dataset.normalize_data(obs_cond, stats_key='y')
         # nobs = obs_cond
         with torch.no_grad():
             # initialize action from Guassian noise
@@ -133,8 +136,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         # add node dimension, to pass through normalizer
         naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
         naction = naction.detach().to('cpu')
-        # unnormalize action 
-        action_pred = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
+        if self.use_normalization:
+            action_pred = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
         action = action_pred[:9,:,0].T
         
         # (action_horizon, action_dim)
@@ -156,11 +159,12 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         with torch.no_grad():
             val_loss = list()
             for batch in dataloader:
-                # normalize observation
-                nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
-                # nobs = batch.y
-                # normalize action
-                naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
+                if self.use_normalization:
+                    # normalize observation
+                    nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                    # nobs = batch.y
+                    # normalize action
+                    naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
                 naction = naction[:,:,:1] # single node feature dim
                 B = batch.num_graphs
 
@@ -261,10 +265,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 # batch loop
                 with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
-                        # normalize observation
-                        nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
-                        # normalize action
-                        naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
+                        if self.use_normalization:
+                            # normalize observation
+                            nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                            # normalize action
+                            naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
                         naction = naction[:,:,:1]
                         B = batch.num_graphs
 
