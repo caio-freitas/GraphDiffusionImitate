@@ -66,13 +66,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         
 
         self.load_nets(self.ckpt_path)
-
-        # create dataloader
-        self.dataloader = DataLoader(
-            self.dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-        )
         self.global_epoch = 0
 
 
@@ -107,6 +100,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         nobs = self.dataset.normalize_data(obs_cond, stats_key='y')
+        # nobs = obs_cond
         with torch.no_grad():
             # initialize action from Guassian noise
 
@@ -151,13 +145,20 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         Validates the noise prediction network, using self.dataset
         '''
         log.info('Validating noise prediction network.')
+        # create dataloader
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+        )
         self.load_nets(model_path)
         self.ema_noise_pred_net.eval()
         with torch.no_grad():
             val_loss = list()
-            for batch in self.dataloader:
+            for batch in dataloader:
                 # normalize observation
                 nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                # nobs = batch.y
                 # normalize action
                 naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
                 naction = naction[:,:,:1] # single node feature dim
@@ -222,11 +223,17 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         Resulting in the self.ema_noise_pred_net object.
         '''
         log.info('Training noise prediction network.')
-            
+        
         # set seed
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+        )
 
         ema = EMAModel(
             parameters=self.noise_pred_net.parameters(),
@@ -244,7 +251,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             name='cosine',
             optimizer=optimizer,
             num_warmup_steps=500,
-            num_training_steps=len(self.dataloader) * num_epochs
+            num_training_steps=len(dataloader) * num_epochs
         )
 
         with tqdm(range(num_epochs), desc='Epoch') as tglobal:
@@ -252,7 +259,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for epoch_idx in tglobal:
                 epoch_loss = list()
                 # batch loop
-                with tqdm(self.dataloader, desc='Batch', leave=False) as tepoch:
+                with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
                         # normalize observation
                         nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
