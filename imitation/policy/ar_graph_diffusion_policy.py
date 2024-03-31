@@ -11,6 +11,8 @@ import wandb
 import torch_geometric
 from imitation.utils.graph_diffusion import NodeMasker
 
+from diffusers.optimization import get_scheduler
+
 import logging
 
 log = logging.getLogger(__name__)
@@ -40,7 +42,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -190,6 +191,13 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         dataloader = torch_geometric.data.DataLoader(dataset, batch_size=1, shuffle=True)
 
+        scheduler = get_scheduler(
+            name='cosine',
+            optimizer=self.optimizer,
+            num_warmup_steps=500,
+            num_training_steps=len(dataloader) * num_epochs
+        )
+
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:
                 # batch loop
@@ -227,9 +235,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # update weights
                         self.optimizer.step()
                         self.optimizer.zero_grad()
-                        self.scheduler.step(acc_loss)
+                        scheduler.step()
                         self.save_nets(model_path)
-                        wandb.log({"graph_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
+                        wandb.log({"graph_loss": acc_loss, "lr": scheduler.get_last_lr()[0]})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
