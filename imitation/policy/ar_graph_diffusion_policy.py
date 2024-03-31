@@ -24,7 +24,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                  lr=1e-4,
                  ckpt_path=None,
                  device = None,
-                 mode = 'joint-space'):
+                 mode = 'joint-space',
+                 use_normalization = True,):
         super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -34,8 +35,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.node_feature_dim = node_feature_dim
         self.num_edge_types = num_edge_types
         self.model = denoising_network
-        # no need for diffusion ordering network
-
+        self.use_normalization = use_normalization
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
@@ -100,6 +100,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         graph = self.masker.fully_connect(graph)
         graph.x = graph.x.float()
         graph.edge_attr = graph.edge_attr.long()
+        if self.use_normalization:
+            graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+            graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
         return graph
 
     # cache function results, as it is called multiple times
@@ -332,6 +335,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                 break
             action = self.masker.add_masked_node(action)
             
+        if self.use_normalization:
+            action.x = self.dataset.unnormalize_data(action.x, stats_key="x")
         joint_values_t = self.get_joint_values(action.x.detach().cpu().numpy())
 
         return joint_values_t
