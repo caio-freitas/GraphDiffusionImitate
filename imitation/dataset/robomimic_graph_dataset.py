@@ -255,7 +255,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             stats["max"] = stats["max"].repeat(batch_size, 1)
             to_normalize = ~self.constant_stats[stats_key]
             constant_stats = stats["max"] == stats["min"]
-            stats["min"][constant_stats] = 0
+            stats["min"][constant_stats] = -1
             stats["max"][constant_stats] = 1
             for t in range(data.shape[1]):
                 data[:,t,to_normalize] = (data[:,t,to_normalize] - stats['min'][:,to_normalize]) / (stats['max'][:,to_normalize] - stats['min'][:,to_normalize])
@@ -272,7 +272,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             data = data.clone().to(dtype=torch.float64)
             to_normalize = ~self.constant_stats[stats_key]
             constant_stats = stats["max"] == stats["min"]
-            stats["min"][constant_stats] = 0
+            stats["min"][constant_stats] = -1
             stats["max"][constant_stats] = 1
             for t in range(data.shape[1]):
                 data[:,t,to_normalize] = (data[:,t,to_normalize] + 1) / 2
