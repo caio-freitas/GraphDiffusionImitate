@@ -101,9 +101,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         graph = self.masker.fully_connect(graph)
         graph.x = graph.x.float()
         graph.edge_attr = graph.edge_attr.long()
-        if self.use_normalization:
-            graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
-            graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
         return graph
 
     # cache function results, as it is called multiple times
@@ -144,6 +141,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
                     graph = self.preprocess(nbatch)
+                    if self.use_normalization:
+                        graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+                        graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
                     # remove object nodes
                     for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                         graph = self.masker.remove_node(graph, obj_node)
@@ -205,6 +205,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     for nbatch in tepoch:
                         # preprocess graph
                         graph = self.preprocess(nbatch)
+                        if self.use_normalization:
+                            graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+                            graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
                         # remove object nodes
                         for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                             graph = self.masker.remove_node(graph, obj_node)
@@ -283,6 +286,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
+        if self.use_normalization:
+            obs_cond = self.dataset.normalize_data(obs_cond, stats_key="y")
         return obs_cond, edge_index, edge_attr, obs_pos
 
     def MOCK_get_graph_from_obs(self, obs_deque): # for testing purposes, remove before merge
@@ -324,7 +329,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
 
-
+        if self.use_normalization:
+            obs_cond = self.dataset.normalize_data(obs_cond, stats_key="y")
 
         for x_i in range(obs[0].x.shape[0] - 1): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
@@ -339,7 +345,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
-            if x_i == obs[0].x.shape[0] - 1 - 1: # TODO remove objects
+            if x_i == obs[0].x.shape[0] - 1:
                 break
             action = self.masker.add_masked_node(action)
             
