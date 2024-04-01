@@ -1,12 +1,12 @@
 _target_: imitation.policy.graph_ddpm_policy.GraphConditionalDDPMPolicy
-obs_dim: 7
+obs_dim: 9
 action_dim: 9
-node_feature_dim: 2
+node_feature_dim: 1 # from [joint_val, node_flag]
 num_edge_types: 2 # robot joints, object-robot
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
-num_diffusion_iters: 200
+num_diffusion_iters: 100
 dataset: ${task.dataset}
 denoising_network:
   _target_: imitation.model.graph_diffusion.ConditionalGraphNoisePred
@@ -18,5 +18,6 @@ denoising_network:
   num_layers: 3
   hidden_dim: 128
 ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_type}_${task.control_mode}_${policy.num_diffusion_iters}iters.pt
-lr: 5e-4
+lr: 1e-4
 batch_size: 32
+use_normalization: True

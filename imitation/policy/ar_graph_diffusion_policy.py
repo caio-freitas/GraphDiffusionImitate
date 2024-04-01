@@ -11,6 +11,8 @@ import wandb
 import torch_geometric
 from imitation.utils.graph_diffusion import NodeMasker
 
+from diffusers.optimization import get_scheduler
+
 import logging
 
 log = logging.getLogger(__name__)
@@ -24,7 +26,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                  lr=1e-4,
                  ckpt_path=None,
                  device = None,
-                 mode = 'joint-space'):
+                 mode = 'joint-space',
+                 use_normalization = True,):
         super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -34,13 +37,11 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.node_feature_dim = node_feature_dim
         self.num_edge_types = num_edge_types
         self.model = denoising_network
-        # no need for diffusion ordering network
-
+        self.use_normalization = use_normalization
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -140,6 +141,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
                     graph = self.preprocess(nbatch)
+                    if self.use_normalization:
+                        graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+                        graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
                     # remove object nodes
                     for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                         graph = self.masker.remove_node(graph, obj_node)
@@ -187,6 +191,13 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         dataloader = torch_geometric.data.DataLoader(dataset, batch_size=1, shuffle=True)
 
+        scheduler = get_scheduler(
+            name='cosine',
+            optimizer=self.optimizer,
+            num_warmup_steps=500,
+            num_training_steps=len(dataloader) * num_epochs
+        )
+
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:
                 # batch loop
@@ -194,6 +205,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     for nbatch in tepoch:
                         # preprocess graph
                         graph = self.preprocess(nbatch)
+                        if self.use_normalization:
+                            graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+                            graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
                         # remove object nodes
                         for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                             graph = self.masker.remove_node(graph, obj_node)
@@ -224,9 +238,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # update weights
                         self.optimizer.step()
                         self.optimizer.zero_grad()
-                        self.scheduler.step(acc_loss)
+                        scheduler.step()
                         self.save_nets(model_path)
-                        wandb.log({"graph_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
+                        wandb.log({"graph_loss": acc_loss, "lr": scheduler.get_last_lr()[0]})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
@@ -272,6 +286,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
+        if self.use_normalization:
+            obs_cond = self.dataset.normalize_data(obs_cond, stats_key="y")
         return obs_cond, edge_index, edge_attr, obs_pos
 
     def MOCK_get_graph_from_obs(self, obs_deque): # for testing purposes, remove before merge
@@ -313,7 +329,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
 
-
+        if self.use_normalization:
+            obs_cond = self.dataset.normalize_data(obs_cond, stats_key="y")
 
         for x_i in range(obs[0].x.shape[0] - 1): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
@@ -328,10 +345,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
-            if x_i == obs[0].x.shape[0] - 1 - 1: # TODO remove objects
+            if x_i == obs[0].x.shape[0] - 1:
                 break
             action = self.masker.add_masked_node(action)
             
+        if self.use_normalization:
+            action.x = self.dataset.unnormalize_data(action.x, stats_key="x")
         joint_values_t = self.get_joint_values(action.x.detach().cpu().numpy())
 
         return joint_values_t

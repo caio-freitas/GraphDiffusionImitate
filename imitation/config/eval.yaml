@@ -7,13 +7,13 @@ render: True
 output_video: True
 
 num_episodes: 20
-max_steps: 500
+max_steps: 1000
 output_dir: ./outputs
 
 
 pred_horizon: 16
-obs_horizon: 4
-action_horizon: 8
+obs_horizon: 2
+action_horizon: 16
 
 
 env_runner: ${task.env_runner}

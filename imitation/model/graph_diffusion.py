@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn import Linear
 from torch_geometric.nn import MessagePassing
-from torch_geometric.nn.pool import global_mean_pool
+from torch_geometric.nn.pool import global_mean_pool, global_max_pool
 from torch_geometric.utils import add_self_loops
 import math
 
@@ -160,7 +160,7 @@ class EGraphConditionEncoder(nn.Module):
             in_edge_nf=1,
             n_layers=n_layers,
             normalize=False).to(self.device)
-        self.pool = global_mean_pool
+        self.pool = global_max_pool
         self.fc = Linear(hidden_dim, output_dim).to(self.device)
 
     def forward(self, x, edge_index, coord, edge_attr, batch=None):
@@ -168,6 +168,7 @@ class EGraphConditionEncoder(nn.Module):
         coord = coord.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
         edge_index = edge_index.to(self.device)
+        batch = batch.long().to(self.device) if batch is not None else torch.zeros(x.shape[0], dtype=torch.long).to(self.device)
 
         h_v, x = self.graph_encoder(x, coord, edge_index, edge_attr)
         g_v = self.pool(h_v,batch=batch)
@@ -196,7 +197,7 @@ class ConditionalARGDenoising(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.cond_feature_dim = 4 # quaternions only, since positions are x_coord
+        self.cond_feature_dim = 6 # 6D rotation only, since positions are x_coord
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
@@ -295,7 +296,7 @@ class ConditionalGraphNoisePred(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.cond_feature_dim = 4 # quaternions only, since positions are x_coord
+        self.cond_feature_dim = 6 # 6D rotation only, since positions are x_coord
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    

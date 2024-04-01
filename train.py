@@ -39,7 +39,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=policy.__class__.__name__,
         group=cfg.task.task_name,
-        name=f"v1.1.5 - noise_pred_graph_diffusion",
+        name=f"v1.1.6 - noise_pred_graph_diffusion",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
@@ -65,14 +65,18 @@ def train(cfg: DictConfig) -> None:
     )
 
     E = cfg.num_epochs
+    V = cfg.num_epochs
     if cfg.eval_params != "disabled":
         E = cfg.eval_params.eval_every
+        V = cfg.eval_params.val_every
+        assert V <= E, "Validation interval should be smaller than evaluation interval"
+        assert E % V == 0, "Evaluation interval should be multiple of validation interval"
     
      # evaluate every E epochs
-    for i in range(cfg.num_epochs // E):
+    for i in range(1, 1 + cfg.num_epochs // V):
         # train policy
         policy.train(dataset=train_dataset,
-                    num_epochs=E,
+                    num_epochs=V,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
         log.info(f"Calculating validation loss...")
@@ -81,23 +85,9 @@ def train(cfg: DictConfig) -> None:
                 model_path=cfg.policy.ckpt_path,
             )
         wandb.log({"validation_loss": val_loss})
-        if cfg.eval_params != "disabled":
+        # evaluate policy
+        if i % (E/V) == 0:
             eval_main(cfg.eval_params)
-
-    # final epochs and evaluation
-    policy.train(dataset=train_dataset,
-                    num_epochs=cfg.num_epochs % E,
-                    model_path=cfg.policy.ckpt_path,
-                    seed=cfg.seed)
-    log.info(f"Calculating validation loss...")
-    val_loss = policy.validate(
-        dataset=val_dataset,
-        model_path=cfg.policy.ckpt_path,
-    )
-    wandb.log({"validation_loss": val_loss})
-    if cfg.eval_params != "disabled":
-        eval_main(cfg.eval_params)
-
     wandb.finish()
 
 if __name__ == "__main__":

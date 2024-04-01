@@ -9,7 +9,7 @@ render: False
 output_video: True
 
 pred_horizon: 16
-obs_horizon: 4
+obs_horizon: 2
 action_horizon: 8
 # Training parameters
 num_epochs: 2000
@@ -23,17 +23,18 @@ agent:
 
 # Disable evaluation 
 # eval_params: "disabled"
-max_steps: 500
+max_steps: 1500
 
 # Evaluation during training
 eval_params:
-  eval_every: 20 # evaluate every 50 epochs
+  eval_every: 50 # evaluate every 50 epochs
+  val_every: 1
   task: ${task}
   policy: ${policy}
   render: False
   output_video: True
 
-  num_episodes: 2
+  num_episodes: 50
   max_steps: ${max_steps}
   output_dir: ./outputs
 

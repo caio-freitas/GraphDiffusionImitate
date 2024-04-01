@@ -7,10 +7,11 @@ import os.path as osp
 import numpy as np
 import torch
 from tqdm import tqdm
-
 from typing import List, Dict
-
 from functools import lru_cache
+
+from diffusion_policy.model.common.rotation_transformer import RotationTransformer
+
 from imitation.utils.generic import calculate_panda_joints_positions
 
 log = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ class RobomimicGraphDataset(InMemoryDataset):
                  pred_horizon=1,
                  obs_horizon=1,
                  node_feature_dim = 2, # joint value and node type flag
-                 control_mode="JOINT_VELOCITY"):
+                 control_mode="JOINT_VELOCITY",
+                 base_link_shift=[0.0, 0.0, 0.0]):
         self.control_mode           : str = control_mode
         self.node_feature_dim       : int = node_feature_dim
         self.action_keys            : List = action_keys
@@ -35,6 +37,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.num_objects            : int = len(object_state_keys)
         self._processed_dir         : str = dataset_path.replace(".hdf5", f"_{self.control_mode}_processed_{self.obs_horizon}_{self.pred_horizon}")
 
+        self.BASE_LINK_SHIFT        : List = base_link_shift
         self.ROBOT_NODE_TYPE        : int = 1
         self.OBJECT_NODE_TYPE       : int = -1
 
@@ -47,12 +50,22 @@ class RobomimicGraphDataset(InMemoryDataset):
             self.dataset_keys.remove("mask")
         except:
             pass
+        self.rotation_transformer = RotationTransformer(
+            from_rep="quaternion",
+            to_rep="rotation_6d"
+        )
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
         self.stats = {}
         self.stats["y"] = self.get_data_stats("y")
         self.stats["x"] = self.get_data_stats("x")
-    
+
+        self.constant_stats = {
+            "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
+            "x": torch.tensor([False, True]) # node type flag is constant
+        }
+        
+
     @property
     def processed_file_names(self):
         '''
@@ -70,20 +83,26 @@ class RobomimicGraphDataset(InMemoryDataset):
         return obj_state_tensor
 
     def _get_object_pos(self, data, t):
-        obj_state_tensor = torch.zeros((self.num_objects, 7)) # 3 for position, 4 for quaternion
+        obj_state_tensor = torch.zeros((self.num_objects, 9)) # 3 for position, 6 for 6D rotation
 
         for object, object_state_items in enumerate(self.object_state_keys.values()):
             i = 0
             for object_state in object_state_items:
-                obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][t][i:i + self.object_state_sizes[object_state]])
+                if "quat" in object_state:
+                    assert self.object_state_sizes[object_state] == 4
+                    rot = self.rotation_transformer.forward(torch.tensor(data["object"][t][i:i + self.object_state_sizes[object_state]]))
+                    obj_state_tensor[object,i:i + 6] = rot
+                else:
+                    obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][t][i:i + self.object_state_sizes[object_state]])
                 i += self.object_state_sizes[object_state]
 
         return obj_state_tensor
 
     def _get_node_pos(self, data, t):
-        node_pos = []
-        node_pos.append(calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]]))
-        node_pos = torch.cat(node_pos)
+        node_pos = calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]])
+        node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT)
+        # use rotation transformer to convert quaternion to 6d rotation
+        node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
         obj_pos_tensor = self._get_object_pos(data, t)
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
@@ -225,6 +244,40 @@ class RobomimicGraphDataset(InMemoryDataset):
             "min": torch.min(data, dim=1).values,
             "max": torch.max(data, dim=1).values
         }
+    
+    def normalize_data(self, data, stats_key, batch_size=1):
+        # avoid division by zero by skipping normalization
+        with torch.no_grad():
+            # duplicate stats for each batch
+            data = data.clone().to(dtype=torch.float64)
+            stats = self.stats[stats_key].copy()
+            stats["min"] = stats["min"].repeat(batch_size, 1)
+            stats["max"] = stats["max"].repeat(batch_size, 1)
+            to_normalize = ~self.constant_stats[stats_key]
+            constant_stats = stats["max"] == stats["min"]
+            stats["min"][constant_stats] = -1
+            stats["max"][constant_stats] = 1
+            for t in range(data.shape[1]):
+                data[:,t,to_normalize] = (data[:,t,to_normalize] - stats['min'][:,to_normalize]) / (stats['max'][:,to_normalize] - stats['min'][:,to_normalize])
+                data[:,t,to_normalize] = data[:,t,to_normalize] * 2 - 1
+        return data
+
+    def unnormalize_data(self, data, stats_key, batch_size=1):
+        # avoid division by zero by skipping normalization
+        with torch.no_grad():
+            stats = self.stats[stats_key].copy()
+            # duplicate stats for each batch
+            stats["min"] = stats["min"].repeat(batch_size, 1)
+            stats["max"] = stats["max"].repeat(batch_size, 1)
+            data = data.clone().to(dtype=torch.float64)
+            to_normalize = ~self.constant_stats[stats_key]
+            constant_stats = stats["max"] == stats["min"]
+            stats["min"][constant_stats] = -1
+            stats["max"][constant_stats] = 1
+            for t in range(data.shape[1]):
+                data[:,t,to_normalize] = (data[:,t,to_normalize] + 1) / 2
+                data[:,t,to_normalize] = data[:,t,to_normalize] * (stats['max'][:,to_normalize] - stats['min'][:,to_normalize]) + stats['min'][:,to_normalize]
+        return data
 
 class MultiRobotGraphDataset(RobomimicGraphDataset):
     '''
