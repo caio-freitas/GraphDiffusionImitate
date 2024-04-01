@@ -118,7 +118,7 @@ class RobomimicGraphWrapper(gym.Env):
             action = list(q_diff)
             assert len(action) == 8, len(action)
             obs_final, reward, done, _, info = self.env.step(action)
-            if q_diff_max < eps:
+            if q_diff_max < eps or done:
                 break
             if self.has_renderer:
                 self.env.render()
