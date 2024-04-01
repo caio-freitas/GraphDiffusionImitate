@@ -9,6 +9,7 @@ dependencies:
   - pip
   - hydra-core
   - torchvision==0.15.1
+  - cudatoolkit=10.1
   - pip:
     - pytorchvideo
     - gymnasium==0.28.1
