@@ -21,6 +21,7 @@ dependencies:
     - tqdm
     - pybullet
     - torch==2.0.0
+    - pytorch3d==0.3.0
     - torch-geometric
     - -e git+https://github.com/ARISE-Initiative/robosuite.git@v1.4.1#egg=robosuite
     - mujoco-py

@@ -69,7 +69,7 @@ def train(cfg: DictConfig) -> None:
         assert E % V == 0, "Evaluation interval should be multiple of validation interval"
     
      # evaluate every E epochs
-    for i in range(cfg.num_epochs // V):
+    for i in range(1, 1 + cfg.num_epochs // V):
         # train policy
         policy.train(dataset=train_dataset,
                     num_epochs=V,
