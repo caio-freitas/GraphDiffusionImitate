@@ -14,3 +14,4 @@ denoising_network:
   num_edge_types: ${policy.num_edge_types}
   num_layers: 3
   hidden_dim: 128
+use_normalization: True

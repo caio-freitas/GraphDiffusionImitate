@@ -168,7 +168,7 @@ class EGraphConditionEncoder(nn.Module):
         coord = coord.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
         edge_index = edge_index.to(self.device)
-        batch = batch.long().to(self.device)
+        batch = batch.long().to(self.device) if batch is not None else torch.zeros(x.shape[0], dtype=torch.long).to(self.device)
 
         h_v, x = self.graph_encoder(x, coord, edge_index, edge_attr)
         g_v = self.pool(h_v,batch=batch)
