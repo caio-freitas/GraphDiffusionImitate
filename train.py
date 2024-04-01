@@ -47,13 +47,17 @@ def train(cfg: DictConfig) -> None:
             "n_epochs": cfg.num_epochs,
             "seed": cfg.seed,
             "lr": cfg.policy.lr,
-            "episodes": len(policy.dataset),
             "task": cfg.task.task_name,
         },
         # mode="disabled",
     )
     # wandb.watch(policy.model, log="all")
 
+
+    # Split the dataset into train and validation
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
+    )
 
     # Split the dataset into train and validation
     train_dataset, val_dataset = torch.utils.data.random_split(

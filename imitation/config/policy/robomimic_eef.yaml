@@ -1,0 +1,12 @@
+_target_: imitation.policy.robomimic_lowdim_policy.RobomimicPretrainedWrapper
+obs_dim: ${task.obs_dim}
+action_dim: ${task.action_dim}
+# only works with fixed horizons, pred_horizon = obs_horizon
+algo_name: "bc_rnn"
+obs_type: "low_dim"
+task_name: ${task.task_name}
+dataset_type: ${task.dataset_type}
+
+dataset: ${task.dataset}
+ckpt_path: ./weights/lift_ph_low_dim_epoch_1000_succ_100.pth
+lr: 0.0001
