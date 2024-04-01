@@ -69,7 +69,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
         self.load_nets(self.ckpt_path)
         self.global_epoch = 0
-
+        self.last_action = torch.zeros((self.action_dim, self.pred_horizon, self.node_feature_dim), device=self.device)
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
@@ -106,9 +106,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         # nobs = obs_cond
         with torch.no_grad():
             # initialize action from Guassian noise
-
-            noisy_action = torch.randn( # +1 object
-                (self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device)
+            self.last_action = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
+            self.last_action = self.last_action.repeat(1, self.pred_horizon, 1)[:,:,:1]
+            noisy_action = self.last_action + torch.randn((self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device)
             naction = noisy_action
 
             # init scheduler
@@ -187,7 +187,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
 
                 # sample noise to add to actions
-                noise = torch.randn(naction.shape, device=self.device)
+
+                noise = naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1) + torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                 noisy_actions = self.noise_scheduler.add_noise(
                     naction, noise, timesteps)
@@ -291,9 +292,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
 
-                        # sample noise to add to actions
-                        noise = torch.randn(naction.shape, device=self.device)
-                        
+                        # add noise to first action instead of sampling from Gaussian
+                        noise = naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1).float() + torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
