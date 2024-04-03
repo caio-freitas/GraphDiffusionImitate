@@ -138,12 +138,12 @@ class RobomimicGraphDataset(InMemoryDataset):
         Calculate node features for self.obs_horizon time steps
         '''
         node_feats = []
-        episode_length = data["object"].shape[0]
         # calculate node features for timesteps idx to idx + horizon
         t_vals = list(range(idx, idx + horizon))
         node_feats = self._get_node_feats(data, t_vals)
         return node_feats
     
+    @lru_cache(maxsize=None)
     def _get_edge_attrs(self, edge_index):
         '''
         Attribute edge types to edges
@@ -161,7 +161,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
 
-
+    @lru_cache(maxsize=None)
     def _get_edge_index(self, num_nodes):
         '''
         Returns edge index for graph.
@@ -173,9 +173,9 @@ class RobomimicGraphDataset(InMemoryDataset):
         for idx in range(eef_idx):
             edge_index.append([idx, idx+1])
 
-        # Connectivity of all other nodes to the last node of robot
+        # Connectivity of all other nodes to all robot nodes
         for idx in range(eef_idx + 1, num_nodes):
-            edge_index.append([idx, eef_idx])
+            edge_index.append(torch.tensor([node_idx, idx]) for node_idx in range(eef_idx + 1))
 
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
@@ -289,10 +289,11 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
                  object_state_sizes,
                  object_state_keys,
                  robots,
+                 control_mode,
                  pred_horizon=1,
                  obs_horizon=1,
-                 node_feature_dim = 8,
-                 mode="joint-space"): # TODO update according to RobomimicGraphDataset
+                 node_feature_dim = 2,
+                 base_link_shift=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]):
         self.num_robots = len(robots)
         self.eef_idx = [0, 7, 13]
         super().__init__(dataset_path=dataset_path,
@@ -301,48 +302,53 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
                          object_state_keys=object_state_keys,
                          pred_horizon=pred_horizon,
                          obs_horizon=obs_horizon,
-                         mode=mode,
+                         control_mode=control_mode,
                          node_feature_dim = node_feature_dim,
                          )
         
 
+    def _get_node_pos(self, data, t):
+        for i in range(self.num_robots):
+            node_pos = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]])
+            node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i]) 
+            # TODO find out how the robots are rotated in the transport environment
+        # use rotation transformer to convert quaternion to 6d rotation
+        node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
+        obj_pos_tensor = self._get_object_pos(data, t)
+        node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
+        return node_pos
 
-    def _get_node_feats(self, data, t):
+
+    def _get_node_feats(self, data, t_vals):
         '''
         Here, robot0_eef_pos, robot1_eef_pos, ... are used as node features.
         '''
+        T = len(t_vals)
         node_feats = []
-        if self.mode == "end-effector":
+        if self.control_mode == "OSC_POSE":
             for i in range(self.num_robots):
-                node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"][t - 1:t][0]), torch.tensor(data[f"robot{i}_eef_quat"][t - 1:t][0])], dim=0))
-            node_feats = torch.stack(node_feats)
-        elif self.mode == "task-space":
-            for j in range(self.num_robots):
-                node_feats.append(calculate_panda_joints_positions([*data[f"robot{j}_joint_pos"][t], *data[f"robot{j}_gripper_qpos"][t]]))
-            node_feats = torch.cat(node_feats)
-        elif self.mode == "joint-space":
+                node_feats.append(torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=0))
+        elif self.control_mode == "JOINT_POSITION":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
-                    torch.tensor(data[f"robot{i}_joint_pos"][t - 1:t][0]).reshape(1,-1),
-                    torch.zeros((6,7))])) # complete with zeros to match task-space dimensionality
-            node_feats = torch.cat(node_feats)
-        elif self.mode == "task-joint-space":
+                                torch.tensor(data[f"robot{i}_joint_pos"][t_vals]),
+                                torch.tensor(data[f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
+        elif self.control_mode == "JOINT_VELOCITY":
             for i in range(self.num_robots):
-                node_feats.append(torch.cat([calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]]),
-                                                    torch.tensor(data[f"robot{i}_joint_pos"][t - 1:t]).reshape(-1,1)], dim=1))
-            node_feats = torch.cat(node_feats, dim=0)
-        
-        else:
-            raise NotImplementedError
+                node_feats.append(torch.cat([
+                                torch.tensor(data[f"robot{i}_joint_vel"][t_vals]),
+                                torch.tensor(data[f"robot{i}_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2))
+        node_feats = torch.cat(node_feats, dim=0) # [num_robots*num_joints, T, 1]
 
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
+        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],node_feats.shape[1],1))), dim=2)
 
-        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, self.OBJECT_NODE_TYPE)
+        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, self.OBJECT_NODE_TYPE, T)
 
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
         return node_feats
     
+    @lru_cache(maxsize=None)
     def _get_edge_index(self, num_nodes):
         '''
         Returns edge index for graph.
@@ -350,17 +356,16 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
         - all object nodes are connected to the last robot node (end-effector)
         '''
         assert len(self.eef_idx) == self.num_robots + 1
-        edge_index = []
+        edge_index = [[self.eef_idx[0], self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
 
-        for id_robot in range(1, len(self.eef_idx)):
-            for idx in range(self.eef_idx[id_robot-1], self.eef_idx[id_robot]):
-                edge_index.append([idx, idx+1])
-            # Connectivity of all other nodes to the last node of all robots
-            for idx in range(self.eef_idx[self.num_robots] + 1, num_nodes):
-                edge_index.append([self.eef_idx[id_robot], idx])
+        edge_index += [[idx, idx+1] for id_robot in range(1, len(self.eef_idx)-1) for idx in range(self.eef_idx[id_robot-1], self.eef_idx[id_robot])]
+        # Connectivity of all other nodes to all robot nodes
+        edge_index += [[node_idx, idx] for idx in range(self.eef_idx[self.num_robots] + 1, num_nodes) for node_idx in range(self.eef_idx[self.num_robots] + 1)]
+            # edge_index.append(torch.tensor([node_idx, idx]) for node_idx in range(self.eef_idx[self.num_robots] + 1))
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
     
+    @lru_cache(maxsize=None)
     def _get_edge_attrs(self, edge_index):
         '''
         Attribute edge types to edges

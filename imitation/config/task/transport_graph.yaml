@@ -3,7 +3,9 @@ task_name: &task_name transport
 dataset_type: &dataset_type ph
 dataset_path: &dataset_path /home/caio/workspace/GraphDiffusionImitate/data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
 
-max_steps: 1000
+max_steps: ${max_steps}
+
+control_mode: "JOINT_POSITION"
 
 obs_dim: 101
 action_dim: 18
@@ -56,11 +58,20 @@ env_runner:
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
   render: ${render}
+  output_video: ${output_video}
   env:
-    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
+    _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
+    object_state_sizes: *object_state_sizes
+    object_state_keys:  *object_state_keys
     max_steps: ${task.max_steps}
     task: "TwoArmTransport"
+    has_renderer: ${render}
     robots: *robots
+    output_video: ${output_video}
+    control_mode: ${task.control_mode}
+    controller_config:
+      interpolation: "linear"
+      ramp_ratio: 0.2
     
 
 dataset:
@@ -71,5 +82,8 @@ dataset:
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys: *object_state_keys
-  mode: "task-joint-space"
   robots: *robots
+  control_mode: ${task.control_mode}
+  base_link_shift: 
+    - [0.0, 0.0, 0.0]
+    - [0.0, 0.0, 0.0]
