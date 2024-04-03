@@ -5,7 +5,7 @@ import numpy as np
 import robosuite as suite
 from robosuite.controllers import load_controller_config
 from robosuite.wrappers.gym_wrapper import GymWrapper
-
+from scipy.spatial.transform import Rotation as R
 import torch
 import torch_geometric
 
@@ -52,7 +52,8 @@ class RobomimicGraphWrapper(gym.Env):
                  output_video=False,
                  control_mode="JOINT_VELOCITY",
                  controller_config=None,
-                 base_link_shift=[0.0, 0.0, 0.0]
+                 base_link_shift=[0.0, 0.0, 0.0],
+                 base_link_rotation=[[0.0, 0.0, 0.0, 1.0]]
                  ):
         '''
         Environment wrapper for Robomimic's GraphDiffusionImitate dataset in the same Graph representation as 
@@ -92,6 +93,7 @@ class RobomimicGraphWrapper(gym.Env):
 
         self.NUM_GRAPH_NODES = 9 + self.num_objects # TODO add multi-robot support
         self.BASE_LINK_SHIFT = base_link_shift
+        self.BASE_LINK_ROTATION = base_link_rotation
         self.ROBOT_NODE_TYPE = 1
         self.OBJECT_NODE_TYPE = -1
 
@@ -132,24 +134,38 @@ class RobomimicGraphWrapper(gym.Env):
         return obj_state_tensor
 
     def _get_object_pos(self, data):
-        obj_state_tensor = torch.zeros((self.num_objects, 7)) # 3 for position, 4 for quaternion
+        obj_state_tensor = torch.zeros((self.num_objects, 9)) # 3 for position, 6 for rotation
 
         for object, object_state_items in enumerate(self.object_state_keys.values()):
             i = 0
             for object_state in object_state_items:
-                obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][i:i + self.object_state_sizes[object_state]])
+                if "quat" in object_state:
+                    assert self.object_state_sizes[object_state] == 4, "Quaternion must have size 4"
+                    rot = self.rotation_transformer.forward(torch.tensor(data["object"][i:i + self.object_state_sizes[object_state]]))
+                    obj_state_tensor[object,i:i + 6] = rot
+                else:
+                    obj_state_tensor[object,i:i + self.object_state_sizes[object_state]] = torch.from_numpy(data["object"][i:i + self.object_state_sizes[object_state]])
+
                 i += self.object_state_sizes[object_state]
 
         return obj_state_tensor
 
 
     def _get_node_pos(self, data):
-        node_pos = calculate_panda_joints_positions([*data["robot0_joint_pos"], *data["robot0_gripper_qpos"]])
-        node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT)
-        obj_pos_tensor = self._get_object_pos(data)
-        node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
+        node_pos = []
+        for i in range(len(self.robots)):
+            node_pos_robot = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"], *data[f"robot{i}_gripper_qpos"]])
+            rotation_matrix = R.from_quat(self.BASE_LINK_ROTATION[i])
+            node_pos_robot[:,:3] = torch.matmul(node_pos_robot[:,:3], torch.tensor(rotation_matrix.as_matrix()))
+            node_pos_robot[:,3:] = torch.tensor((R.from_quat(node_pos_robot[:,3:].detach().numpy()) * rotation_matrix).as_quat())
+            # add base link shift
+            node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
+            node_pos.append(node_pos_robot)
+        node_pos = torch.cat(node_pos, dim=0)
         # use rotation transformer to convert quaternion to 6d rotation
         node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
+        obj_pos_tensor = self._get_object_pos(data)
+        node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
 
     
@@ -159,15 +175,14 @@ class RobomimicGraphWrapper(gym.Env):
         Returns node features from data
         '''
         node_feats = []
-        if self.control_mode == "OSC_POSE":
-            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"]), torch.tensor(data["robot0_eef_quat"])], dim=0)
-            node_feats = node_feats.reshape(1, -1) # add dimension
-        elif self.control_mode == "JOINT_VELOCITY":
-            node_feats.append(torch.tensor([*data["robot0_joint_vel"], *data["robot0_gripper_qvel"]]).reshape(1,-1))
-            node_feats = torch.cat(node_feats).T
-        elif self.control_mode == "JOINT_POSITION":
-            node_feats.append(torch.tensor([*data[f"robot0_joint_pos"], *data["robot0_gripper_qpos"]]).reshape(1,-1))
-            node_feats = torch.cat(node_feats, dim=0).T
+        for i in range(len(self.robots)):
+            if self.control_mode == "OSC_POSE":
+                node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_quat"])], dim=0).reshape(1, -1)) # add dimension
+            elif self.control_mode == "JOINT_VELOCITY":
+                node_feats.append(torch.tensor([*data[f"robot{i}_joint_vel"], *data[f"robot{i}_gripper_qvel"]]).reshape(1,-1).T)
+            elif self.control_mode == "JOINT_POSITION":
+                node_feats.append(torch.tensor([*data[f"robot{i}_joint_pos"], *data[f"robot{i}_gripper_qpos"]]).reshape(1,-1).T)
+        node_feats = torch.cat(node_feats, dim=0)
         return node_feats
 
 
@@ -204,6 +219,7 @@ class RobomimicGraphWrapper(gym.Env):
         '''
         node_feats = torch.tensor([])
         node_pos = torch.tensor([])
+        robot_i_data = {}
         for i in range(len(self.robots)):
             j = i*39
             
@@ -221,15 +237,16 @@ class RobomimicGraphWrapper(gym.Env):
             gripper_pose = obs[j + 35:j + 37]
             gripper_vel = obs[j + 37:j + 39]
             # Skip 2  - gripper joint velocities
-            robot_i_data = {
-                "robot0_joint_pos": robot_joint_pos,
-                "robot0_joint_vel": robot_joint_vel,
-                "robot0_eef_pos": eef_pose,
-                "robot0_eef_quat": eef_6d,
-                "robot0_gripper_qpos": gripper_pose,
-                "robot0_gripper_qvel": gripper_vel
-            }
-            node_feats = torch.cat([node_feats, self._get_node_feats(robot_i_data)], dim=0)
+            robot_i_data.update({
+                f"robot{i}_joint_pos": robot_joint_pos,
+                f"robot{i}_joint_vel": robot_joint_vel,
+                f"robot{i}_eef_pos": eef_pose,
+                f"robot{i}_eef_quat": eef_6d,
+                f"robot{i}_gripper_qpos": gripper_pose,
+                f"robot{i}_gripper_qvel": gripper_vel
+            })
+
+        node_feats = torch.cat([node_feats, self._get_node_feats(robot_i_data)], dim=0)
 
         robot_i_data["object"] = obs[len(self.robots)*39:]
         node_pos = self._get_node_pos(robot_i_data)

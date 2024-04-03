@@ -90,7 +90,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             i = 0
             for object_state in object_state_items:
                 if "quat" in object_state:
-                    assert self.object_state_sizes[object_state] == 4
+                    assert self.object_state_sizes[object_state] == 4, "Quaternion must have size 4"
                     rot = self.rotation_transformer.forward(torch.tensor(data["object"][t][i:i + self.object_state_sizes[object_state]]))
                     obj_state_tensor[object,i:i + 6] = rot
                 else:
@@ -323,7 +323,6 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
             node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
             node_pos.append(node_pos_robot)
         node_pos = torch.cat(node_pos, dim=0)
-            # TODO find out how the robots are rotated in the transport environment
         # use rotation transformer to convert quaternion to 6d rotation
         node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
         obj_pos_tensor = self._get_object_pos(data, t)
