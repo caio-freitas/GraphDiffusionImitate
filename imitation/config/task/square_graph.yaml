@@ -44,6 +44,7 @@ env_runner:
     controller_config:
       interpolation: "linear"
       ramp_ratio: 0.2
+    base_link_shift: [-0.56, 0, 0.912]
 
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
@@ -54,3 +55,4 @@ dataset:
   object_state_sizes: *object_state_sizes
   object_state_keys:  *object_state_keys
   control_mode: ${task.control_mode}
+  base_link_shift: [-0.56, 0, 0.912]
