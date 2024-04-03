@@ -85,5 +85,8 @@ dataset:
   robots: *robots
   control_mode: ${task.control_mode}
   base_link_shift: 
-    - [0.0, 0.0, 0.0]
-    - [0.0, 0.0, 0.0]
+    - [0.0, -0.81, 0.912]
+    - [0.0,  0.81, 0.912]
+  base_link_rotation: 
+    - [0.707107, 0, 0, 0.707107]
+    - [0.707107, 0, 0, -0.707107]
