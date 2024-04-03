@@ -356,15 +356,17 @@ class ConditionalGraphNoisePred(nn.Module):
         return pes
 
 
-    def forward(self, x, edge_index, edge_attr, x_coord, cond, timesteps, batch=None):
+    def forward(self, x, edge_index, edge_attr, x_coord, cond, timesteps, batch=None, batch_cond=None, edge_index_cond=None, edge_attr_cond=None, x_coord_cond=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
+        x_coord_cond = x_coord_cond.float().to(self.device)
         timesteps = timesteps.to(self.device)
         batch = batch.long().to(self.device)
+        batch_cond = batch_cond.long().to(self.device)
         batch_size = batch[-1] + 1
 
         timesteps_embed = self.diffusion_step_encoder(self.pe[timesteps])
@@ -381,7 +383,7 @@ class ConditionalGraphNoisePred(nn.Module):
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
 
         # FiLM generator
-        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr, batch=batch)
+        embed = self.cond_encoder(cond, edge_index_cond, x_coord_cond, edge_attr_cond, batch=batch_cond)
         embed = embed.reshape(self.num_layers, batch_size, 2, (self.hidden_dim + self.diffusion_step_embed_dim))
         scales = embed[:,:,0,...]
         biases = embed[:,:,1,...]
