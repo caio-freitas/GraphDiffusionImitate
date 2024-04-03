@@ -312,15 +312,17 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
 
 
     def _get_node_pos(self, data, t):
+        node_pos = []
         for i in range(self.num_robots):
-            node_pos = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]])
+            node_pos_robot = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]])
             # rotate robot nodes
             rotation_matrix = R.from_quat(self.BASE_LINK_ROTATION[i])
-            node_pos[:,:3] = torch.matmul(node_pos[:,:3], torch.tensor(rotation_matrix.as_matrix()))
-            node_pos[:,3:] = torch.tensor((R.from_quat(node_pos[:,3:].detach().numpy()) * rotation_matrix).as_quat())
+            node_pos_robot[:,:3] = torch.matmul(node_pos_robot[:,:3], torch.tensor(rotation_matrix.as_matrix()))
+            node_pos_robot[:,3:] = torch.tensor((R.from_quat(node_pos_robot[:,3:].detach().numpy()) * rotation_matrix).as_quat())
             # add base link shift
-            node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
-
+            node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
+            node_pos.append(node_pos_robot)
+        node_pos = torch.cat(node_pos, dim=0)
             # TODO find out how the robots are rotated in the transport environment
         # use rotation transformer to convert quaternion to 6d rotation
         node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
