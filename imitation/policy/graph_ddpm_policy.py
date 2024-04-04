@@ -142,7 +142,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         naction = naction.detach().to('cpu')
         if self.use_normalization:
             action_pred = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
-        action = action_pred[:9,:,0].T
+        action = action_pred[0,:,:]
         
         # (action_horizon, action_dim)
         return action

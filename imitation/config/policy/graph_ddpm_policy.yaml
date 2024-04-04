@@ -1,7 +1,7 @@
 _target_: imitation.policy.graph_ddpm_policy.GraphConditionalDDPMPolicy
 obs_dim: 9
-action_dim: 9
-node_feature_dim: 1 # from [joint_val, node_flag]
+action_dim: 1 #${eval:'1 if ${task.control_mode} == "OSC_POSE" else 9'}
+node_feature_dim: 9 # from [joint_val, node_flag]
 num_edge_types: 2 # robot joints, object-robot
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}

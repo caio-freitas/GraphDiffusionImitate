@@ -29,7 +29,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                  control_mode="JOINT_VELOCITY",
                  base_link_shift=[0.0, 0.0, 0.0]):
         self.control_mode           : str = control_mode
-        self.node_feature_dim       : int = node_feature_dim
+        self.node_feature_dim       : int = 10 if control_mode == "OSC_POSE" else node_feature_dim
         self.action_keys            : List = action_keys
         self.pred_horizon           : int = pred_horizon
         self.obs_horizon            : int = obs_horizon
@@ -63,7 +63,7 @@ class RobomimicGraphDataset(InMemoryDataset):
 
         self.constant_stats = {
             "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
-            "x": torch.tensor([False, True]) # node type flag is constant
+            "x": torch.tensor([False, False, False, True, True, True, True, True, True, True]) # node type flag is constant
         }
         
 
@@ -100,8 +100,11 @@ class RobomimicGraphDataset(InMemoryDataset):
         return obj_state_tensor
 
     def _get_node_pos(self, data, t):
-        node_pos = calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]])
-        node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT)
+        if self.control_mode == "OSC_POSE":
+            node_pos = torch.cat([torch.tensor(data["robot0_eef_pos"][t]), torch.tensor(data["robot0_eef_quat"][t])], dim=0).unsqueeze(0)
+        else:
+            node_pos = calculate_panda_joints_positions([*data["robot0_joint_pos"][t], *data["robot0_gripper_qpos"][t]])
+            node_pos[:,:3] += torch.tensor(self.BASE_LINK_SHIFT)
         # use rotation transformer to convert quaternion to 6d rotation
         node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
         obj_pos_tensor = self._get_object_pos(data, t)
@@ -116,13 +119,14 @@ class RobomimicGraphDataset(InMemoryDataset):
         T = len(t_vals)
         node_feats = []
         if self.control_mode == "OSC_POSE":
-            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=0)
-            node_feats = node_feats.reshape(T, -1) # add dimension
+            node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=1)
+            # use rotation transformer to convert quaternion to 6d rotation
+            node_feats = torch.cat([node_feats[:,:3], self.rotation_transformer.forward(node_feats[:,3:])], dim=1).unsqueeze(0)
         if self.control_mode == "JOINT_VELOCITY":
-            node_feats = torch.cat([torch.tensor(data[f"robot0_joint_vel"][t_vals]), torch.tensor(data["robot0_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2)
+            node_feats = torch.cat([torch.tensor(data["robot0_joint_vel"][t_vals]), torch.tensor(data["robot0_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2)
         elif self.control_mode == "JOINT_POSITION":
             # [node, node_feats]
-            node_feats = torch.cat([torch.tensor(data[f"robot0_joint_pos"][t_vals]), torch.tensor(data["robot0_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2)
+            node_feats = torch.cat([torch.tensor(data["robot0_joint_pos"][t_vals]), torch.tensor(data["robot0_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2)
 
         # add dimension for NODE_TYPE flag, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],node_feats.shape[1],1))), dim=2)
@@ -163,7 +167,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         return torch.tensor(edge_attrs, dtype=torch.long)
 
     @lru_cache(maxsize=None)
-    def _get_edge_index(self, num_nodes):
+    def _get_edge_index(self, num_nodes, control_mode):
         '''
         Returns edge index for graph.
         - all robot nodes are connected to the previous robot node
@@ -171,6 +175,9 @@ class RobomimicGraphDataset(InMemoryDataset):
         '''
         eef_idx = 8
         edge_index = []
+        if control_mode == "OSC_POSE":
+            eef_idx = 0
+            return torch.tensor([[eef_idx, obj_idx]  for obj_idx in range(eef_idx, num_nodes)])
         for idx in range(eef_idx):
             edge_index.append([idx, idx+1])
 
@@ -204,7 +211,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                 
                 data_raw = self.dataset_root["data"][key]["obs"]
                 node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon)
-                edge_index  = self._get_edge_index(node_feats.shape[0])
+                edge_index  = self._get_edge_index(node_feats.shape[0], self.control_mode)
                 edge_attrs  = self._get_edge_attrs(edge_index)
                 y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
                 pos         = self._get_node_pos(data_raw, idx + self.pred_horizon)
@@ -313,15 +320,21 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
 
     def _get_node_pos(self, data, t):
         node_pos = []
-        for i in range(self.num_robots):
-            node_pos_robot = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]])
-            # rotate robot nodes
-            rotation_matrix = R.from_quat(self.BASE_LINK_ROTATION[i])
-            node_pos_robot[:,:3] = torch.matmul(node_pos_robot[:,:3], torch.tensor(rotation_matrix.as_matrix()))
-            node_pos_robot[:,3:] = torch.tensor((R.from_quat(node_pos_robot[:,3:].detach().numpy()) * rotation_matrix).as_quat())
-            # add base link shift
-            node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
-            node_pos.append(node_pos_robot)
+        if self.control_mode == "OSC_POSE":
+            for i in range(self.num_robots):
+                node_pos_robot = torch.cat([torch.tensor(data[f"robot{i}_eef_pos"][t]), torch.tensor(data[f"robot{i}_eef_quat"][t])], dim=0)
+                node_pos.append(node_pos_robot)
+        else:
+            for i in range(self.num_robots):
+                node_pos_robot = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"][t], *data[f"robot{i}_gripper_qpos"][t]])
+                # rotate robot nodes
+                rotation_matrix = R.from_quat(self.BASE_LINK_ROTATION[i])
+                node_pos_robot[:,:3] = torch.matmul(node_pos_robot[:,:3], torch.tensor(rotation_matrix.as_matrix()))
+                node_pos_robot[:,3:] = torch.tensor((R.from_quat(node_pos_robot[:,3:].detach().numpy()) * rotation_matrix).as_quat())
+                # add base link shift
+                node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
+                node_pos.append(node_pos_robot)
+
         node_pos = torch.cat(node_pos, dim=0)
         # use rotation transformer to convert quaternion to 6d rotation
         node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
@@ -360,13 +373,15 @@ class MultiRobotGraphDataset(RobomimicGraphDataset):
         return node_feats
     
     @lru_cache(maxsize=None)
-    def _get_edge_index(self, num_nodes):
+    def _get_edge_index(self, num_nodes, control_mode):
         '''
         Returns edge index for graph.
         - all robot nodes are connected to the previous robot node
         - all object nodes are connected to the last robot node (end-effector)
         '''
         assert len(self.eef_idx) == self.num_robots + 1
+        if control_mode == "OSC_POSE":
+            return torch.tensor([[eef_id, obj_idx] for eef_id in self.eef_idx for obj_idx in range(self.eef_idx[self.num_robots], num_nodes)])
         edge_index = [[self.eef_idx[0], self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
 
         edge_index += [[idx, idx+1] for id_robot in range(1, len(self.eef_idx)-1) for idx in range(self.eef_idx[id_robot-1], self.eef_idx[id_robot])]
