@@ -10,8 +10,7 @@ control_mode: "JOINT_VELOCITY"
 obs_dim: 9
 action_dim: 9
 
-obs_keys: &obs_keys ['robot0_eef_pos', 'object']
-action_keys: &action_keys ['robot0_joint_vel']
+robots: ["Panda"]
 
 # describe all the objects in the scene
 object_state_sizes: &object_state_sizes
@@ -41,7 +40,7 @@ env_runner:
     max_steps: ${task.max_steps}
     task: "NutAssemblySquare"
     has_renderer: ${render}
-    robots: ["Panda"]
+    robots: ${task.robots}
     output_video: ${output_video}
     control_mode: ${task.control_mode}
     controller_config:
@@ -52,7 +51,7 @@ env_runner:
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
   dataset_path: ${task.dataset_path}
-  action_keys: *action_keys
+  robots: ${task.robots}
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes

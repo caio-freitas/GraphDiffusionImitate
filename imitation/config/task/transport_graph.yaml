@@ -10,21 +10,7 @@ control_mode: "JOINT_POSITION"
 obs_dim: 9
 action_dim: 18
 
-obs_keys: &obs_keys ['robot0_joint_pos_sin',
-                    'robot0_joint_pos_cos',
-                    'robot0_joint_vel',
-                    'robot0_eef_pos',
-                    'robot0_eef_quat',
-                    'robot0_gripper_qpos',
-                    'robot1_joint_pos_sin',
-                    'robot1_joint_pos_cos',
-                    'robot1_joint_vel',
-                    'robot1_eef_pos',
-                    'robot1_eef_quat',
-                    'robot1_gripper_qpos',
-                    'object']
 robots: &robots ["Panda", "Panda"]
-action_keys: &action_keys ['robot0_joint_vel', 'robot1_joint_vel']
 
 # describe all the objects in the scene
 object_state_sizes: &object_state_sizes
@@ -86,14 +72,13 @@ env_runner:
 
 
 dataset:
-  _target_: imitation.dataset.robomimic_graph_dataset.MultiRobotGraphDataset
+  _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
   dataset_path: ${task.dataset_path}
-  action_keys: *action_keys
+  robots: *robots
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys: *object_state_keys
-  robots: *robots
   control_mode: ${task.control_mode}
   base_link_shift: ${task.base_link_shift}
   base_link_rotation: ${task.base_link_rotation}
