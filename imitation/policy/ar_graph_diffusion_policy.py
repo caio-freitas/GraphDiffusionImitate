@@ -21,6 +21,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
     def __init__(self,
                  dataset,
                  node_feature_dim,
+                 action_dim,
                  num_edge_types,
                  denoising_network,
                  lr=1e-4,
@@ -35,6 +36,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             self.device = device
         self.dataset = dataset
         self.node_feature_dim = node_feature_dim
+        self.action_dim = action_dim
         self.num_edge_types = num_edge_types
         self.model = denoising_network
         self.use_normalization = use_normalization
@@ -252,7 +254,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - end-effector: raise NotImplementedError
         '''
         if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:9,:,0].T # all (joint-representing) nodes, all timesteps, first value
+            return x[:self.action_dim,:,0].T # all (joint-representing) nodes, all timesteps, first value
         elif self.mode == 'end-effector':
             raise NotImplementedError
         else:
@@ -301,18 +303,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.playback_count += 1
         log.debug(f"Playing back observation {self.playback_count}")
         return obs_cond, edge_index, edge_attr, obs_pos
-
-
-    def pos_from_pos_diffs(self, pos_diffs, edge_index):
-        '''
-        Calculate absolute positions from position differences between nodes
-        pos_diffs: [n_edges, 7]
-        edge_index: [2, n_edges]
-        '''
-        pos = torch.zeros((edge_index.max() + 1, 7))
-        for i in range(edge_index.max() + 1):
-            pos[i,:3] = pos_diffs[torch.logical_and(edge_index[1,:] == i, edge_index[0,:] == 0),:3]
-        return pos
 
 
     def get_action(self, obs):
