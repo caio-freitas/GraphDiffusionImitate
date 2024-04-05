@@ -1,6 +1,7 @@
 _target_: imitation.policy.ar_graph_diffusion_policy.AutoregressiveGraphDiffusionPolicy
 dataset: ${task.dataset}
 node_feature_dim: 2
+action_dim: ${task.action_dim}
 num_edge_types: 2 # robot joints, object-robot
 lr: 0.00005
 ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_${task.control_mode}_en_argd_policy.pt
