@@ -34,7 +34,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     ckpt_path= None,
                     lr: float = 1e-4,
                     batch_size: int = 256,
-                    use_normalization: bool = True,):
+                    use_normalization: bool = True,
+                    noise_addition_std: float = 1):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -65,11 +66,12 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             # our network predicts noise (instead of denoised action)
             prediction_type='epsilon'
         )
+        self.noise_addition_std = noise_addition_std
         
 
         self.load_nets(self.ckpt_path)
         self.global_epoch = 0
-
+        self.last_naction = torch.zeros((self.action_dim, self.pred_horizon, self.node_feature_dim), device=self.device)
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
@@ -104,10 +106,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         if self.use_normalization:
             nobs = self.dataset.normalize_data(nobs, stats_key='y')
         with torch.no_grad():
-            # initialize action from Guassian noise 
-            env_dim = G_t.x.shape[0] # number of nodes in the graph, TODO detach action from the observation graph
-            noisy_action = torch.randn( # +1 object
-                (env_dim, self.pred_horizon, self.node_feature_dim), device=self.device)
+            # initialize action from Guassian noise
+            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
+            self.last_naction = self.last_naction.repeat(1, self.pred_horizon, 1)[:,:,:1]
+            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn((self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device) * self.noise_addition_std
             naction = noisy_action
 
             # init scheduler
@@ -186,7 +188,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
 
                 # sample noise to add to actions
-                noise = torch.randn(naction.shape, device=self.device)
+
+                noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1) + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                 noisy_actions = self.noise_scheduler.add_noise(
                     naction, noise, timesteps)
@@ -290,9 +293,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
 
-                        # sample noise to add to actions
-                        noise = torch.randn(naction.shape, device=self.device)
-                        
+                        # add noise to first action instead of sampling from Gaussian
+                        noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1).float() + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
+
+                        noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
