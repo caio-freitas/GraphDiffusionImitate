@@ -58,7 +58,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             from_rep="quaternion",
             to_rep="rotation_6d"
         )
-        self.eef_idx = [0, 8] # end-effector index
+        self.eef_idx = [-1, 8] # end-effector index
         if self.num_robots == 2:
             self.eef_idx += [17]
 
@@ -81,7 +81,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
-    @lru_cache(maxsize=None)
+    # @lru_cache(maxsize=None)
     def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint values
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
         obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
@@ -191,12 +191,12 @@ class RobomimicGraphDataset(InMemoryDataset):
         assert len(self.eef_idx) == self.num_robots + 1
         edge_index = []
         if len(self.eef_idx) == 3: # 2 robots
-            edge_index = [[self.eef_idx[0], self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
+            edge_index = [[self.eef_idx[0]+ 1, self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
         for robot in range(self.num_robots):
             # Connectivity of all robot nodes to the previous robot node
-            edge_index += [[idx, idx+1] for idx in range(0, self.eef_idx[robot+1])]
+            edge_index += [[idx, idx+1] for idx in range(self.eef_idx[robot]+ 1, self.eef_idx[robot+1])]
         # Connectivity of all other nodes to all robot nodes
-        edge_index += [[node_idx, idx] for idx in range(self.eef_idx[self.num_robots] + 1, num_nodes) for node_idx in range(self.eef_idx[self.num_robots] + 1)]
+        edge_index += [[node_idx, idx] for idx in range(self.eef_idx[-1] + 1, num_nodes) for node_idx in range(self.eef_idx[self.num_robots] + 1)]
             # edge_index.append(torch.tensor([node_idx, idx]) for node_idx in range(self.eef_idx[self.num_robots] + 1))
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index

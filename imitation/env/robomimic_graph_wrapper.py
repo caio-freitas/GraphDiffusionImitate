@@ -104,7 +104,7 @@ class RobomimicGraphWrapper(gym.Env):
             from_rep="quaternion",
             to_rep="rotation_6d"
         )
-        self.eef_idx = [0, 8] # end-effector index
+        self.eef_idx = [-1, 8] # end-effector index
         if self.num_robots == 2:
             self.eef_idx += [17]
 
@@ -192,7 +192,7 @@ class RobomimicGraphWrapper(gym.Env):
         return node_feats
 
 
-    @lru_cache(maxsize=None)
+    @lru_cache(maxsize=128)
     def _get_edge_index(self, num_nodes):
         '''
         Returns edge index for graph.
@@ -202,17 +202,17 @@ class RobomimicGraphWrapper(gym.Env):
         assert len(self.eef_idx) == self.num_robots + 1
         edge_index = []
         if len(self.eef_idx) == 3: # 2 robots
-            edge_index = [[self.eef_idx[0], self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
+            edge_index = [[self.eef_idx[0]+ 1, self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
         for robot in range(self.num_robots):
             # Connectivity of all robot nodes to the previous robot node
-            edge_index += [[idx, idx+1] for idx in range(0, self.eef_idx[robot+1])]
+            edge_index += [[idx, idx+1] for idx in range(self.eef_idx[robot]+ 1, self.eef_idx[robot+1])]
         # Connectivity of all other nodes to all robot nodes
-        edge_index += [[node_idx, idx] for idx in range(self.eef_idx[self.num_robots] + 1, num_nodes) for node_idx in range(self.eef_idx[self.num_robots] + 1)]
+        edge_index += [[node_idx, idx] for idx in range(self.eef_idx[-1] + 1, num_nodes) for node_idx in range(self.eef_idx[self.num_robots] + 1)]
             # edge_index.append(torch.tensor([node_idx, idx]) for node_idx in range(self.eef_idx[self.num_robots] + 1))
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
 
-    @lru_cache(maxsize=None)
+    @lru_cache(maxsize=128)
     def _get_edge_attrs(self, edge_index):
         '''
         Attribute edge types to edges
