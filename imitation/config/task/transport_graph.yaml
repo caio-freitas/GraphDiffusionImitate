@@ -7,9 +7,8 @@ max_steps: ${max_steps}
 
 control_mode: "JOINT_POSITION"
 
-obs_dim: 101
+obs_dim: 9
 action_dim: 18
-
 
 obs_keys: &obs_keys ['robot0_joint_pos_sin',
                     'robot0_joint_pos_cos',
@@ -51,6 +50,9 @@ object_state_keys: &object_state_keys
   trash:
     - trash_pos
     - trash_quat
+  lid_handle:
+    - lid_handle_pos
+    - lid_handle_quat
 
 base_link_shift: 
   - [0.0, -0.81, 0.912]

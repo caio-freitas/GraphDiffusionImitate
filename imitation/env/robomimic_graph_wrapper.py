@@ -108,17 +108,19 @@ class RobomimicGraphWrapper(gym.Env):
     def scaled_tanh(self, x, max_val=0.01, min_val=-0.07, k=200, threshold=-0.03):
         return np.tanh(k * (x - threshold)) * (max_val - min_val) / 2 + (max_val + min_val) / 2
 
-    def control_loop(self, tgt_jpos, max_n=20, eps=0.02):
+    def control_loop(self, tgt_jpos, max_n=10, eps=0.02):
         obs = self.env._get_observations()
         tgt_jpos[-1] = self.scaled_tanh(tgt_jpos[-1])
         for i in range(max_n):
             obs = self.env._get_observations()
-            joint_pos = np.array([*obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][1]])  # use only last action for gripper
-            q_diff = np.array(tgt_jpos) - joint_pos[:len(tgt_jpos)]
+            current_jpos = []
+            for j in range(len(self.robots)):
+                current_jpos = [*current_jpos, *obs[f"robot{j}_joint_pos"], obs[f"robot{j}_gripper_qpos"][1]] # use only last action for gripper
+            q_diff = np.array(tgt_jpos) - current_jpos
             q_diff_max = np.max(abs(q_diff))
             
             action = list(q_diff)
-            assert len(action) == 8, len(action)
+            assert len(action) == 8*len(self.robots), len(action)
             obs_final, reward, done, _, info = self.env.step(action)
             if q_diff_max < eps or done:
                 break
