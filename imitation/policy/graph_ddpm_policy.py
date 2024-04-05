@@ -34,7 +34,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     ckpt_path= None,
                     lr: float = 1e-4,
                     batch_size: int = 256,
-                    use_normalization: bool = True,):
+                    use_normalization: bool = True,
+                    noise_addition_std: float = 1):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -65,7 +66,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             # our network predicts noise (instead of denoised action)
             prediction_type='epsilon'
         )
-        self.noise_addition_std = 0.5
+        self.noise_addition_std = noise_addition_std
         
 
         self.load_nets(self.ckpt_path)
@@ -295,6 +296,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         # add noise to first action instead of sampling from Gaussian
                         noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1).float() + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
+
+                        noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
