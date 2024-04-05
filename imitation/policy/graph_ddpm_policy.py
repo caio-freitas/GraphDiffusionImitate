@@ -101,11 +101,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         for i in range(len(obs_deque)):
             obs_cond.append(obs_deque[i].y.unsqueeze(1)) # only quaternions
             pos.append(obs_deque[i].pos)
-        obs_cond = torch.cat(obs_cond, dim=1)
+        nobs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
-            nobs = self.dataset.normalize_data(obs_cond, stats_key='y')
-        # nobs = obs_cond
+            nobs = self.dataset.normalize_data(nobs, stats_key='y')
         with torch.no_grad():
             # initialize action from Guassian noise
             self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
@@ -139,8 +138,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
         naction = naction.detach().to('cpu')
         if self.use_normalization:
-            action_pred = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
-        action = action_pred[:9,:,0].T
+            naction = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
+        action = naction[:self.action_dim,:,0].T
         
         # (action_horizon, action_dim)
         return action

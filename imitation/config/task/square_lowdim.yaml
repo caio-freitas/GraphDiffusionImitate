@@ -21,7 +21,7 @@ env_runner:
   output_video: ${output_video}
   env:
     _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-    max_steps: ${task.max_steps}
+    max_steps: ${eval:'500 if "${task.dataset_type}" == "mh" else 400'}
     task: "NutAssemblySquare"
     robots: ["Panda"]
     output_video: ${output_video}

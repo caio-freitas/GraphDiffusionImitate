@@ -5,23 +5,20 @@ dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_di
 
 max_steps: 1000
 
-obs_dim: 91 # 87 + 2 (due to quaternion -> 6D rotation) * 2 (robots)  
-action_dim: 18
+obs_dim: 59
+action_dim: 14
 
 
-obs_keys: &obs_keys ['robot0_joint_pos',
-                    'robot0_joint_vel',
-                    'robot0_eef_pos',
+obs_keys: &obs_keys ['robot0_eef_pos',
                     'robot0_eef_quat',
                     'robot0_gripper_qpos',
-                    'robot1_joint_pos',
-                    'robot1_joint_vel',
                     'robot1_eef_pos',
                     'robot1_eef_quat',
                     'robot1_gripper_qpos',
                     'object']
 robots: &robots ["Panda", "Panda"]
-action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel', 'robot1_joint_vel', 'robot1_gripper_qvel']
+action_keys: &action_keys ['robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos',
+                          'robot1_eef_pos', 'robot1_eef_quat', 'robot1_gripper_qpos']
 
 
 
@@ -34,18 +31,16 @@ env_runner:
   render: ${render}
   output_video: ${output_video}
   env:
-    _target_: imitation.env.robomimic_lowdim_wrapper.RobomimicLowdimWrapper
-    max_steps: ${eval:'1100 if "${task.dataset_type}" == "mh" else 700'}
+    _target_: imitation.env.robomimic_eef_wrapper.RobomimicEefWrapper
+    max_steps: ${task.max_steps}
     task: "TwoArmTransport"
     robots: *robots
     output_video: ${output_video}
-    
 
 dataset:
-  _target_: imitation.dataset.robomimic_lowdim_dataset.RobomimicLowdimDataset
+  _target_: imitation.dataset.robomimic_eef_dataset.RobomimicEefDataset # OSC_POSE actions
   dataset_path: ${task.dataset_path}
   obs_keys: *obs_keys
-  action_keys: *action_keys
   pred_horizon: ${pred_horizon}
   obs_horizon: ${obs_horizon}
   action_horizon: ${action_horizon}
