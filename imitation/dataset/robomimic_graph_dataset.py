@@ -49,7 +49,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         self.OBJECT_ROBOT_EDGE      : int = 2
 
         self.dataset_root           : str = h5py.File(dataset_path, 'r')
-        self.dataset_keys           : List = list(self.dataset_root["data"].keys())[:10]
+        self.dataset_keys           : List = list(self.dataset_root["data"].keys())
         try:
             self.dataset_keys.remove("mask")
         except:
