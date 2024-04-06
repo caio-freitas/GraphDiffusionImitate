@@ -112,7 +112,7 @@ class RobomimicGraphWrapper(gym.Env):
     def scaled_tanh(self, x, max_val=0.01, min_val=-0.07, k=200, threshold=-0.03):
         return np.tanh(k * (x - threshold)) * (max_val - min_val) / 2 + (max_val + min_val) / 2
 
-    def control_loop(self, tgt_jpos, max_n=2, eps=0.02):
+    def control_loop(self, tgt_jpos, max_n=20, eps=0.02):
         obs = self.env._get_observations()
         tgt_jpos[-1] = self.scaled_tanh(tgt_jpos[-1])
         for i in range(max_n):
