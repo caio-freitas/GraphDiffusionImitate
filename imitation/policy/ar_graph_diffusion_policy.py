@@ -28,7 +28,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                  ckpt_path=None,
                  device = None,
                  mode = 'joint-space',
-                 use_normalization = True,):
+                 use_normalization = False,):
         super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
