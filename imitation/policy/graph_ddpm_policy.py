@@ -72,6 +72,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.load_nets(self.ckpt_path)
         self.global_epoch = 0
         self.last_naction = torch.zeros((self.action_dim, self.pred_horizon, self.node_feature_dim), device=self.device)
+        self.playback_count = 0
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
@@ -90,8 +91,15 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         except:
             log.error('Error loading pretrained weights.')
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
-        
 
+    def MOCK_get_graph_from_obs(self): # for testing purposes, remove before merge
+        # plays back observation from dataset
+        playback_graph = self.dataset[self.playback_count]
+        obs_cond    = playback_graph.y
+        playback_graph.x = playback_graph.x[:,0,:]
+        self.playback_count += 7
+        log.info(f"Playing back observation {self.playback_count}")
+        return obs_cond, playback_graph
     def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         # transform deques to numpy arrays
@@ -105,9 +113,12 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
             nobs = self.dataset.normalize_data(nobs, stats_key='y')
+            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
+        else:
+            self.last_naction = G_t.x.unsqueeze(1).to(self.device)
+
         with torch.no_grad():
             # initialize action from Guassian noise
-            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
             self.last_naction = self.last_naction.repeat(1, self.pred_horizon, 1)[:,:,:1]
             noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn((self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device) * self.noise_addition_std
             naction = noisy_action
