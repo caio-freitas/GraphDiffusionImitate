@@ -210,8 +210,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         if self.use_normalization:
                             graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
                             graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
-                        # remove object nodes
-                        for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
+                        # remove object nodes. Last nodes first, to avoid index errors
+                        for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                             graph = self.masker.remove_node(graph, obj_node)
                         graph = self.masker.idxify(graph)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
