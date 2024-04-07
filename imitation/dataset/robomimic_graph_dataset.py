@@ -1,6 +1,6 @@
 
 from typing import Callable, Optional
-from torch_geometric.data import Dataset, Data, InMemoryDataset
+from torch_geometric.data import Dataset, Data, InMemoryDataset, HeteroData
 import logging
 import h5py
 import os.path as osp
@@ -30,9 +30,10 @@ class RobomimicGraphDataset(InMemoryDataset):
                  base_link_shift=[0.0, 0.0, 0.0],
                  base_link_rotation=[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0]]):
         self.control_mode           : str = control_mode
-        self.node_feature_dim       : int = 10 if control_mode == "OSC_POSE" else node_feature_dim
+        self.obs_mode               : str = "OSC_POSE"
         self.robots                 : List = robots
         self.num_robots             : int = len(self.robots)
+        self.node_feature_dim       : int = 8 if control_mode == "OSC_POSE" else node_feature_dim
         self.pred_horizon           : int = pred_horizon
         self.obs_horizon            : int = obs_horizon
         self.object_state_sizes     : Dict = object_state_sizes # can be taken from https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
@@ -81,14 +82,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
-    # @lru_cache(maxsize=None)
-    def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint values
-        # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        obj_state_tensor[:,:,-1] = OBJECT_NODE_TYPE
-        return obj_state_tensor
-
     def _get_object_pos(self, data, t):
         obj_state_tensor = torch.zeros((self.num_objects, 9)) # 3 for position, 6 for 6D rotation
 
@@ -105,7 +98,7 @@ class RobomimicGraphDataset(InMemoryDataset):
 
         return obj_state_tensor
 
-    def _get_node_pos(self, data, t):
+    def _get_node_pos(self, data, t, modality="action"):
         node_pos = []
         for i in range(self.num_robots):
             if self.control_mode == "OSC_POSE":
@@ -123,11 +116,12 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_pos = torch.cat(node_pos, dim=0)
         # use rotation transformer to convert quaternion to 6d rotation
         node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
-        obj_pos_tensor = self._get_object_pos(data, t)
-        node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
+        if modality == "observation":
+            obj_pos_tensor = self._get_object_pos(data, t)
+            node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
     
-    def _get_node_feats(self, data, t_vals):
+    def _get_node_actions(self, data, t_vals, modality="action"):
         '''
         Calculate node features for time steps t_vals
         t_vals: list of time steps
@@ -136,9 +130,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_feats = []
         if self.control_mode == "OSC_POSE":
             for i in range(self.num_robots):
-                node_feats = torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=1)
-                # use rotation transformer to convert quaternion to 6d rotation
-                node_feats = torch.cat([node_feats[:,:3], self.rotation_transformer.forward(node_feats[:,3:])], dim=1).unsqueeze(0)
+                node_feats.append(torch.cat([torch.tensor(data["actions"][t_vals])], dim=1).unsqueeze(0))
         elif self.control_mode == "JOINT_POSITION":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
@@ -151,34 +143,32 @@ class RobomimicGraphDataset(InMemoryDataset):
                                 torch.tensor(data[f"robot{i}_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2))
         node_feats = torch.cat(node_feats, dim=0) # [num_robots*num_joints, T, 1]
 
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],node_feats.shape[1],1))), dim=2)
-
-        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, self.OBJECT_NODE_TYPE, T)
-
-        node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
         return node_feats
     
-    def _get_node_feats_horizon(self, data, idx, horizon):
+    def _get_node_actions_horizon(self, data, idx, horizon):
         '''
         Calculate node features for self.obs_horizon time steps
         '''
         node_feats = []
         # calculate node features for timesteps idx to idx + horizon
         t_vals = list(range(idx, idx + horizon))
-        node_feats = self._get_node_feats(data, t_vals)
+        node_feats = self._get_node_actions(data, t_vals)
         return node_feats
     
-    @lru_cache(maxsize=None)
-    def _get_edge_attrs(self, edge_index):
+    # @lru_cache(maxsize=None)
+    def _get_edge_attrs(self, edge_index, modality="action"):
         '''
         Attribute edge types to edges
         - self.ROBOT_LINK_EDGE for edges between robot nodes
         - self.OBJECT_ROBOT_EDGE for edges between robot and object nodes
         '''
         edge_attrs = []
-        num_nodes = torch.max(edge_index)
-        for edge in edge_index.t():
+        
+        if modality == "action":
+            return torch.ones(edge_index.shape[1], dtype=torch.long) * self.ROBOT_LINK_EDGE
+
+        num_nodes = torch.max(edge_index).item()
+        for edge in edge_index.T:
             # num nodes - self.num_objects is the index of the last robot node
             if edge[0] <= num_nodes - self.num_objects and edge[1] <= num_nodes - self.num_objects:
                 edge_attrs.append(self.ROBOT_LINK_EDGE)
@@ -187,43 +177,47 @@ class RobomimicGraphDataset(InMemoryDataset):
                 edge_attrs.append(self.OBJECT_ROBOT_EDGE)
         return torch.tensor(edge_attrs, dtype=torch.long)
 
-    @lru_cache(maxsize=None)
-    def _get_edge_index(self, num_nodes, control_mode):
+    # @lru_cache(maxsize=None)
+    def _get_edge_index(self, num_nodes, modality="action"):
         '''
         Returns edge index for graph.
         - all robot nodes are connected to the previous robot node
         - all object nodes are connected to the last robot node (end-effector)
         '''
-        assert len(self.eef_idx) == self.num_robots + 1
         edge_index = []
-        if control_mode == "OSC_POSE":
-            eef_idx = 0
-            return torch.tensor([[eef_idx, obj_idx]  for obj_idx in range(eef_idx, num_nodes)])
-        for idx in range(eef_idx):
-            edge_index.append([idx, idx+1])
+        graph_type = self.control_mode if modality == "action" else self.obs_mode
+        eef_idx = self.eef_idx
+        if graph_type == "OSC_POSE": # 1 node per robot
+            eef_idx = list(range(-1, self.num_robots))
+            edge_index += [[0, 0]]
+            edge_index += [[eef_idx[robot_node], eef_idx[robot_node+1]] for robot_node in range(1, len(eef_idx)-1)]
+        else: # JOINT_POSITION or JOINT_VELOCITY
+            assert len(self.eef_idx) == self.num_robots + 1
 
-        if len(self.eef_idx) == 3: # 2 robots
-            edge_index = [[self.eef_idx[0]+ 1, self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
-        for robot in range(self.num_robots):
-            # Connectivity of all robot nodes to the previous robot node
-            edge_index += [[idx, idx+1] for idx in range(self.eef_idx[robot]+ 1, self.eef_idx[robot+1])]
-        # Connectivity of all other nodes to all robot nodes
-        edge_index += [[node_idx, idx] for idx in range(self.eef_idx[-1] + 1, num_nodes) for node_idx in range(self.eef_idx[self.num_robots] + 1)]
-            # edge_index.append(torch.tensor([node_idx, idx]) for node_idx in range(self.eef_idx[self.num_robots] + 1))
+            if len(self.eef_idx) == 3: # 2 robots
+                edge_index = [[self.eef_idx[0]+ 1, self.eef_idx[1] + 1]] # robot0 base link to robot1 base link
+            for robot in range(self.num_robots):
+                # Connectivity of all robot nodes to the previous robot node
+                edge_index += [[idx, idx+1] for idx in range(self.eef_idx[robot]+ 1, self.eef_idx[robot+1])]
+            
+        if modality == "observation":
+            # Connectivity of all objects to all robot nodes
+            edge_index += [[node_idx, idx] for idx in range(eef_idx[-1] + 1, num_nodes) for node_idx in range(eef_idx[self.num_robots] + 1)]
+
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
     
-    def _get_y_horizon(self, data, idx, horizon):
+    def _get_obs_horizon(self, data, idx, horizon, modality="observation"):
         '''
-        Get y (observation) for time step t. Should contain only task-space joint positions.
+        Get observation node features for time step t. Should contain only task-space joint positions.
         '''
-        y = []
+        obs = []
         for t in range(idx, idx - horizon,-1):
             if t < 0:
-                y.append(self._get_node_pos(data, 0)) # use fixed first observation for beginning of episode
+                obs.append(self._get_node_pos(data, 0, modality="observation")) # use fixed first observation for beginning of episode
             else:
-                y.append(self._get_node_pos(data, t))
-        return torch.stack(y, dim=1)
+                obs.append(self._get_node_pos(data, t, modality="observation"))
+        return torch.stack(obs, dim=1)
 
     
     def process(self):
@@ -234,21 +228,36 @@ class RobomimicGraphDataset(InMemoryDataset):
             
             for idx in range(episode_length - self.pred_horizon):
                 
-                data_raw = self.dataset_root["data"][key]["obs"]
-                node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon)
-                edge_index  = self._get_edge_index(node_feats.shape[0], self.control_mode)
-                edge_attrs  = self._get_edge_attrs(edge_index)
-                y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
-                pos         = self._get_node_pos(data_raw, idx + self.pred_horizon)
+                data_raw = self.dataset_root["data"][key]
+                action_feats  = self._get_node_actions_horizon(data_raw, idx, self.pred_horizon)
+                action_edge_index  = self._get_edge_index(action_feats.shape[0], modality="action")
+                action_edge_attrs  = self._get_edge_attrs(action_edge_index, modality="action")
+                action_pos = self._get_node_pos(data_raw["obs"], idx + self.pred_horizon, modality="action")
+                
+                obs_feats = self._get_obs_horizon(data_raw["obs"], idx, self.obs_horizon)
+                obs_pos = self._get_node_pos(data_raw["obs"], idx, modality="observation")
+                obs_edge_index = self._get_edge_index(obs_feats.shape[0], modality="observation")
+                obs_edge_attrs = self._get_edge_attrs(obs_edge_index, modality="observation")
 
-                data  = Data(
-                    x=node_feats,
-                    edge_index=edge_index,
-                    edge_attr=edge_attrs,
-                    y=y,
+                action_graph  = Data(
+                    x=action_feats,
+                    edge_index=action_edge_index,
+                    edge_attr=action_edge_attrs,
+                    y=action_pos,
                     time=torch.tensor([idx], dtype=torch.long)/ episode_length,
-                    pos=pos
+                    pos=action_pos
                 )
+                obs_graph = Data(
+                    x=obs_feats,
+                    edge_index=obs_edge_index,
+                    edge_attr=obs_edge_attrs,
+                    time=torch.tensor([idx], dtype=torch.long)/ episode_length,
+                    pos=obs_pos
+                )
+
+                data = HeteroData()
+                data["action"] = action_graph
+                data["observation"] = obs_graph
 
                 torch.save(data, osp.join(self.processed_dir, f'data_{idx_global}.pt'))
                 idx_global += 1

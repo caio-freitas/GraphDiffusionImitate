@@ -73,7 +73,7 @@ class EGNNPolicy(BasePolicy):
                             x=y[:,-1,:3].to(self.device).float(),
         )
         pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-        return pred[:9,:,0].T.detach().cpu().numpy() # return joint values only
+        return pred[0,:,:7].detach().cpu().numpy() # return joint values only
 
     def validate(self, dataset, model_path):
         '''
@@ -118,7 +118,7 @@ class EGNNPolicy(BasePolicy):
         )
 
         loss_fn = nn.MSELoss()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=1e-6)
         # LR scheduler with warmup
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.8)
         # visualize data in batch
@@ -140,7 +140,7 @@ class EGNNPolicy(BasePolicy):
                                           x=nbatch.y[:,-1,:3].to(self.device).float(),
                         )
                         pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-                        loss = loss_fn(pred, action)
+                        loss = loss_fn(pred[:,:,0], action[:,:,0])
                         # loss_x = loss_fn(x, nbatch.pos[:,:3].to(self.device).float())
                         loss.backward()
                         optimizer.step()
@@ -149,11 +149,11 @@ class EGNNPolicy(BasePolicy):
 
                         pbar.set_postfix({"loss": loss.item()})
                         wandb.log({"loss": loss.item()})    
-
+                        # save model
+                        torch.save(self.model.state_dict(), model_path)
                 self.global_epoch += 1
                 wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
 
-                # save model
                 torch.save(self.model.state_dict(), model_path)
                 pbar.set_description(f"Epoch: {self.global_epoch}, Loss: {loss.item()}")
 

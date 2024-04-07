@@ -3,7 +3,7 @@ import os
 from scipy.spatial.transform import Rotation as R
 
 
-from torch_robotics.torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
+from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
 
 def to_numpy(x):
     return x.detach().cpu().numpy()

@@ -61,7 +61,7 @@ class RobomimicGraphWrapper(gym.Env):
         '''
         self.object_state_sizes = object_state_sizes
         self.object_state_keys = object_state_keys
-        self.node_feature_dim = 10 if control_mode == "OSC_POSE" else node_feature_dim
+        self.node_feature_dim = 8 if control_mode == "OSC_POSE" else node_feature_dim
         self.control_mode = control_mode
         controller_config = load_controller_config(default_controller=self.control_mode)
         # override default controller config with user-specified values
@@ -186,7 +186,8 @@ class RobomimicGraphWrapper(gym.Env):
         node_feats = []
         for i in range(len(self.robots)):
             if self.control_mode == "OSC_POSE":
-                node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_6d_rot"])], dim=0).unsqueeze(0))
+                # node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_6d_rot"])], dim=0).unsqueeze(0))
+                node_feats.append(torch.zeros((1,7)))
             elif self.control_mode == "JOINT_VELOCITY":
                 node_feats.append(torch.tensor([*data[f"robot{i}_joint_vel"], *data[f"robot{i}_gripper_qvel"]]).reshape(1,-1).T)
             elif self.control_mode == "JOINT_POSITION":
@@ -301,14 +302,7 @@ class RobomimicGraphWrapper(gym.Env):
     def step(self, action):
         final_action = []
         if self.control_mode == "OSC_POSE":
-            for i in range(len(self.robots)):
-                j = i*9
-                robot_joint_pos = action[j:j + 3]
-                robot_joint_6d_rot = action[j + 3:j + 9]
-                # convert 6d rotation to quaternion
-                robot_joint_quat = self.rotation_transformer.inverse(robot_joint_6d_rot)
-                final_action.extend([*robot_joint_pos, *robot_joint_quat])
-            obs, reward, done, _, info = self.env.step(final_action)
+            obs, reward, done, _, info = self.env.step(action)
             return self._robosuite_obs_to_robomimic_graph(obs), reward, done, info
 
         for i in range(len(self.robots)):
