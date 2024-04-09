@@ -46,6 +46,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.mode = mode
 
+        self.lr_scheduler = None
+        self.num_epochs = None
+
         if ckpt_path is not None:
             self.load_nets(ckpt_path)
         self.playback_count = 0 # for testing purposes, remove before merge
@@ -183,7 +186,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
-            
+        if self.num_epochs is None:
+            log.warn(f"Global num_epochs not set. Using {num_epochs}.")
+            self.num_epochs = num_epochs
         try:
             self.load_nets(model_path)
         except:
@@ -192,13 +197,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.model.train()
 
         dataloader = torch_geometric.data.DataLoader(dataset, batch_size=1, shuffle=True)
-
-        scheduler = get_scheduler(
-            name='cosine',
-            optimizer=self.optimizer,
-            num_warmup_steps=500,
-            num_training_steps=len(dataloader) * num_epochs
-        )
+        if self.lr_scheduler is None:
+        # Cosine LR schedule with linear warmup
+            self.lr_scheduler = get_scheduler(
+                name='cosine',
+                optimizer=self.optimizer,
+                num_warmup_steps=50,
+                num_training_steps=len(dataloader) * self.num_epochs
+            )
 
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:
@@ -240,9 +246,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         # update weights
                         self.optimizer.step()
                         self.optimizer.zero_grad()
-                        scheduler.step()
+                        self.lr_scheduler.step()
                         self.save_nets(model_path)
-                        wandb.log({"graph_loss": acc_loss, "lr": scheduler.get_last_lr()[0]})
+                        wandb.log({"graph_loss": acc_loss, "lr": self.lr_scheduler.get_last_lr()[0]})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):

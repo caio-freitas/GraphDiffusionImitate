@@ -72,6 +72,11 @@ def train(cfg: DictConfig) -> None:
         assert V <= E, "Validation interval should be smaller than evaluation interval"
         assert E % V == 0, "Evaluation interval should be multiple of validation interval"
     
+    try:
+        policy.num_epochs = cfg.num_epochs
+    except:
+        log.error("Error setting total num_epochs in policy")
+
      # evaluate every E epochs
     for i in range(1, 1 + cfg.num_epochs // V):
         # train policy
