@@ -68,6 +68,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         )
         self.noise_addition_std = noise_addition_std
         
+        self.lr_scheduler = None
+        self.optimizer = None
+        self.num_epochs = None
 
         self.load_nets(self.ckpt_path)
         self.global_epoch = 0
@@ -240,6 +243,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         Resulting in the self.ema_noise_pred_net object.
         '''
         log.info('Training noise prediction network.')
+
+        if self.num_epochs is None:
+            log.warn(f"Global num_epochs not set. Using {num_epochs}.")
+            self.num_epochs = num_epochs
         
         # set seed
         torch.manual_seed(seed)
@@ -259,17 +266,18 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         # Standard ADAM optimizer
         # Note that EMA parameters are not optimized
         self.noise_pred_net.to(self.device)
-        optimizer = torch.optim.AdamW(
-            params=self.noise_pred_net.parameters(),
-            lr=self.lr, weight_decay=1e-6)
-
+        if self.optimizer is None:
+            self.optimizer = torch.optim.AdamW(
+                params=self.noise_pred_net.parameters(),
+                lr=self.lr, weight_decay=1e-6)
+        if self.lr_scheduler is None:
         # Cosine LR schedule with linear warmup
-        lr_scheduler = get_scheduler(
-            name='cosine',
-            optimizer=optimizer,
-            num_warmup_steps=500,
-            num_training_steps=len(dataloader) * num_epochs
-        )
+            self.lr_scheduler = get_scheduler(
+                name='cosine',
+                optimizer=self.optimizer,
+                num_warmup_steps=500,
+                num_training_steps=len(dataloader) * self.num_epochs
+            )
 
         with tqdm(range(num_epochs), desc='Epoch') as tglobal:
             # epoch loop
@@ -333,16 +341,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)
-                        wandb.log({'noise_pred_loss': loss, 'lr': lr_scheduler.get_last_lr()[0]})
+                        wandb.log({'noise_pred_loss': loss, 'lr': self.lr_scheduler.get_last_lr()[0]})
 
                         # optimize
                         loss.backward()
-                        optimizer.step()
-                        optimizer.zero_grad()
+                        self.optimizer.step()
+                        self.optimizer.zero_grad()
 
                         # step lr scheduler every batch
                         # this is different from standard pytorch behavior
-                        lr_scheduler.step()
+                        self.lr_scheduler.step()
 
                         ema.step(self.noise_pred_net.parameters())
 
