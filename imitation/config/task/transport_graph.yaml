@@ -47,6 +47,13 @@ base_link_rotation:
   - [0.707107, 0, 0, 0.707107]
   - [0.707107, 0, 0, -0.707107]
 
+base_link_shift: 
+  - [0.0, -0.81, 0.912]
+  - [0.0,  0.81, 0.912]
+base_link_rotation: 
+  - [0.707107, 0, 0, 0.707107]
+  - [0.707107, 0, 0, -0.707107]
+
 env_runner: 
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
   output_dir: ${output_dir}
@@ -79,6 +86,7 @@ dataset:
   obs_horizon: ${obs_horizon}
   object_state_sizes: *object_state_sizes
   object_state_keys: *object_state_keys
+  robots: *robots
   control_mode: ${task.control_mode}
   base_link_shift: ${task.base_link_shift}
   base_link_rotation: ${task.base_link_rotation}

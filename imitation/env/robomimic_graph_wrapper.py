@@ -61,7 +61,7 @@ class RobomimicGraphWrapper(gym.Env):
         '''
         self.object_state_sizes = object_state_sizes
         self.object_state_keys = object_state_keys
-        self.node_feature_dim = node_feature_dim
+        self.node_feature_dim = 8 if control_mode == "OSC_POSE" else node_feature_dim
         self.control_mode = control_mode
         controller_config = load_controller_config(default_controller=self.control_mode)
         # override default controller config with user-specified values
@@ -92,7 +92,7 @@ class RobomimicGraphWrapper(gym.Env):
         self.observation_space = self.env.observation_space
         self.num_objects = len(object_state_keys)
 
-        self.NUM_GRAPH_NODES = self.num_robots*9 + self.num_objects # TODO add multi-robot support
+        self.NUM_GRAPH_NODES = 1 + self.num_objects if self.control_mode == "OSC_POSE" else self.num_robots*9 + self.num_objects
         self.BASE_LINK_SHIFT = base_link_shift
         self.BASE_LINK_ROTATION = base_link_rotation
         self.ROBOT_NODE_TYPE = 1
@@ -160,16 +160,19 @@ class RobomimicGraphWrapper(gym.Env):
     def _get_node_pos(self, data):
         node_pos = []
         for i in range(self.num_robots):
-            node_pos_robot = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"], *data[f"robot{i}_gripper_qpos"]])
-            rotation_matrix = R.from_quat(self.BASE_LINK_ROTATION[i])
-            node_pos_robot[:,:3] = torch.matmul(node_pos_robot[:,:3], torch.tensor(rotation_matrix.as_matrix()))
-            node_pos_robot[:,3:] = torch.tensor((R.from_quat(node_pos_robot[:,3:].detach().numpy()) * rotation_matrix).as_quat())
-            # add base link shift
-            node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
+            if self.control_mode == "OSC_POSE":
+                node_pos_robot = torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_6d_rot"])], dim=0).unsqueeze(0)
+            else:   
+                node_pos_robot = calculate_panda_joints_positions([*data[f"robot{i}_joint_pos"], *data[f"robot{i}_gripper_qpos"]])
+                rotation_matrix = R.from_quat(self.BASE_LINK_ROTATION[i])
+                node_pos_robot[:,:3] = torch.matmul(node_pos_robot[:,:3], torch.tensor(rotation_matrix.as_matrix()))
+                node_pos_robot[:,3:] = torch.tensor((R.from_quat(node_pos_robot[:,3:].detach().numpy()) * rotation_matrix).as_quat())
+                # add base link shift
+                node_pos_robot[:,:3] += torch.tensor(self.BASE_LINK_SHIFT[i])
+                # use rotation transformer to convert quaternion to 6d rotation
+                node_pos_robot = torch.cat([node_pos_robot[:,:3], self.rotation_transformer.forward(node_pos_robot[:,3:])], dim=1)
             node_pos.append(node_pos_robot)
         node_pos = torch.cat(node_pos, dim=0)
-        # use rotation transformer to convert quaternion to 6d rotation
-        node_pos = torch.cat([node_pos[:,:3], self.rotation_transformer.forward(node_pos[:,3:])], dim=1)
         obj_pos_tensor = self._get_object_pos(data)
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
@@ -181,9 +184,10 @@ class RobomimicGraphWrapper(gym.Env):
         Returns node features from data
         '''
         node_feats = []
-        for i in range(self.num_robots):
+        for i in range(len(self.robots)):
             if self.control_mode == "OSC_POSE":
-                node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_quat"])], dim=0).reshape(1, -1)) # add dimension
+                # node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_6d_rot"])], dim=0).unsqueeze(0))
+                node_feats.append(torch.zeros((1,7)))
             elif self.control_mode == "JOINT_VELOCITY":
                 node_feats.append(torch.tensor([*data[f"robot{i}_joint_vel"], *data[f"robot{i}_gripper_qvel"]]).reshape(1,-1).T)
             elif self.control_mode == "JOINT_POSITION":
@@ -260,7 +264,7 @@ class RobomimicGraphWrapper(gym.Env):
                 f"robot{i}_joint_pos": robot_joint_pos,
                 f"robot{i}_joint_vel": robot_joint_vel,
                 f"robot{i}_eef_pos": eef_pose,
-                f"robot{i}_eef_quat": eef_6d,
+                f"robot{i}_eef_6d_rot": eef_6d,
                 f"robot{i}_gripper_qpos": gripper_pose,
                 f"robot{i}_gripper_qvel": gripper_vel
             })
@@ -297,7 +301,11 @@ class RobomimicGraphWrapper(gym.Env):
 
     def step(self, action):
         final_action = []
-        for i in range(self.num_robots):
+        if self.control_mode == "OSC_POSE":
+            obs, reward, done, _, info = self.env.step(action)
+            return self._robosuite_obs_to_robomimic_graph(obs), reward, done, info
+
+        for i in range(len(self.robots)):
             '''
             Robosuite's action space is composed of 7 joint velocities and 1 gripper velocity, while 
             in the robomimic datasets, it's composed of 7 joint velocities and 2 gripper velocities (for each "finger").

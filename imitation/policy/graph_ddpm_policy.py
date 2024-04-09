@@ -10,6 +10,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.training_utils import EMAModel
 import wandb
+from torch_geometric.data import Batch
 
 from imitation.policy.base_policy import BasePolicy
 
@@ -100,6 +101,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.playback_count += 7
         log.info(f"Playing back observation {self.playback_count}")
         return obs_cond, playback_graph
+    
     def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         # transform deques to numpy arrays
@@ -133,9 +135,13 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
                     x_coord = nobs[:,-1,:3],
-                    cond = nobs[:,:,3:],
+                    cond = nobs[-2:,:,3:], # only end-effector and object
                     timesteps = torch.tensor([k], dtype=torch.long, device=self.device),
-                    batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
+                    batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device),
+                    batch_cond = torch.zeros(nobs[-2:,:,3:].shape[0], dtype=torch.long, device=self.device),
+                    edge_index_cond = torch.tensor([[0,1],[1,0]], dtype=torch.long, device=self.device),
+                    edge_attr_cond = torch.ones(2, 1, device=self.device),
+                    x_coord_cond = nobs[-2:,-1,3:]
                 )
 
                 # inverse diffusion step (remove noise)
@@ -182,7 +188,14 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                 # observation as FiLM conditioning
                 # (B, node, obs_horizon, obs_dim)
-                obs_cond = nobs[:,:,3:]
+                obs_cond = nobs[:,:,3:] # only 6D rotation
+                # filter only 2 last nodes of each graph by batch.ptr
+                obs_cond = torch.cat([obs_cond[batch.ptr[i+1]-2:batch.ptr[i+1]] for i in range(B)], dim=0)
+                batch_cond = torch.cat([batch.batch[batch.ptr[i+1]-2:batch.ptr[i+1]] for i in range(B)], dim=0)
+                x_coord_cond = torch.cat([batch.y[batch.ptr[i+1]-2:batch.ptr[i+1],-1,:3] for i in range(B)], dim=0)
+                edge_index_cond = torch.tensor([[[2*i,2*i+1],[2*i+1,2*i]] for i in range(batch_cond.shape[0] // 2)], dtype=torch.long, device=self.device)
+                edge_index_cond = edge_index_cond.flatten(end_dim=1).T
+                edge_attr_cond = torch.ones(edge_index_cond.shape[1], 1, device=self.device)
                 # (B, obs_horizon * obs_dim)
                 obs_cond = obs_cond.flatten(start_dim=1)
 
@@ -215,14 +228,18 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 noise = noise.flatten(end_dim=1)
 
                 # predict the noise residual
-                noise_pred, x = self.ema_noise_pred_net(
+                noise_pred, x = self.noise_pred_net(
                     noisy_actions, 
                     batch.edge_index, 
                     batch.edge_attr, 
                     x_coord = batch.y[:,-1,:3], 
                     cond=obs_cond,
                     timesteps=timesteps,
-                    batch=batch.batch)
+                    batch=batch.batch,
+                    batch_cond=batch_cond,
+                    edge_index_cond=edge_index_cond,
+                    edge_attr_cond=edge_attr_cond,
+                    x_coord_cond=x_coord_cond)
                 
                 # L2 loss
                 loss = nn.functional.mse_loss(noise_pred, noise)
@@ -267,7 +284,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         lr_scheduler = get_scheduler(
             name='cosine',
             optimizer=optimizer,
-            num_warmup_steps=500,
+            num_warmup_steps=5,
             num_training_steps=len(dataloader) * num_epochs
         )
 
@@ -283,12 +300,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
                             # normalize action
                             naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
-                        naction = naction[:,:,:1]
+                        else:
+                            nobs_batch = Batch().from_data_list(batch["observation"])
+                            naction_batch = Batch().from_data_list(batch["action"])
+                        naction = naction_batch.x[:,:,:1]
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
-                        obs_cond = nobs[:,:,3:] # only 6D rotation
+                        obs_cond = nobs_batch.x[:,:,3:] # only 6D rotation
+                        
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=1)
 
@@ -302,12 +323,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         # (this is the forward diffusion process)
                         # split naction into (B, N_nodes, pred_horizon, node_feature_dim), selecting the items from each batch.batch
 
-                        naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
+                        naction = torch.cat([naction[naction_batch.batch == i].unsqueeze(0) for i in naction_batch.batch.unique()], dim=0)
 
                         # add noise to first action instead of sampling from Gaussian
                         noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1).float() + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
-
-                        noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
@@ -324,12 +343,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         # predict the noise residual
                         noise_pred, x = self.noise_pred_net(
                             noisy_actions, 
-                            batch.edge_index, 
-                            batch.edge_attr, 
-                            x_coord = batch.y[:,-1,:3], 
+                            naction_batch.edge_index, 
+                            naction_batch.edge_attr, 
+                            x_coord = naction_batch.pos[:,:3], 
                             cond=obs_cond,
                             timesteps=timesteps,
-                            batch=batch.batch)
+                            batch=naction_batch.batch,
+                            batch_cond=nobs_batch.batch,
+                            edge_index_cond=nobs_batch.edge_index,
+                            edge_attr_cond=nobs_batch.edge_attr,
+                            x_coord_cond=nobs_batch.pos[:,:3])
 
                         # L2 loss
                         loss = nn.functional.mse_loss(noise_pred, noise)

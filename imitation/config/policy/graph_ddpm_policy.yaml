@@ -1,8 +1,6 @@
 _target_: imitation.policy.graph_ddpm_policy.GraphConditionalDDPMPolicy
-
 obs_dim: ${task.obs_dim}
-action_dim: ${task.action_dim}
-
+action_dim: 1 #${eval:'1 if ${task.control_mode} == "OSC_POSE" else ${task.action_dim}'}
 node_feature_dim: 1 # from [joint_val, node_flag]
 num_edge_types: 2 # robot joints, object-robot
 pred_horizon: ${pred_horizon}
@@ -24,4 +22,4 @@ ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_typ
 lr: 5e-5
 batch_size: 32
 noise_addition_std: 0.1
-use_normalization: True
+use_normalization: False
