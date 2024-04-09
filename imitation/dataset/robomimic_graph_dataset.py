@@ -26,11 +26,12 @@ class RobomimicGraphDataset(InMemoryDataset):
                  pred_horizon=1,
                  obs_horizon=1,
                  node_feature_dim = 2, # joint value and node type flag
-                 control_mode="JOINT_VELOCITY",
+                 control_mode="JOINT_POSITION",
+                 obs_mode="JOINT_POSITION",
                  base_link_shift=[0.0, 0.0, 0.0],
                  base_link_rotation=[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0]]):
         self.control_mode           : str = control_mode
-        self.obs_mode               : str = "OSC_POSE"
+        self.obs_mode               : str = obs_mode
         self.robots                 : List = robots
         self.num_robots             : int = len(self.robots)
         self.node_feature_dim       : int = 8 if control_mode == "OSC_POSE" else node_feature_dim
@@ -65,8 +66,7 @@ class RobomimicGraphDataset(InMemoryDataset):
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
         self.stats = {}
-        self.stats["y"] = self.get_data_stats("y")
-        self.stats["x"] = self.get_data_stats("x")
+        self.stats = self.get_data_stats()
 
         self.constant_stats = {
             "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
@@ -134,13 +134,13 @@ class RobomimicGraphDataset(InMemoryDataset):
         elif self.control_mode == "JOINT_POSITION":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
-                                torch.tensor(data[f"robot{i}_joint_pos"][t_vals]),
-                                torch.tensor(data[f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
+                                torch.tensor(data["obs"][f"robot{i}_joint_pos"][t_vals]),
+                                torch.tensor(data["obs"][f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
         elif self.control_mode == "JOINT_VELOCITY":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
-                                torch.tensor(data[f"robot{i}_joint_vel"][t_vals]),
-                                torch.tensor(data[f"robot{i}_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2))
+                                torch.tensor(data["obs"][f"robot{i}_joint_vel"][t_vals]),
+                                torch.tensor(data["obs"][f"robot{i}_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2))
         node_feats = torch.cat(node_feats, dim=0) # [num_robots*num_joints, T, 1]
 
         return node_feats
@@ -273,19 +273,21 @@ class RobomimicGraphDataset(InMemoryDataset):
         data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
         return data
     
-    def get_data_stats(self, key):
+    def get_data_stats(self):
         '''
         Returns min and max of data
         Used for normalizing data 
         '''
-        data = []
-        for idx in range(self.len()):
-            data.append(torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))[key])
-        data = torch.cat(data, dim=1)
-        return {
-            "min": torch.min(data, dim=1).values,
-            "max": torch.max(data, dim=1).values
-        }
+        stats = {}
+        for key in "action", "observation":
+            data = []
+            for idx in range(self.len()):
+                data.append(torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))[key].x)
+            data = torch.cat(data, dim=1)
+            stats[key] = {
+                "min": torch.min(data, dim=1).values,
+                "max": torch.max(data, dim=1).values
+            }
     
     def normalize_data(self, data, stats_key, batch_size=1):
         # avoid division by zero by skipping normalization

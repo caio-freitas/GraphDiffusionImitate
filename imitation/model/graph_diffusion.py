@@ -360,6 +360,7 @@ class ConditionalGraphNoisePred(nn.Module):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
+        edge_attr_cond = edge_attr_cond.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         cond = cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
@@ -375,7 +376,8 @@ class ConditionalGraphNoisePred(nn.Module):
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
 
         edge_index, edge_attr = add_self_loops(edge_index, edge_attr, num_nodes=x.shape[0], fill_value=self.FILL_VALUE)
-
+        edge_index_cond, edge_attr_cond = add_self_loops(edge_index_cond, edge_attr_cond, num_nodes=x.shape[0], fill_value=self.FILL_VALUE)
+        
         h_v = self.node_embedding(x)
 
         h_v = torch.cat([h_v, timesteps_embed], dim=-1)
