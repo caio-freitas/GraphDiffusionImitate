@@ -11,6 +11,8 @@ from omegaconf import DictConfig, OmegaConf
 
 import wandb
 
+from imitation.env.robomimic_lowdim_wrapper import RobomimicLowdimWrapper # fix segfault when loading runner
+
 log = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)

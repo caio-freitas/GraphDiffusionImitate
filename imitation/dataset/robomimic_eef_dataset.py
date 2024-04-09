@@ -8,12 +8,9 @@ import logging
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 
 
-from diffusion_policy.model.common.rotation_transformer import RotationTransformer
-
-
 log = logging.getLogger(__name__)
 
-class RobomimicLowdimDataset(torch.utils.data.Dataset):
+class RobomimicEefDataset(torch.utils.data.Dataset):
     '''
     Dataset class for SE2 task (and robomimic), with structure from robomimic.
     https://robomimic.github.io/docs/datasets/overview.html
@@ -21,7 +18,6 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
     def __init__(self, 
                  dataset_path,
                  obs_keys,
-                 action_keys,
                  pred_horizon=1,
                  obs_horizon=1,
                  action_horizon=1):
@@ -32,16 +28,11 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         self.dataset_path = dataset_path
         self.dataset_root = h5py.File(dataset_path, 'r')
         self.dataset_keys = list(self.dataset_root["data"].keys())
-        self.rotation_transformer = RotationTransformer(
-            from_rep="quaternion",
-            to_rep="rotation_6d"
-        )
         try:
            self.dataset_keys.remove("mask")
         except:
               pass
         self.obs_keys = obs_keys
-        self.action_keys = action_keys
         self.indices = []
         self.data_at_indices = []
         # if indices file exists, load it
@@ -93,21 +84,11 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                 self.indices.append(idx_global + idx)
                 data_obs_keys = []
                 for obs_key in self.obs_keys:
-                    obs = self.dataset_root[f"data/{key}/obs/{obs_key}"][idx - self.obs_horizon:idx, :]
-                    if "quat" in obs_key:
-                        obs = self.rotation_transformer.forward(obs)
-                    data_obs_keys.append(obs)
-                data_action_keys = []
-                for action_key in self.action_keys:
-                    action = self.dataset_root[f"data/{key}/obs/{action_key}"][idx:idx+self.pred_horizon, :]
-                    if "quat" in action_key:
-                        action = self.rotation_transformer.forward(action)
-                    data_action_keys.append(action)
+                    data_obs_keys.append(self.dataset_root[f"data/{key}/obs/{obs_key}"][idx - self.obs_horizon:idx, :])
                 data_obs_keys = np.concatenate(data_obs_keys, axis=-1)
-                data_action_keys = np.concatenate(data_action_keys, axis=-1)
                 self.data_at_indices.append({
                     "obs": data_obs_keys,
-                    "action": data_action_keys
+                    "action": self.dataset_root[f"data/{key}/actions"][idx:idx+self.pred_horizon, :] # OSC_POSE actions
                 })
             idx_global += episode_length
         self.indices = np.array(self.indices)

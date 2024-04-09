@@ -11,6 +11,8 @@ import wandb
 import torch_geometric
 from imitation.utils.graph_diffusion import NodeMasker
 
+from diffusers.optimization import get_scheduler
+
 import logging
 
 log = logging.getLogger(__name__)
@@ -19,12 +21,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
     def __init__(self,
                  dataset,
                  node_feature_dim,
+                 action_dim,
                  num_edge_types,
                  denoising_network,
                  lr=1e-4,
                  ckpt_path=None,
                  device = None,
-                 mode = 'joint-space'):
+                 mode = 'joint-space',
+                 use_normalization = False,):
         super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -32,15 +36,14 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             self.device = device
         self.dataset = dataset
         self.node_feature_dim = node_feature_dim
+        self.action_dim = action_dim
         self.num_edge_types = num_edge_types
         self.model = denoising_network
-        # no need for diffusion ordering network
-
+        self.use_normalization = use_normalization
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=200, factor=0.5, verbose=True, min_lr=lr/20)
         self.mode = mode
 
         if ckpt_path is not None:
@@ -128,31 +131,87 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         return lambda_joint_values * loss_joint_values # + lambda_joint_pos * loss_joint_pos
 
 
+    def validate(self, dataset, model_path=None):
+        '''
+        Calculate validation loss for noise prediction model in the given dataset
+        '''
+        self.load_nets(model_path)
+        self.model.eval()
 
+        with torch.no_grad():
+            total_loss = 0
+            with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
+                for nbatch in tbatch:
+                    graph = self.preprocess(nbatch)
+                    if self.use_normalization:
+                        graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+                        graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
+                    # remove object nodes
+                    for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
+                        graph = self.masker.remove_node(graph, obj_node)
+                    graph = self.masker.idxify(graph)
+                    diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
+                    # predictions & loss
+                    G_0 = diffusion_trajectory[0].to(self.device)
+                    node_order = self.node_decay_ordering(G_0.x.shape[0])
+                    acc_loss = 0
+                    for t in range(len(node_order)):
+                        G_pred = diffusion_trajectory[t+1].clone().to(self.device)
+                        # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
+                        joint_values, pos = self.model(G_pred.x,
+                                                       G_pred.edge_index,
+                                                       G_pred.edge_attr,
+                                                       x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3],
+                                                       cond=G_0.y[:,:,3:].float())
+                        
+                        # calculate loss
+                        loss = self.loss_fcn(pred_feats=joint_values,
+                                             pred_pos=pos,
+                                             target_feats=G_0.x[node_order[t],:,:].float(),
+                                             target_pos=G_0.pos[:G_pred.x.shape[0],:3].float())
+                        acc_loss += loss.item()
+                    total_loss += acc_loss
+            return total_loss / len(dataset)
         
 
     def train(self, dataset, num_epochs=100, model_path=None, seed=0):
         '''
         Train noise prediction model
         '''
+
+        # set seed
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            
         try:
             self.load_nets(model_path)
         except:
             pass
         self.optimizer.zero_grad()
         self.model.train()
-        batch_size = 1
+
+        dataloader = torch_geometric.data.DataLoader(dataset, batch_size=1, shuffle=True)
+
+        scheduler = get_scheduler(
+            name='cosine',
+            optimizer=self.optimizer,
+            num_warmup_steps=500,
+            num_training_steps=len(dataloader) * num_epochs
+        )
 
         with tqdm(range(num_epochs), desc='Epoch', leave=False) as tepoch:
             for epoch in tepoch:
-                batch_i = 0
                 # batch loop
-                with tqdm(dataset, desc='Batch', leave=False) as tepoch:
+                with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for nbatch in tepoch:
                         # preprocess graph
                         graph = self.preprocess(nbatch)
-                        # remove object nodes
-                        for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
+                        if self.use_normalization:
+                            graph.x = self.dataset.normalize_data(graph.x, stats_key="x")
+                            graph.y = self.dataset.normalize_data(graph.y, stats_key="y")
+                        # remove object nodes. Last nodes first, to avoid index errors
+                        for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                             graph = self.masker.remove_node(graph, obj_node)
                         graph = self.masker.idxify(graph)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
@@ -178,14 +237,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
                             loss.backward()
-                        batch_i += 1
                         # update weights
-                        if batch_i % batch_size == 0:
-                            self.optimizer.step()
-                            self.optimizer.zero_grad()
-                            self.scheduler.step(acc_loss)
-                            self.save_nets(model_path)
-                            wandb.log({"batch_loss": acc_loss, "learning_rate": self.optimizer.param_groups[0]['lr']})
+                        self.optimizer.step()
+                        self.optimizer.zero_grad()
+                        scheduler.step()
+                        self.save_nets(model_path)
+                        wandb.log({"graph_loss": acc_loss, "lr": scheduler.get_last_lr()[0]})
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
@@ -197,7 +254,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - end-effector: raise NotImplementedError
         '''
         if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:9,:,0].T # all (joint-representing) nodes, all timesteps, first value
+            return x[:self.action_dim,:,0].T # all (joint-representing) nodes, all timesteps, first value
         elif self.mode == 'end-effector':
             raise NotImplementedError
         else:
@@ -231,6 +288,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             pos.append(obs_deque[i].pos)
         obs_cond = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
+        if self.use_normalization:
+            obs_cond = self.dataset.normalize_data(obs_cond, stats_key="y")
         return obs_cond, edge_index, edge_attr, obs_pos
 
     def MOCK_get_graph_from_obs(self, obs_deque): # for testing purposes, remove before merge
@@ -244,18 +303,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.playback_count += 1
         log.debug(f"Playing back observation {self.playback_count}")
         return obs_cond, edge_index, edge_attr, obs_pos
-
-
-    def pos_from_pos_diffs(self, pos_diffs, edge_index):
-        '''
-        Calculate absolute positions from position differences between nodes
-        pos_diffs: [n_edges, 7]
-        edge_index: [2, n_edges]
-        '''
-        pos = torch.zeros((edge_index.max() + 1, 7))
-        for i in range(edge_index.max() + 1):
-            pos[i,:3] = pos_diffs[torch.logical_and(edge_index[1,:] == i, edge_index[0,:] == 0),:3]
-        return pos
 
 
     def get_action(self, obs):
@@ -272,7 +319,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
 
-
+        if self.use_normalization:
+            obs_cond = self.dataset.normalize_data(obs_cond, stats_key="y")
 
         for x_i in range(obs[0].x.shape[0] - 1): # number of nodes in action graph TODO remove objects
             action = self.preprocess(action)
@@ -287,10 +335,12 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action
             action.edge_attr = self._lookup_edge_attr(edge_index, edge_attr, action.edge_index)
-            if x_i == obs[0].x.shape[0] - 1 - 1: # TODO remove objects
+            if x_i == obs[0].x.shape[0] - 1:
                 break
             action = self.masker.add_masked_node(action)
             
+        if self.use_normalization:
+            action.x = self.dataset.unnormalize_data(action.x, stats_key="x")
         joint_values_t = self.get_joint_values(action.x.detach().cpu().numpy())
 
         return joint_values_t

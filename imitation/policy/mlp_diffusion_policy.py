@@ -143,6 +143,12 @@ class MLPDiffusionUnet1DPolicy(BasePolicy):
         # action here is an array with length action_horizon
         return action_pred
 
+    def validate(self, dataset=None, model_path=None):
+        '''
+        Calculate validation loss for noise prediction model in the given dataset
+        '''
+        return None
+
     def train(self, 
               dataset=None, 
               num_epochs=100,
