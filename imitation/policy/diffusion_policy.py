@@ -163,12 +163,6 @@ class DiffusionUnet1DPolicy(BasePolicy):
         # (action_horizon, action_dim)
         return action
 
-    def validate(self, dataset=None, model_path=None):
-        '''
-        Calculate validation loss for noise prediction model in the given dataset
-        '''
-        return None
-
     def train(self, 
               dataset=None, 
               num_epochs=100,
