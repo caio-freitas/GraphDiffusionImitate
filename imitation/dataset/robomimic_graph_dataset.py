@@ -81,7 +81,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
-    # @lru_cache(maxsize=None)
+    @lru_cache(maxsize=None)
     def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint values
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
         obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
