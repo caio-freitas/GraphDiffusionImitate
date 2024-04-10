@@ -105,7 +105,7 @@ class RobomimicLowdimWrapper(gym.Env):
         
 
     def reset(self):
-        obs, _ =  self.env.reset()
+        obs =  self.env.reset()
         return self._robosuite_obs_to_robomimic_obs(obs)
     
 
