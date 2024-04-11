@@ -80,12 +80,14 @@ class RobomimicEnvRunner(BaseRunner):
                     if self.output_video:
                         self.end_video()
                     return rewards, info
-                obs, reward, done, info = self.env.step(action)
+                try:
+                    obs, reward, done, info = self.env.step(action)
+                except Exception as e:
+                    print(e)
                 self.obs_deque.append(obs)
                 
                 if self.render:
                     self.env.render()
-                    # time.sleep(1/self.fps) # TODO properly fix the rendering speed or not
 
                 if self.output_video:
                     # We need to directly grab full observations so we can get image data
