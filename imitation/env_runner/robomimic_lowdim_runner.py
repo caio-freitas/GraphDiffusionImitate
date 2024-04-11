@@ -57,8 +57,9 @@ class RobomimicEnvRunner(BaseRunner):
         self.obs_deque = collections.deque(
             [self.obs] * self.obs_horizon, maxlen=self.obs_horizon)
 
-    def run(self, agent: BaseAgent, n_steps: int = 500) -> Dict:
+    def run(self, agent: BaseAgent, n_steps: int = 100) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
+        self.reset()
         if self.output_video:
             self.start_video()
         done = False
@@ -80,10 +81,8 @@ class RobomimicEnvRunner(BaseRunner):
                     if self.output_video:
                         self.end_video()
                     return rewards, info
-                try:
-                    obs, reward, done, info = self.env.step(action)
-                except Exception as e:
-                    print(e)
+                
+                obs, reward, done, info = self.env.step(action)
                 self.obs_deque.append(obs)
                 
                 if self.render:
