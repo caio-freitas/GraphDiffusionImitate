@@ -269,7 +269,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         if self.optimizer is None:
             self.optimizer = torch.optim.AdamW(
                 params=self.noise_pred_net.parameters(),
-                lr=self.lr, weight_decay=1e-6)
+                lr=self.lr, 
+                weight_decay=1e-6,
+                betas=[0.95, 0.999],
+                eps=1e-8)
+            
         if self.lr_scheduler is None:
         # Cosine LR schedule with linear warmup
             self.lr_scheduler = get_scheduler(
