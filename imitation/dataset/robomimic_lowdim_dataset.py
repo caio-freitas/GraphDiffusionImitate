@@ -85,9 +85,10 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                           |------------ pred_horizon -------------|
         '''
         idx_global = 0
+        n_latency_steps = -1
         for key in tqdm(self.dataset_keys):
             episode_length = len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"])
-            for idx in range(episode_length - self.pred_horizon):
+            for idx in range(episode_length - self.pred_horizon + n_latency_steps):
                 if idx - self.obs_horizon < 0:
                     continue
                 self.indices.append(idx_global + idx)
@@ -99,7 +100,7 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                     data_obs_keys.append(obs)
                 data_action_keys = []
                 for action_key in self.action_keys:
-                    action = self.dataset_root[f"data/{key}/obs/{action_key}"][idx:idx+self.pred_horizon, :]
+                    action = self.dataset_root[f"data/{key}/obs/{action_key}"][idx + n_latency_steps:idx + n_latency_steps + self.pred_horizon, :]
                     if "quat" in action_key:
                         action = self.rotation_transformer.forward(action)
                     data_action_keys.append(action)
