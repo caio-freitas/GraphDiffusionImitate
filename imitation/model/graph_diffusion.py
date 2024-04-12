@@ -61,7 +61,7 @@ class EGraphConditionEncoder(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
-        self.graph_encoder = EGNN(
+        self.egnn = EGNN(
             in_node_nf=input_dim, 
             out_node_nf=hidden_dim,
             hidden_nf=hidden_dim,
@@ -78,7 +78,7 @@ class EGraphConditionEncoder(nn.Module):
         edge_index = edge_index.to(self.device)
         batch = batch.long().to(self.device) if batch is not None else torch.zeros(x.shape[0], dtype=torch.long).to(self.device)
 
-        h_v, x = self.graph_encoder(x, coord, edge_index, edge_attr)
+        h_v, x = self.egnn(x, coord, edge_index, edge_attr)
         g_v = self.pool(h_v,batch=batch)
         h_v = self.fc(g_v)
         return h_v
@@ -183,6 +183,7 @@ class ConditionalARGDenoising(nn.Module):
 class ConditionalGraphNoisePred(nn.Module):
     def __init__(self,
                 node_feature_dim,
+                cond_feature_dim,
                 obs_horizon,
                 pred_horizon,
                 edge_feature_dim,
@@ -204,7 +205,7 @@ class ConditionalGraphNoisePred(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.cond_feature_dim = 6 # 6D rotation only, since positions are x_coord
+        self.cond_feature_dim = cond_feature_dim # 6D rotation only, since positions are x_coord
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
