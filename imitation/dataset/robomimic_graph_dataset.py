@@ -64,14 +64,7 @@ class RobomimicGraphDataset(InMemoryDataset):
             self.eef_idx += [17]
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
-        self.stats = {}
-        self.stats["y"] = self.get_data_stats("y")
-        self.stats["x"] = self.get_data_stats("x")
 
-        self.constant_stats = {
-            "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
-            "x": torch.tensor([False, True]) # node type flag is constant
-        }
         self.normalizer = self.get_normalizer()
         
 
