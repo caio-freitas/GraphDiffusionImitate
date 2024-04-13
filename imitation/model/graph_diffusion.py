@@ -86,6 +86,7 @@ class EGraphConditionEncoder(nn.Module):
 class ConditionalARGDenoising(nn.Module):
     def __init__(self,
                 node_feature_dim,
+                cond_feature_dim,
                 obs_horizon,
                 pred_horizon,
                 edge_feature_dim,
@@ -105,7 +106,7 @@ class ConditionalARGDenoising(nn.Module):
         num_edge_types += 1
         self.num_layers = num_layers
         self.node_feature_dim = node_feature_dim
-        self.cond_feature_dim = 6 # 6D rotation only, since positions are x_coord
+        self.cond_feature_dim = cond_feature_dim
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.hidden_dim = hidden_dim    
