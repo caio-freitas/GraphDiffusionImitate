@@ -136,7 +136,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
                     x_coord = nobs[:,-1,:3],
-                    cond = nobs[:,:,3:],
+                    cond = G_t.x[:,1:].unsqueeze(1).repeat(1,self.obs_horizon,1),
                     timesteps = torch.tensor([k], dtype=torch.long, device=self.device),
                     batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
@@ -176,16 +176,17 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for batch in dataloader:
                 if self.use_normalization:
                     # normalize observation
-                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs', batch_size=batch.num_graphs).to(self.device)
+                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                     # nobs = batch.y
                     # normalize action
-                    naction = self.dataset.normalize_data(batch.x, stats_key='action', batch_size=batch.num_graphs).to(self.device)
+                    naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                 naction = naction[:,:,:1] # single node feature dim
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
                 # (B, node, obs_horizon, obs_dim)
-                obs_cond = nobs[:,:,3:]
+                obs_cond = naction[:,0,1:].unsqueeze(1).repeat(1,self.obs_horizon,1) # only node type
+                naction = naction[:,:,:1] # joint value
                 # (B, obs_horizon * obs_dim)
                 obs_cond = obs_cond.flatten(start_dim=1)
 
@@ -292,15 +293,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     for batch in tepoch:
                         if self.use_normalization:
                             # normalize observation
-                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs', batch_size=batch.num_graphs).to(self.device)
+                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                             # normalize action
-                            naction = self.dataset.normalize_data(batch.x, stats_key='action', batch_size=batch.num_graphs).to(self.device)
+                            naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                         naction = naction[:,:,:1]
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
-                        obs_cond = nobs[:,:,3:] # only 6D rotation
+                        obs_cond = naction[:,0,1:].unsqueeze(1).repeat(1,self.obs_horizon,1) # only node type
+                        naction = naction[:,:,:1] # joint value
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=1)
 

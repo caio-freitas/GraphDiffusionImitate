@@ -261,10 +261,10 @@ class RobomimicGraphDataset(InMemoryDataset):
             "max": torch.max(data, dim=1).values
         }
     
-    def normalize_data(self, data, stats_key, batch_size=1):
+    def normalize_data(self, data, stats_key):
         return self.normalizer[stats_key].normalize(data)
     
-    def unnormalize_data(self, data, stats_key, batch_size=1):
+    def unnormalize_data(self, data, stats_key):
         return self.normalizer[stats_key].unnormalize(data)
 
     def get_normalizer(self):
