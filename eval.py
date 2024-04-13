@@ -62,6 +62,7 @@ def eval_main(cfg):
             runner.output_video = False
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
     wandb.log({"success_rate": success_count/cfg.num_episodes})
+    return success_count/cfg.num_episodes
 
 if __name__ == "__main__":
     eval_main()
