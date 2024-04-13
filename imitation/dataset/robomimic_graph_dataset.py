@@ -11,6 +11,7 @@ from typing import List, Dict
 from functools import lru_cache
 from scipy.spatial.transform import Rotation as R
 
+from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.model.common.rotation_transformer import RotationTransformer
 
 from imitation.utils.generic import calculate_panda_joints_positions
@@ -63,14 +64,8 @@ class RobomimicGraphDataset(InMemoryDataset):
             self.eef_idx += [17]
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
-        self.stats = {}
-        self.stats["y"] = self.get_data_stats("y")
-        self.stats["x"] = self.get_data_stats("x")
 
-        self.constant_stats = {
-            "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
-            "x": torch.tensor([False, True]) # node type flag is constant
-        }
+        self.normalizer = self.get_normalizer()
         
 
     @property
@@ -267,35 +262,26 @@ class RobomimicGraphDataset(InMemoryDataset):
         }
     
     def normalize_data(self, data, stats_key, batch_size=1):
-        # avoid division by zero by skipping normalization
-        with torch.no_grad():
-            # duplicate stats for each batch
-            data = data.clone().to(dtype=torch.float64)
-            stats = self.stats[stats_key].copy()
-            stats["min"] = stats["min"].repeat(batch_size, 1)
-            stats["max"] = stats["max"].repeat(batch_size, 1)
-            to_normalize = ~self.constant_stats[stats_key]
-            constant_stats = stats["max"] == stats["min"]
-            stats["min"][constant_stats] = -1
-            stats["max"][constant_stats] = 1
-            for t in range(data.shape[1]):
-                data[:,t,to_normalize] = (data[:,t,to_normalize] - stats['min'][:,to_normalize]) / (stats['max'][:,to_normalize] - stats['min'][:,to_normalize])
-                data[:,t,to_normalize] = data[:,t,to_normalize] * 2 - 1
-        return data
-
+        return self.normalizer[stats_key].normalize(data)
+    
     def unnormalize_data(self, data, stats_key, batch_size=1):
-        # avoid division by zero by skipping normalization
-        with torch.no_grad():
-            stats = self.stats[stats_key].copy()
-            # duplicate stats for each batch
-            stats["min"] = stats["min"].repeat(batch_size, 1)
-            stats["max"] = stats["max"].repeat(batch_size, 1)
-            data = data.clone().to(dtype=torch.float64)
-            to_normalize = ~self.constant_stats[stats_key]
-            constant_stats = stats["max"] == stats["min"]
-            stats["min"][constant_stats] = -1
-            stats["max"][constant_stats] = 1
-            for t in range(data.shape[1]):
-                data[:,t,to_normalize] = (data[:,t,to_normalize] + 1) / 2
-                data[:,t,to_normalize] = data[:,t,to_normalize] * (stats['max'][:,to_normalize] - stats['min'][:,to_normalize]) + stats['min'][:,to_normalize]
-        return data
+        return self.normalizer[stats_key].unnormalize(data)
+
+    def get_normalizer(self):
+        normalizer = LinearNormalizer()
+        data_obs = []
+        data_action = []
+        for idx in range(self.len()):
+            data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
+            data_obs.append(data["y"])
+            data_action.append(data["x"])
+        data_obs = torch.cat(data_obs, dim=1)
+        data_action = torch.cat(data_action, dim=1)
+        
+        normalizer.fit(
+            {
+                "obs": data_obs,
+                "action": data_action
+            }
+        )
+        return normalizer

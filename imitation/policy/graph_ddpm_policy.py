@@ -115,8 +115,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         nobs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
-            nobs = self.dataset.normalize_data(nobs, stats_key='y')
-            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
+            nobs = self.dataset.normalize_data(nobs, stats_key='obs')
+            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='action').to(self.device)
         else:
             self.last_naction = G_t.x.unsqueeze(1).to(self.device)
 
@@ -152,7 +152,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
         naction = naction.detach().to('cpu')
         if self.use_normalization:
-            naction = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
+            naction = self.dataset.unnormalize_data(naction, stats_key='action').numpy()
         action = naction[:self.action_dim,:,0].T
         
         # (action_horizon, action_dim)
@@ -176,10 +176,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for batch in dataloader:
                 if self.use_normalization:
                     # normalize observation
-                    nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs', batch_size=batch.num_graphs).to(self.device)
                     # nobs = batch.y
                     # normalize action
-                    naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
+                    naction = self.dataset.normalize_data(batch.x, stats_key='action', batch_size=batch.num_graphs).to(self.device)
+                naction = naction[:,:,:1] # single node feature dim
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
@@ -269,7 +270,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         if self.optimizer is None:
             self.optimizer = torch.optim.AdamW(
                 params=self.noise_pred_net.parameters(),
-                lr=self.lr, weight_decay=1e-6)
+                lr=self.lr, 
+                weight_decay=1e-6,
+                betas=[0.95, 0.999],
+                eps=1e-8)
+            
         if self.lr_scheduler is None:
         # Cosine LR schedule with linear warmup
             self.lr_scheduler = get_scheduler(
@@ -288,10 +293,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     for batch in tepoch:
                         if self.use_normalization:
                             # normalize observation
-                            nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs', batch_size=batch.num_graphs).to(self.device)
                             # normalize action
-                            naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
-                        
+                            naction = self.dataset.normalize_data(batch.x, stats_key='action', batch_size=batch.num_graphs).to(self.device)
+                        naction = naction[:,:,:1]
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
