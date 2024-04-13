@@ -176,10 +176,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for batch in dataloader:
                 if self.use_normalization:
                     # normalize observation
-                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs', batch_size=batch.num_graphs).to(self.device)
+                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                     # nobs = batch.y
                     # normalize action
-                    naction = self.dataset.normalize_data(batch.x, stats_key='action', batch_size=batch.num_graphs).to(self.device)
+                    naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                 naction = naction[:,:,:1] # single node feature dim
                 B = batch.num_graphs
 
@@ -293,9 +293,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     for batch in tepoch:
                         if self.use_normalization:
                             # normalize observation
-                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs', batch_size=batch.num_graphs).to(self.device)
+                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                             # normalize action
-                            naction = self.dataset.normalize_data(batch.x, stats_key='action', batch_size=batch.num_graphs).to(self.device)
+                            naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                         naction = naction[:,:,:1]
                         B = batch.num_graphs
 
