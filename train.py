@@ -78,6 +78,7 @@ def train(cfg: DictConfig) -> None:
         log.error("Error setting total num_epochs in policy")
 
      # evaluate every E epochs
+    max_success_rate = 0
     for i in range(1, 1 + cfg.num_epochs // V):
         # train policy
         policy.train(dataset=train_dataset,
@@ -92,7 +93,11 @@ def train(cfg: DictConfig) -> None:
         wandb.log({"validation_loss": val_loss})
         # evaluate policy
         if i % (E/V) == 0:
-            eval_main(cfg.eval_params)
+            success_rate = eval_main(cfg.eval_params)
+            if success_rate >= max_success_rate:
+                max_success_rate = success_rate
+                policy.save_nets(os.path.join(wandb.run.dir, cfg.policy.ckpt_path + f"_best_succ={success_rate}.pt"))
+
     wandb.finish()
 
 if __name__ == "__main__":
