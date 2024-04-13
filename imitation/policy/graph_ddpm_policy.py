@@ -95,6 +95,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             log.error('Error loading pretrained weights.')
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
 
+    def save_nets(self, ckpt_path):
+        torch.save(self.ema_noise_pred_net.state_dict(), ckpt_path)
+        log.info(f"Model saved at {ckpt_path}")
+
     def MOCK_get_graph_from_obs(self): # for testing purposes, remove before merge
         # plays back observation from dataset
         playback_graph = self.dataset[self.playback_count]
@@ -180,7 +184,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     # nobs = batch.y
                     # normalize action
                     naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
-                naction = naction[:,:,:1] # single node feature dim
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
@@ -261,7 +264,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         )
 
         ema = EMAModel(
-            parameters=self.noise_pred_net.parameters(),
+            parameters=self.ema_noise_pred_net.parameters(),
             power=0.75)
 
         # Standard ADAM optimizer
@@ -296,7 +299,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                             # normalize action
                             naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
-                        naction = naction[:,:,:1]
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
@@ -369,9 +371,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 wandb.log({'epoch': self.global_epoch, 'epoch_loss': np.mean(epoch_loss)})
                 # save model checkpoint
                 # use weights of the EMA model for inference
-                ema_noise_pred_net = self.noise_pred_net
-                ema.copy_to(ema_noise_pred_net.parameters())
-                torch.save(ema_noise_pred_net.state_dict(), model_path)
+                self.save_nets(model_path)
                 self.global_epoch += 1
                 tglobal.set_description(f"Epoch: {self.global_epoch}")
 
