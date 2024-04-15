@@ -153,10 +153,13 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     if self.use_normalization:
                         graph.x = self.dataset.normalize_data(graph.x, stats_key="action")
                         graph.y = self.dataset.normalize_data(graph.y, stats_key="obs")
+                    
+                    graph = self.masker.idxify(graph)
+                    # FiLM generator
+                    embed = self.model.cond_encoder(graph.y, graph.edge_index, graph.pos[:,:3], graph.edge_attr)
                     # remove object nodes
                     for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
                         graph = self.masker.remove_node(graph, obj_node)
-                    graph = self.masker.idxify(graph)
                     diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
                     # predictions & loss
                     G_0 = diffusion_trajectory[0].to(self.device)
@@ -168,8 +171,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         joint_values, pos = self.model(G_pred.x,
                                                        G_pred.edge_index,
                                                        G_pred.edge_attr,
-                                                       x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3],
-                                                       cond=G_0.x[:,0,1:].unsqueeze(1).repeat(1,self.dataset.obs_horizon,1))
+                                                       x_coord=G_pred.pos[:,:3],
+                                                       film_cond=embed)
                         
                         # calculate loss
                         loss = self.loss_fcn(pred_feats=joint_values,
@@ -220,10 +223,13 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         if self.use_normalization:
                             graph.x = self.dataset.normalize_data(graph.x, stats_key="action")
                             graph.y = self.dataset.normalize_data(graph.y, stats_key="obs")
+                       
+                        graph = self.masker.idxify(graph)
+                        # FiLM generator
+                        embed = self.model.cond_encoder(graph.y, graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1))
                         # remove object nodes. Last nodes first, to avoid index errors
                         for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                             graph = self.masker.remove_node(graph, obj_node)
-                        graph = self.masker.idxify(graph)
                         diffusion_trajectory = self.generate_diffusion_trajectory(graph)  
                         # predictions & loss
                         G_0 = diffusion_trajectory[0].to(self.device)
@@ -234,11 +240,11 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         for t in range(len(node_order)):
                             G_pred = diffusion_trajectory[t+1].clone().to(self.device)
                             # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
-                            joint_values, pos = self.model(G_pred.x,
+                            joint_values, pos = self.model(G_pred.x[:,:,:1],
                                                            G_pred.edge_index,
                                                            G_pred.edge_attr,
-                                                           x_coord=G_pred.y[:G_pred.x.shape[0],-1,:3],
-                                                           cond=G_0.x[:,0,1:].unsqueeze(1).repeat(1,self.dataset.obs_horizon,1)) # only use node type, E(3) invariant
+                                                           x_coord=G_pred.pos[:,:3],
+                                                           film_cond=embed) # only use node type, E(3) invariant
 
                             # mse loss for node features
                             loss = self.loss_fcn(pred_feats=joint_values,
@@ -250,7 +256,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
-                            loss.backward()
+                            loss.backward(retain_graph=True)
                         # update weights
                         self.optimizer.step()
                         self.optimizer.zero_grad()
@@ -313,7 +319,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         obs_cond    = playback_graph.y
         edge_index  = playback_graph.edge_index
         edge_attr   = playback_graph.edge_attr
-        obs_pos     = playback_graph.y[:,-1,:]
+        obs_pos     = playback_graph.pos
         self.playback_count += 1
         log.debug(f"Playing back observation {self.playback_count}")
         return obs_cond, edge_index, edge_attr, obs_pos
@@ -332,6 +338,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
+        # FiLM generator
+        embed = self.model.cond_encoder(obs_cond, edge_index, obs_pos[:,:3], edge_attr.unsqueeze(-1))
 
         if self.use_normalization:
             obs_cond = self.dataset.normalize_data(obs_cond, stats_key="obs")
@@ -340,11 +348,11 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             action = self.preprocess(action)
             # predict node attributes for last node in action
             action.x[-1], pos = self.model(
-                action.x.float(),
+                action.x[:,:,:1].float(),
                 action.edge_index,
                 action.edge_attr,
                 x_coord = obs_pos[:action.x.shape[0],:3],
-                cond=action.x[:,0,1:].float().unsqueeze(1).repeat(1,self.dataset.obs_horizon,1) # only use quaternions, since pos is x_coord
+                film_cond=embed
             )
             action.x[-1,:,-1] = self.dataset.ROBOT_NODE_TYPE # set node type to robot to avoid propagating error
             # map edge attributes from obs to action

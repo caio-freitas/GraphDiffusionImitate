@@ -140,12 +140,12 @@ class ConditionalARGDenoising(nn.Module):
             Linear(hidden_dim, self.node_feature_dim*self.pred_horizon)
         ).to(self.device)
         
-    def forward(self, x, edge_index, edge_attr, x_coord, cond=None, node_order=None):
+    def forward(self, x, edge_index, edge_attr, x_coord, film_cond, node_order=None):
         # make sure x and edge_attr are of type float, for the MLPs
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
-        cond = cond.float().to(self.device)
+        film_cond = film_cond.float().to(self.device)
         x_coord = x_coord.float().to(self.device)
 
         assert x.shape[0] == x_coord.shape[0], "x and x_coord must have the same length"
@@ -153,9 +153,8 @@ class ConditionalARGDenoising(nn.Module):
         h_v = self.node_embedding(x)
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
 
-        # FiLM generator
-        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr)
-        embed = embed.reshape(self.num_layers, 2, self.hidden_dim)
+        
+        embed = film_cond.reshape(self.num_layers, 2, self.hidden_dim)
         scales = embed[:,0,...]
         biases = embed[:,1,...]
         x_v = x_coord
