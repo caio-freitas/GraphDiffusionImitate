@@ -96,7 +96,7 @@ def train(cfg: DictConfig) -> None:
             success_rate = eval_main(cfg.eval_params)
             if success_rate >= max_success_rate:
                 max_success_rate = success_rate
-                policy.save_nets(os.path.join(wandb.run.dir, cfg.policy.ckpt_path + f"_best_succ={success_rate}.pt"))
+                policy.save_nets(cfg.policy.ckpt_path + f"_best_succ={success_rate}.pt")
 
     wandb.finish()
 
