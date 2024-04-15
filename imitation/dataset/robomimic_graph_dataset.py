@@ -118,22 +118,24 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
     
-    def _get_node_feats(self, data, t_vals):
+    def _get_node_feats(self, data, t_vals, control_mode=None):
         '''
         Calculate node features for time steps t_vals
         t_vals: list of time steps
         '''
         T = len(t_vals)
         node_feats = []
-        if self.control_mode == "OSC_POSE":
+        if control_mode is None:
+            control_mode = self.control_mode
+        if control_mode == "OSC_POSE":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=0))
-        elif self.control_mode == "JOINT_POSITION":
+        elif control_mode == "JOINT_POSITION":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
                                 torch.tensor(data[f"robot{i}_joint_pos"][t_vals]),
                                 torch.tensor(data[f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
-        elif self.control_mode == "JOINT_VELOCITY":
+        elif control_mode == "JOINT_VELOCITY":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
                                 torch.tensor(data[f"robot{i}_joint_vel"][t_vals]),
@@ -201,12 +203,13 @@ class RobomimicGraphDataset(InMemoryDataset):
         Get y (observation) for time step t. Should contain only task-space joint positions.
         '''
         y = []
-        for t in range(idx, idx - horizon,-1):
-            if t < 0:
-                y.append(self._get_node_pos(data, 0)) # use fixed first observation for beginning of episode
-            else:
-                y.append(self._get_node_pos(data, t))
-        return torch.stack(y, dim=1)
+        if idx - horizon < 0:
+            y.append(self._get_node_feats(data, [0], control_mode="JOINT_POSITION").repeat(1,horizon-idx,1)) # use fixed first observation for beginning of episode
+            y.append(self._get_node_feats(data, [t for t in range(0, idx)], control_mode="JOINT_POSITION"))
+            y = torch.cat(y, dim=1)
+        else: # get all observation steps with single call
+            y = self._get_node_feats(data, list(range(idx - horizon, idx)), control_mode="JOINT_POSITION")
+        return y
 
     
     def process(self):
