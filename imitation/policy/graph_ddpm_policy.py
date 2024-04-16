@@ -50,7 +50,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.num_diffusion_iters = num_diffusion_iters
         self.lr = lr
         self.use_normalization = use_normalization
-
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
@@ -115,7 +114,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         pos = []
         G_t = obs_deque[-1]
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y.unsqueeze(1)) # only quaternions
+            obs_cond.append(obs_deque[i].y.unsqueeze(1))
             pos.append(obs_deque[i].pos)
         nobs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
@@ -143,8 +142,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     x = naction,
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
-                    x_coord = nobs[:,-1,:3],
-                    cond = G_t.x[:,1:].unsqueeze(1).repeat(1,self.obs_horizon,1),
+                    x_coord = G_t.pos[:,:3],    
+                    cond = nobs,
                     timesteps = torch.tensor([k], dtype=torch.long, device=self.device),
                     batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
@@ -192,7 +191,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                 # observation as FiLM conditioning
                 # (B, node, obs_horizon, obs_dim)
-                obs_cond = naction[:,0,1:].unsqueeze(1).repeat(1,self.obs_horizon,1) # only node type
+                obs_cond = nobs
                 naction = naction[:,:,:1] # joint value
                 # (B, obs_horizon * obs_dim)
                 obs_cond = obs_cond.flatten(start_dim=1)
@@ -230,7 +229,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     noisy_actions, 
                     batch.edge_index, 
                     batch.edge_attr, 
-                    x_coord = batch.y[:,-1,:3], 
+                    x_coord = batch.pos[:,:3], 
                     cond=obs_cond,
                     timesteps=timesteps,
                     batch=batch.batch)
@@ -307,7 +306,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
-                        obs_cond = naction[:,0,1:].unsqueeze(1).repeat(1,self.obs_horizon,1) # only node type
+                        obs_cond = nobs
                         naction = naction[:,:,:1] # joint value
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=1)
@@ -349,7 +348,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             noisy_actions, 
                             batch.edge_index, 
                             batch.edge_attr, 
-                            x_coord = batch.y[:,-1,:3], 
+                            x_coord = batch.pos[:,:3], 
                             cond=obs_cond,
                             timesteps=timesteps,
                             batch=batch.batch)

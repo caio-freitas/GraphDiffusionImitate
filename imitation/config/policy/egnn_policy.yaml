@@ -1,6 +1,6 @@
 _target_: imitation.policy.egnn_policy.EGNNPolicy
 node_feature_dim: 2
-obs_node_feature_dim: 4 # quaternion only
+obs_node_feature_dim: 2
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 dataset: ${task.dataset}
