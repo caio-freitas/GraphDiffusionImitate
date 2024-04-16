@@ -23,12 +23,12 @@ agent:
 
 # Disable evaluation 
 # eval_params: "disabled"
-max_steps: 1500
+max_steps: 500
 
 # Evaluation during training
 eval_params:
   eval_every: 50 # evaluate every 50 epochs
-  val_every: 5
+  val_every: 1
   task: ${task}
   policy: ${policy}
   render: False

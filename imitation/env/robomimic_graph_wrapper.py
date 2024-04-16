@@ -176,17 +176,19 @@ class RobomimicGraphWrapper(gym.Env):
 
     
 
-    def _get_node_feats(self, data):
+    def _get_node_feats(self, data, control_mode=None):
         '''
         Returns node features from data
         '''
+        if control_mode is None:
+            control_mode = self.control_mode
         node_feats = []
         for i in range(self.num_robots):
-            if self.control_mode == "OSC_POSE":
+            if control_mode == "OSC_POSE":
                 node_feats.append(torch.cat([torch.tensor(data[f"robot{i}_eef_pos"]), torch.tensor(data[f"robot{i}_eef_quat"])], dim=0).reshape(1, -1)) # add dimension
-            elif self.control_mode == "JOINT_VELOCITY":
+            elif control_mode == "JOINT_VELOCITY":
                 node_feats.append(torch.tensor([*data[f"robot{i}_joint_vel"], *data[f"robot{i}_gripper_qvel"]]).reshape(1,-1).T)
-            elif self.control_mode == "JOINT_POSITION":
+            elif control_mode == "JOINT_POSITION":
                 node_feats.append(torch.tensor([*data[f"robot{i}_joint_pos"], *data[f"robot{i}_gripper_qpos"]]).reshape(1,-1).T)
         node_feats = torch.cat(node_feats, dim=0)
         return node_feats
@@ -238,6 +240,7 @@ class RobomimicGraphWrapper(gym.Env):
         '''
         node_feats = torch.tensor([])
         node_pos = torch.tensor([])
+        node_obs = torch.tensor([])
         robot_i_data = {}
         for i in range(self.num_robots):
             j = i*39
@@ -266,22 +269,22 @@ class RobomimicGraphWrapper(gym.Env):
             })
 
         node_feats = torch.cat([node_feats, self._get_node_feats(robot_i_data)], dim=0)
-
+        y = torch.cat([node_obs, self._get_node_feats(robot_i_data, control_mode="JOINT_POSITION")], dim=0)
         robot_i_data["object"] = obs[self.num_robots*39:]
         node_pos = self._get_node_pos(robot_i_data)
 
         # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
         node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
+        y = torch.cat((y, self.ROBOT_NODE_TYPE*torch.ones((y.shape[0],1))), dim=1)
         
         obj_feats_tensor = self._get_object_feats(obs)
         
         node_feats = torch.cat((node_feats, obj_feats_tensor), dim=0)
+        y = torch.cat((y, obj_feats_tensor), dim=0)
 
         edge_index = self._get_edge_index(node_feats.shape[0])
 
-        edge_attrs = self._get_edge_attrs(edge_index)
-
-        y = node_pos # observations are the task-space positions
+        edge_attrs = self._get_edge_attrs(edge_index)        
 
 
         # create graph

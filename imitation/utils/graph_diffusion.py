@@ -50,7 +50,7 @@ class NodeMasker:
         datapoint = datapoint.clone()
         # remove node
         datapoint.x = torch.cat([datapoint.x[:node], datapoint.x[node+1:]])
-        
+        datapoint.pos = torch.cat([datapoint.pos[:node], datapoint.pos[node+1:]])
         # remove edges from edge_index (remove elements containing node in tuple of edge_index) (if datapoint.edge_index[:, 0] == node or datapoint.edge_index[:, 1] == node)
         if datapoint.edge_index.shape[1] > 1:
 

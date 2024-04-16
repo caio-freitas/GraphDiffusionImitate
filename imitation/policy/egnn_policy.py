@@ -65,12 +65,12 @@ class EGNNPolicy(BasePolicy):
         for obs in obs_deque:
             nobs.append(obs.y)
         y = torch.stack(nobs, dim=1).to(self.device).float()
-        nobs = y[:,:,3:].flatten(start_dim=1)
+        nobs = y.flatten(start_dim=1)
         # import pdb; pdb.set_trace()
         pred, x = self.model(h=nobs, 
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
-                            x=y[:,-1,:3].to(self.device).float(),
+                            x=obs.pos[:,:3].to(self.device).float(),
         )
         pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
         return pred[:9,:,0].T.detach().cpu().numpy() # return joint values only
@@ -86,13 +86,13 @@ class EGNNPolicy(BasePolicy):
         with torch.no_grad():
             with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
-                    nobs = nbatch.y[:,:,3:].to(self.device).float()
+                    nobs = nbatch.y.to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
                     action = nbatch.x.to(self.device).float()
                     pred, x = self.model(h=nobs, 
                                         edges=nbatch.edge_index.to(self.device).long(),
                                         edge_attr=nbatch.edge_attr.to(self.device).unsqueeze(1).float(),
-                                        x=nbatch.y[:,-1,:3].to(self.device).float(),
+                                        x=nbatch.pos[:,:3].to(self.device).float(),
                     )
                     pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
                     loss = loss_fn(pred, action)
@@ -130,14 +130,14 @@ class EGNNPolicy(BasePolicy):
             for epoch in pbar:
                 with tqdm(dataloader, desc="Batch", leave=False) as pbar:
                     for nbatch in pbar:
-                        nobs = nbatch.y[:,:,3:].to(self.device).float()
+                        nobs = nbatch.y.to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
                         action = nbatch.x.to(self.device).float()
 
                         pred, x = self.model(h=nobs, 
                                           edges=nbatch.edge_index.to(self.device).long(),
                                           edge_attr=nbatch.edge_attr.to(self.device).unsqueeze(1).float(),
-                                          x=nbatch.y[:,-1,:3].to(self.device).float(),
+                                          x=nbatch.pos[:,:3].to(self.device).float(),
                         )
                         pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
                         loss = loss_fn(pred, action)
