@@ -24,7 +24,7 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 @hydra.main(
         version_base=None,
         config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
-        config_name="train"
+        config_name="eval"
         )
 def train(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
@@ -43,12 +43,6 @@ def train(cfg: DictConfig) -> None:
     torch.manual_seed(cfg.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(cfg.seed)
-
-    # Split the dataset into train and validation
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
-    )
-
 
     delta_traj = []
     generated_traj = []
