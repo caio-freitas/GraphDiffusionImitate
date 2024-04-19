@@ -126,7 +126,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         with torch.no_grad():
             # initialize action from Guassian noise
             self.last_naction = self.last_naction.repeat(1, self.pred_horizon, 1)[:,:,:1]
-            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn((self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device) * self.noise_addition_std
+            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn_like(self.last_naction, device=self.device) * self.noise_addition_std
             naction = noisy_action
 
             # init scheduler
