@@ -1,3 +1,4 @@
+import collections
 from typing import Dict, List
 import torch
 import numpy as np
@@ -137,3 +138,11 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
         }
 
         
+    def to_obs_deque(self, data):
+        obs_deque = collections.deque(maxlen=self.obs_horizon)
+        for i in range(self.obs_horizon):
+            obs_deque.append(data["obs"][i])
+        return obs_deque
+    
+    def get_action(self, data):
+        return data["action"]

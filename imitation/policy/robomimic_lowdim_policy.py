@@ -71,6 +71,8 @@ class RobomimicLowdimPolicy(BasePolicy):
         # key for robomimic obs input
         # previously this is 'object', 'robot0_eef_pos' etc
         self.dataset = dataset
+        assert self.dataset.pred_horizon == self.dataset.obs_horizon == self.dataset.action_horizon, \
+            "Robomimic only supports pred_horizon == obs_horizon"
         self.lr = lr
         obs_key = 'obs'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
