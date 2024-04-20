@@ -116,6 +116,10 @@ class RobomimicLowdimPolicy(BasePolicy):
         except Exception as e:
             log.error(f"Could not load model from {ckpt_path}. Error: {e}")
 
+    def save_nets(self, ckpt_path):
+        log.info(f"Saving model to {ckpt_path}")
+        torch.save(self.model.serialize(), ckpt_path)
+
     # =========== inference =============
     def get_action(self, obs):
         obs = self.normalizer['obs'].normalize(torch.tensor(obs)).to(self.device)
@@ -192,10 +196,9 @@ class RobomimicLowdimPolicy(BasePolicy):
                             "loss": info['losses']['action_loss'],
                             "log_probs": info['losses']['log_probs']})
                 # save model from dict in self.model.serialize()
-                torch.save(self.model.serialize(), model_path)
+                self.save_nets(model_path)
                 self.global_epoch += 1
-                
-        torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
+        self.save_nets(model_path + f'{num_epochs}_ep.pt')
         return info
     
     def get_optimizer(self):

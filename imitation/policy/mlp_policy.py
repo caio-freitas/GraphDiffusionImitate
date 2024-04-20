@@ -52,6 +52,10 @@ class MLPPolicy(BasePolicy):
         except:
             log.error(f"Could not load model from {ckpt_path}")    
 
+    def save_nets(self, ckpt_path):
+        log.info(f"Saving model to {ckpt_path}")
+        torch.save(self.model.state_dict(), ckpt_path)
+
     def get_action(self, obs):
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
         action = self.model(obs).detach().cpu().numpy()
