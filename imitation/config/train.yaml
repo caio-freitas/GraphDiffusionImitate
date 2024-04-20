@@ -15,6 +15,7 @@ action_horizon: 8
 num_epochs: 2000
 val_fraction: 0.1
 seed: 0
+load_ckpt: False
 
 env_runner: ${task.env_runner}
 
