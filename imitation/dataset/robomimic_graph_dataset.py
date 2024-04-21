@@ -77,11 +77,9 @@ class RobomimicGraphDataset(InMemoryDataset):
         return names
 
     @lru_cache(maxsize=None)
-    def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint values
+    def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint value
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
         obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        obj_state_tensor[:,:,-1] = OBJECT_NODE_TYPE
         return obj_state_tensor
 
     def _get_object_pos(self, data, t):
@@ -141,13 +139,12 @@ class RobomimicGraphDataset(InMemoryDataset):
                                 torch.tensor(data[f"robot{i}_joint_vel"][t_vals]),
                                 torch.tensor(data[f"robot{i}_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2))
         node_feats = torch.cat(node_feats, dim=0) # [num_robots*num_joints, T, 1]
-
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],node_feats.shape[1],1))), dim=2)
-
-        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, self.OBJECT_NODE_TYPE, T)
-
+        
+        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim-1, self.OBJECT_NODE_TYPE, T)
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
+        # add dimension for node ID
+        node_feats = torch.cat((node_feats, torch.arange(node_feats.shape[0]).unsqueeze(-1).unsqueeze(-1).repeat(1,node_feats.shape[1],1)), dim=2)
+        
         return node_feats
     
     def _get_node_feats_horizon(self, data, idx, horizon):

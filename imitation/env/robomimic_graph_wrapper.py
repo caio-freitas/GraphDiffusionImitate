@@ -134,9 +134,7 @@ class RobomimicGraphWrapper(gym.Env):
 
     def _get_object_feats(self, data):
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
+        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim - 1))
         return obj_state_tensor
 
     def _get_object_pos(self, data):
@@ -272,15 +270,16 @@ class RobomimicGraphWrapper(gym.Env):
         y = torch.cat([node_obs, self._get_node_feats(robot_i_data, control_mode="JOINT_POSITION")], dim=0)
         robot_i_data["object"] = obs[self.num_robots*39:]
         node_pos = self._get_node_pos(robot_i_data)
-
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
-        y = torch.cat((y, self.ROBOT_NODE_TYPE*torch.ones((y.shape[0],1))), dim=1)
         
         obj_feats_tensor = self._get_object_feats(obs)
         
         node_feats = torch.cat((node_feats, obj_feats_tensor), dim=0)
+        # add dimension for node ID
+        node_feats = torch.cat((node_feats, torch.arange(node_feats.shape[0]).unsqueeze(-1)), dim=1)
+        
         y = torch.cat((y, obj_feats_tensor), dim=0)
+        # add dimension for node ID
+        y = torch.cat((y, torch.arange(y.shape[0]).unsqueeze(-1)), dim=1)
 
         edge_index = self._get_edge_index(node_feats.shape[0])
 
