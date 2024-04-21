@@ -59,6 +59,8 @@ def traj_eval(cfg: DictConfig) -> None:
     step_log = {} # for wandb logging
 
     delta_traj = []
+    times = [] # to store the time taken to generate the action
+
     seed = 0
     # evaluate for samples in dataset
     for i in range(len(policy.dataset[:cfg.num_episodes])):
@@ -68,7 +70,6 @@ def traj_eval(cfg: DictConfig) -> None:
 
         # generate action multiple times to get multimodality
         mm_traj = []
-        times = [] # to store the time taken to generate the action
         for _ in range(cfg.num_seeds):
             # change seed
             torch.manual_seed(seed)
@@ -83,9 +84,8 @@ def traj_eval(cfg: DictConfig) -> None:
             delta_traj.append(error)
             seed += 1
 
-        times = np.array(times)
-        log.info(f"Average execution time for 50 : {times.mean()}")
-        step_log["execution_time"] = times.mean()
+        log.info(f"Average execution time for 50 : {np.array(times[-cfg.num_seeds:]).mean()}")
+        step_log["execution_time"] = np.array(times[-cfg.num_seeds:]).mean()
          
         mm_traj = torch.tensor(mm_traj)
         
@@ -120,9 +120,9 @@ def traj_eval(cfg: DictConfig) -> None:
         wandb.log({"mean_error": mean_error, "std_error": std_error})
         metrics = pd.concat([metrics, pd.DataFrame(
             data=[
-                [i, waypoint_variance.numpy(), waypoint_variance.numpy()/mm_traj.shape[1], smoothness.numpy(), mean_error, std_error]
+                [i, waypoint_variance.numpy(), waypoint_variance.numpy()/mm_traj.shape[1], smoothness.numpy(), mean_error, std_error, np.array(times).mean(), np.array(times).std()]
             ],
-            columns=["sample", "waypoint_variance", "mean_waypoint_variance", "smoothness", "mean_error", "std_error"]
+            columns=["sample", "waypoint_variance", "mean_waypoint_variance", "smoothness", "mean_error", "std_error", "mean_execution_time", "std_execution_time"]
         )], ignore_index=True)
 
     # compute the mean and std of the error for all the samples
@@ -131,7 +131,7 @@ def traj_eval(cfg: DictConfig) -> None:
     std_error = np.std(np.mean(delta_traj, axis=1), axis=0).mean()
     log.info(f"Mean error: {mean_error}")
     log.info(f"Std error: {std_error}")
-    wandb.log({"final_mean_error": mean_error, "final_std_error": std_error})
+    wandb.log({"final_mean_error": mean_error, "final_std_error": std_error, "final_mean_execution_time": np.array(times).mean(), "final_std_execution_time": np.array(times).std()})
     metrics.to_csv(f"./outputs/traj_eval_{policy.__class__.__name__}_{cfg.policy.ckpt_path.split('/')[-1]}.csv")
 
 
