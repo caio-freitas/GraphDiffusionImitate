@@ -65,12 +65,14 @@ class RobomimicLowdimPolicy(BasePolicy):
             dataset_type='ph',
             dataset=None,
             ckpt_path=None,
-            lr=1e-4
+            lr=1e-4,
+            batch_size = 64
         ):
         super().__init__()
         # key for robomimic obs input
         # previously this is 'object', 'robot0_eef_pos' etc
         self.dataset = dataset
+        self.batch_size = batch_size
         self.lr = lr
         obs_key = 'obs'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -171,7 +173,7 @@ class RobomimicLowdimPolicy(BasePolicy):
         self.model.nets.train()
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=64,
+            batch_size=self.batch_size,
             num_workers=1,
             shuffle=False,
             # accelerate cpu-gpu transfer

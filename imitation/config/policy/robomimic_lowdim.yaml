@@ -10,3 +10,4 @@ dataset_type: ${task.dataset_type}
 dataset: ${task.dataset}
 ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_${policy.algo_name}.ckpt
 lr: 0.0001
+batch_size: 128
