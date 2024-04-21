@@ -1,6 +1,7 @@
 import logging
 import timeit
 import pathlib
+import pandas as pd
 import numpy as np
 import hydra
 import torch
@@ -27,6 +28,8 @@ def traj_eval(cfg: DictConfig) -> None:
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy)
     log.info(f"Evaluating trajectory quality for policy {policy.__class__.__name__} with seed {cfg.seed} on task {cfg.task.task_name}")
+    metrics = pd.DataFrame()
+
     try:
         if cfg.policy.ckpt_path is not None:
             policy.load_nets(cfg.policy.ckpt_path)
@@ -115,6 +118,12 @@ def traj_eval(cfg: DictConfig) -> None:
         log.info(f"Mean error: {mean_error}")
         log.info(f"Std error: {std_error}")
         wandb.log({"mean_error": mean_error, "std_error": std_error})
+        metrics = pd.concat([metrics, pd.DataFrame(
+            data=[
+                [i, waypoint_variance.numpy(), waypoint_variance.numpy()/mm_traj.shape[1], smoothness.numpy(), mean_error, std_error]
+            ],
+            columns=["sample", "waypoint_variance", "mean_waypoint_variance", "smoothness", "mean_error", "std_error"]
+        )], ignore_index=True)
 
     # compute the mean and std of the error for all the samples
     delta_traj = np.array(delta_traj)
@@ -122,7 +131,8 @@ def traj_eval(cfg: DictConfig) -> None:
     std_error = np.std(np.mean(delta_traj, axis=1), axis=0).mean()
     log.info(f"Mean error: {mean_error}")
     log.info(f"Std error: {std_error}")
-    wandb.log({"mean_error": mean_error, "std_error": std_error})
+    wandb.log({"final_mean_error": mean_error, "final_std_error": std_error})
+    metrics.to_csv(f"./outputs/traj_eval_{policy.__class__.__name__}_{cfg.policy.ckpt_path.split('/')[-1]}.csv")
 
 
 if __name__ == "__main__":
