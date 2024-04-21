@@ -53,11 +53,9 @@ def train(cfg: DictConfig) -> None:
     )
     # wandb.watch(policy.model, log="all")
 
-
-    # Split the dataset into train and validation
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
-    )
+    torch.manual_seed(cfg.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(cfg.seed)
 
     # Split the dataset into train and validation
     train_dataset, val_dataset = torch.utils.data.random_split(

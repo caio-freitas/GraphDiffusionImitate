@@ -1,4 +1,4 @@
-
+import collections
 from typing import Callable, Optional
 from torch_geometric.data import Dataset, Data, InMemoryDataset
 import logging
@@ -288,3 +288,16 @@ class RobomimicGraphDataset(InMemoryDataset):
             }
         )
         return normalizer
+    
+    def to_obs_deque(self, data):
+        obs_deque = collections.deque(maxlen=self.obs_horizon)
+        data_t = data.clone()
+        for t in range(self.obs_horizon):
+            data_t.x = data.x[:,t,:]
+            data_t.y = data.y[:,t,:]
+            obs_deque.append(data_t.clone())
+        return obs_deque
+    
+    def get_action(self, data):
+        return data.x[:self.eef_idx[-1] + 1,:,0].T.numpy()
+    

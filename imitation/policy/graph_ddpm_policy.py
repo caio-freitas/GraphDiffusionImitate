@@ -63,7 +63,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             # clip output to [-1,1] to improve stability
             clip_sample=True,
             # our network predicts noise (instead of denoised action)
-            prediction_type='epsilon'
+            prediction_type='epsilon',
+            beta_start=1e-4,
+            beta_end=2e-2,
         )
         self.noise_addition_std = noise_addition_std
         
@@ -106,6 +108,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.playback_count += 7
         log.info(f"Playing back observation {self.playback_count}")
         return obs_cond, playback_graph
+    
     def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         # transform deques to numpy arrays
@@ -126,7 +129,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         with torch.no_grad():
             # initialize action from Guassian noise
             self.last_naction = self.last_naction.repeat(1, self.pred_horizon, 1)[:,:,:1]
-            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn_like(self.last_naction, device=self.device) * self.noise_addition_std
+            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn_like(self.last_naction, device=self.device, memory_format=torch.contiguous_format) * self.noise_addition_std
             naction = noisy_action
 
             # init scheduler
