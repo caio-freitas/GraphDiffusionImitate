@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+  - task: lift_graph
+  - policy: graph_ddpm_policy
+
+render: True
+output_video: True
+
+num_seeds: 20
+num_episodes: 20 # -1 for whole dataset
+max_steps: 1000
+output_dir: ./outputs
+
+
+pred_horizon: 16
+obs_horizon: 2
+action_horizon: 8
+
+
+env_runner: ${task.env_runner}
+
+
+seed: 0
+
+agent:
+  _target_: imitation.agent.robomimic_lowdim_agent.RobomimicLowdimAgent
+  env: ${task.env_runner}
+  
