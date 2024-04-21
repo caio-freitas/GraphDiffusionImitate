@@ -56,8 +56,8 @@ def traj_eval(cfg: DictConfig) -> None:
     step_log = {} # for wandb logging
 
     delta_traj = []
-    generated_traj = []
-    # evaluate for the whole dataset
+    seed = 0
+    # evaluate for samples in dataset
     for i in range(len(policy.dataset[:cfg.num_episodes])):
         obs_deque = policy.dataset.to_obs_deque(policy.dataset[i])
         # compare the action with the ground truth action
@@ -66,7 +66,7 @@ def traj_eval(cfg: DictConfig) -> None:
         # generate action multiple times to get multimodality
         mm_traj = []
         times = [] # to store the time taken to generate the action
-        for seed in range(cfg.num_seeds):
+        for _ in range(cfg.num_seeds):
             # change seed
             torch.manual_seed(seed)
             start_time = timeit.default_timer()
@@ -78,6 +78,7 @@ def traj_eval(cfg: DictConfig) -> None:
             # compute the difference against the ground truth
             error = action - groundtruth_traj
             delta_traj.append(error)
+            seed += 1
 
         times = np.array(times)
         log.info(f"Average execution time for 50 : {times.mean()}")
@@ -108,16 +109,20 @@ def traj_eval(cfg: DictConfig) -> None:
         wandb.log(step_log)
         step_log = {}
     
-    # compute the mean and std of the error
+        delta_traj_sample = np.array(delta_traj[-cfg.num_seeds:])
+        mean_error = np.mean(delta_traj_sample)
+        std_error = np.std(np.mean(delta_traj_sample, axis=1), axis=0).mean()
+        log.info(f"Mean error: {mean_error}")
+        log.info(f"Std error: {std_error}")
+        wandb.log({"mean_error": mean_error, "std_error": std_error})
+
+    # compute the mean and std of the error for all the samples
     delta_traj = np.array(delta_traj)
-    mean_error = np.mean(np.mean(delta_traj, axis=1), axis=0)
-    std_error = np.std(np.mean(delta_traj, axis=1), axis=0)
+    mean_error = np.mean(delta_traj)
+    std_error = np.std(np.mean(delta_traj, axis=1), axis=0).mean()
     log.info(f"Mean error: {mean_error}")
     log.info(f"Std error: {std_error}")
     wandb.log({"mean_error": mean_error, "std_error": std_error})
-
-        
-    
 
 
 if __name__ == "__main__":
