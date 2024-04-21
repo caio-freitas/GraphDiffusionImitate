@@ -108,7 +108,7 @@ class MLPPolicy(BasePolicy):
         # create dataloader
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=32,
+            batch_size=128,
             num_workers=1,
             shuffle=True,
             # accelerate cpu-gpu transfer
