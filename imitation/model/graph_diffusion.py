@@ -61,9 +61,11 @@ class EGraphConditionEncoder(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
-        self.id_embedding = nn.Embedding(30, 16).to(self.device)
+        self.embed_dim = 16
+        self.MAX_EMBS = 30
+        self.id_embedding = nn.Embedding(self.MAX_EMBS, self.embed_dim).to(self.device)
         self.egnn = EGNN(
-            in_node_nf=input_dim + 16, 
+            in_node_nf=input_dim + self.embed_dim, 
             out_node_nf=hidden_dim,
             hidden_nf=hidden_dim,
             in_edge_nf=1,
