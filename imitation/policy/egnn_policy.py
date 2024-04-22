@@ -47,7 +47,9 @@ class EGNNPolicy(BasePolicy):
         ).to(self.device)
         
         self.global_epoch = 0
-
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        # LR scheduler with warmup
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.8)
         
         self.ckpt_path = ckpt_path
         
@@ -120,9 +122,7 @@ class EGNNPolicy(BasePolicy):
         )
 
         loss_fn = nn.MSELoss()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        # LR scheduler with warmup
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.8)
+        
         # visualize data in batch
         batch = next(iter(dataloader))
         log.info(f"batch.y.shape:{batch.y.shape}")
@@ -145,12 +145,12 @@ class EGNNPolicy(BasePolicy):
                         loss = loss_fn(pred, action)
                         # loss_x = loss_fn(x, nbatch.pos[:,:3].to(self.device).float())
                         loss.backward()
-                        optimizer.step()
-                        optimizer.zero_grad()
-                        lr_scheduler.step()
+                        self.optimizer.step()
+                        self.optimizer.zero_grad()
+                        self.lr_scheduler.step()
 
                         pbar.set_postfix({"loss": loss.item()})
-                        wandb.log({"loss": loss.item()})    
+                        wandb.log({"loss": loss.item(), "lr": self.lr_scheduler.get_last_lr()[0]})    
 
                 self.global_epoch += 1
                 wandb.log({"epoch": self.global_epoch, "loss": loss.item()})
