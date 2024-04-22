@@ -24,7 +24,7 @@ agent:
 
 # Disable evaluation 
 # eval_params: "disabled"
-max_steps: 500
+max_steps: ${task.max_steps}
 
 # Evaluation during training
 eval_params:
@@ -36,7 +36,7 @@ eval_params:
   output_video: True
 
   num_episodes: 50
-  max_steps: ${max_steps}
+  max_steps: ${task.max_steps}
   output_dir: ./outputs
 
 
