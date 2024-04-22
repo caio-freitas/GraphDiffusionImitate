@@ -22,12 +22,14 @@ class EGNNPolicy(BasePolicy):
                     pred_horizon: int,
                     obs_horizon: int,
                     ckpt_path=None,
-                    lr: float = 1e-3):
+                    lr: float = 1e-3,
+                    batch_size=64):
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         log.info(f"Using device {self.device}")
 
         self.dataset = dataset
+        self.batch_size = batch_size
         self.node_feature_dim = node_feature_dim
         self.obs_node_feature_dim = obs_node_feature_dim
 
@@ -64,7 +66,7 @@ class EGNNPolicy(BasePolicy):
         y = torch.stack(nobs, dim=1).to(self.device).float()
         nobs = y.flatten(start_dim=1)
         # import pdb; pdb.set_trace()
-        pred, x = self.model(h=nobs, 
+        pred, x = self.model(h=nobs[:,:,:1],
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
                             x=obs.pos[:,:3].to(self.device).float(),
@@ -83,9 +85,9 @@ class EGNNPolicy(BasePolicy):
         with torch.no_grad():
             with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
-                    nobs = nbatch.y.to(self.device).float()
+                    nobs = nbatch.y[:,:,:1].to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
-                    action = nbatch.x.to(self.device).float()
+                    action = nbatch.x[:,:,:1].to(self.device).float()
                     pred, x = self.model(h=nobs, 
                                         edges=nbatch.edge_index.to(self.device).long(),
                                         edge_attr=nbatch.edge_attr.to(self.device).unsqueeze(1).float(),
@@ -110,7 +112,7 @@ class EGNNPolicy(BasePolicy):
         # create dataloader
         dataloader = DataLoader(
             dataset,
-            batch_size=32,
+            batch_size=self.batch_size,
             shuffle=True
         )
 
@@ -127,9 +129,9 @@ class EGNNPolicy(BasePolicy):
             for epoch in pbar:
                 with tqdm(dataloader, desc="Batch", leave=False) as pbar:
                     for nbatch in pbar:
-                        nobs = nbatch.y.to(self.device).float()
+                        nobs = nbatch.y[:,:,:1].to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
-                        action = nbatch.x.to(self.device).float()
+                        action = nbatch.x[:,:,:1].to(self.device).float()
 
                         pred, x = self.model(h=nobs, 
                                           edges=nbatch.edge_index.to(self.device).long(),
