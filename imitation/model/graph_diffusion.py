@@ -61,8 +61,9 @@ class EGraphConditionEncoder(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
+        self.id_embedding = nn.Embedding(30, 16).to(self.device)
         self.egnn = EGNN(
-            in_node_nf=input_dim, 
+            in_node_nf=input_dim + 16, 
             out_node_nf=hidden_dim,
             hidden_nf=hidden_dim,
             in_edge_nf=1,
@@ -71,13 +72,15 @@ class EGraphConditionEncoder(nn.Module):
         self.pool = global_max_pool
         self.fc = Linear(hidden_dim, output_dim).to(self.device)
 
-    def forward(self, x, edge_index, coord, edge_attr, batch=None):
-        x = x.float().to(self.device).flatten(start_dim=1)
+    def forward(self, x, edge_index, coord, edge_attr, batch=None, ids=None):
+        x = x.float().to(self.device)
+        ids = ids.long().to(self.device)
         coord = coord.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
         edge_index = edge_index.to(self.device)
         batch = batch.long().to(self.device) if batch is not None else torch.zeros(x.shape[0], dtype=torch.long).to(self.device)
-
+        id_embed = self.id_embedding(ids)
+        x = torch.cat([x, id_embed], dim=-1)
         h_v, x = self.egnn(x, coord, edge_index, edge_attr)
         g_v = self.pool(h_v,batch=batch)
         h_v = self.fc(g_v)
@@ -270,7 +273,8 @@ class ConditionalGraphNoisePred(nn.Module):
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
-        cond = cond.float().to(self.device)
+        ids = cond[:,0,1].long().to(self.device)
+        cond = cond[:,:,0].float().to(self.device).flatten(start_dim=1)
         x_coord = x_coord.float().to(self.device)
         timesteps = timesteps.to(self.device)
         batch = batch.long().to(self.device)
@@ -290,7 +294,7 @@ class ConditionalGraphNoisePred(nn.Module):
         h_e = self.edge_embedding(edge_attr.reshape(-1, 1))
 
         # FiLM generator
-        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr, batch=batch)
+        embed = self.cond_encoder(cond, edge_index, x_coord, edge_attr, batch=batch, ids=ids)
         embed = embed.reshape(self.num_layers, batch_size, 2, (self.hidden_dim + self.diffusion_step_embed_dim))
         scales = embed[:,:,0,...]
         biases = embed[:,:,1,...]
