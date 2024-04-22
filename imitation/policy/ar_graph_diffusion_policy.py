@@ -52,9 +52,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
 
         self.lr_scheduler = None
         self.num_epochs = None
-
-        if ckpt_path is not None:
-            self.load_nets(ckpt_path)
+        
         self.playback_count = 0 # for testing purposes, remove before merge
 
     def load_nets(self, ckpt_path):

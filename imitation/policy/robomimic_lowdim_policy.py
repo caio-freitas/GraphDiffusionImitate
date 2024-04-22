@@ -31,9 +31,6 @@ class RobomimicPretrainedWrapper:
             lr=1e-4
         ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # load model from ckpt
-        if ckpt_path is not None:
-            self.load_nets(ckpt_path)
 
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")

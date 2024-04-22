@@ -73,7 +73,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.optimizer = None
         self.num_epochs = None
 
-        self.load_nets(self.ckpt_path)
         self.global_epoch = 0
         self.last_naction = torch.zeros((self.action_dim, self.pred_horizon, self.node_feature_dim), device=self.device)
         self.playback_count = 0

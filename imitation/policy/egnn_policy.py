@@ -45,9 +45,6 @@ class EGNNPolicy(BasePolicy):
         ).to(self.device)
         
         self.global_epoch = 0
-        # load model from ckpt
-        if ckpt_path is not None:
-            self.load_nets(ckpt_path)
 
         
         self.ckpt_path = ckpt_path
