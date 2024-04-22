@@ -56,7 +56,11 @@ class EGNNPolicy(BasePolicy):
         try:
             self.model.load_state_dict(torch.load(ckpt_path))
         except:
-            log.error(f"Could not load model from {ckpt_path}")    
+            log.error(f"Could not load model from {ckpt_path}")
+
+    def save_nets(self, ckpt_path):
+        log.info(f"Saving model to {ckpt_path}")
+        torch.save(self.model.state_dict(), ckpt_path)
 
     def get_action(self, obs_deque):
         
@@ -64,9 +68,8 @@ class EGNNPolicy(BasePolicy):
         for obs in obs_deque:
             nobs.append(obs.y)
         y = torch.stack(nobs, dim=1).to(self.device).float()
-        nobs = y.flatten(start_dim=1)
-        # import pdb; pdb.set_trace()
-        pred, x = self.model(h=nobs[:,:,:1],
+        nobs = y[:,:,:1].flatten(start_dim=1)
+        pred, x = self.model(h=nobs,
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
                             x=obs.pos[:,:3].to(self.device).float(),
