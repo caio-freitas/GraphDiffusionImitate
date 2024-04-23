@@ -150,14 +150,18 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
         return node_feats
     
-    def _get_node_feats_horizon(self, data, idx, horizon):
+    def _get_node_feats_horizon(self, data, idx, horizon, episode_length):
         '''
         Calculate node features for self.obs_horizon time steps
         '''
         node_feats = []
-        # calculate node features for timesteps idx to idx + horizon
-        t_vals = list(range(idx, idx + horizon))
-        node_feats = self._get_node_feats(data, t_vals)
+        if idx + horizon > episode_length:
+            node_feats.append(self._get_node_feats(data, [0]).repeat(1,idx+horizon-episode_length,1)) # use fixed last action for end of episode
+            node_feats.append(self._get_node_feats(data, [t for t in range(idx, episode_length)]))
+            node_feats = torch.cat(node_feats, dim=1)
+        else: # get all observation steps with single call
+            node_feats = self._get_node_feats(data, list(range(idx, idx + horizon)))
+
         return node_feats
     
     @lru_cache(maxsize=None)
@@ -218,10 +222,10 @@ class RobomimicGraphDataset(InMemoryDataset):
         for key in tqdm(self.dataset_keys):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
             
-            for idx in range(episode_length - self.pred_horizon):
+            for idx in range(episode_length):
                 
                 data_raw = self.dataset_root["data"][key]["obs"]
-                node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon)
+                node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon, episode_length)
                 edge_index  = self._get_edge_index(node_feats.shape[0])
                 edge_attrs  = self._get_edge_attrs(edge_index)
                 y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
