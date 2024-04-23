@@ -49,7 +49,7 @@ class EGNNPolicy(BasePolicy):
         self.global_epoch = 0
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         # LR scheduler with warmup
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.8)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.99)
         
         self.ckpt_path = ckpt_path
         
