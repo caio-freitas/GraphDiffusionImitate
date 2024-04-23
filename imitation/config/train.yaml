@@ -8,9 +8,9 @@ output_dir: ./outputs
 render: False
 output_video: True
 
-pred_horizon: 16
-obs_horizon: 2
-action_horizon: 8
+pred_horizon: 10
+obs_horizon: 10
+action_horizon: 2
 # Training parameters
 num_epochs: 500
 val_fraction: 0.1
@@ -27,14 +27,14 @@ max_steps: 500
 
 # Evaluation during training
 eval_params:
-  eval_every: 50 # evaluate every 50 epochs
+  eval_every: 10 # evaluate every 50 epochs
   val_every: 1
   task: ${task}
   policy: ${policy}
   render: False
   output_video: True
 
-  num_episodes: 50
+  num_episodes: 5
   max_steps: ${max_steps}
   output_dir: ./outputs
 
