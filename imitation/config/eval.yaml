@@ -9,7 +9,7 @@ output_video: True
 num_episodes: 20
 max_steps: ${task.max_steps}
 output_dir: ./outputs
-
+load_ckpt: True
 
 pred_horizon: 16
 obs_horizon: 2
