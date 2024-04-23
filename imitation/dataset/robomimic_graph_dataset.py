@@ -1,4 +1,4 @@
-
+import collections
 from typing import Callable, Optional
 from torch_geometric.data import Dataset, Data, InMemoryDataset
 import logging
@@ -11,6 +11,7 @@ from typing import List, Dict
 from functools import lru_cache
 from scipy.spatial.transform import Rotation as R
 
+from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.model.common.rotation_transformer import RotationTransformer
 
 from imitation.utils.generic import calculate_panda_joints_positions
@@ -63,14 +64,8 @@ class RobomimicGraphDataset(InMemoryDataset):
             self.eef_idx += [17]
 
         super().__init__(root=self._processed_dir, transform=None, pre_transform=None, pre_filter=None, log=True)
-        self.stats = {}
-        self.stats["y"] = self.get_data_stats("y")
-        self.stats["x"] = self.get_data_stats("x")
 
-        self.constant_stats = {
-            "y": torch.tensor([False, False, False, True, True, True, True, True, True]), # mask rotations for robot and object nodes
-            "x": torch.tensor([False, True]) # node type flag is constant
-        }
+        self.normalizer = self.get_normalizer()
         
 
     @property
@@ -81,7 +76,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
-    # @lru_cache(maxsize=None)
+    @lru_cache(maxsize=None)
     def _get_object_feats(self, num_objects, node_feature_dim, OBJECT_NODE_TYPE, T): # no associated joint values
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
         obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
@@ -123,22 +118,24 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
     
-    def _get_node_feats(self, data, t_vals):
+    def _get_node_feats(self, data, t_vals, control_mode=None):
         '''
         Calculate node features for time steps t_vals
         t_vals: list of time steps
         '''
         T = len(t_vals)
         node_feats = []
-        if self.control_mode == "OSC_POSE":
+        if control_mode is None:
+            control_mode = self.control_mode
+        if control_mode == "OSC_POSE":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=0))
-        elif self.control_mode == "JOINT_POSITION":
+        elif control_mode == "JOINT_POSITION":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
                                 torch.tensor(data[f"robot{i}_joint_pos"][t_vals]),
                                 torch.tensor(data[f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
-        elif self.control_mode == "JOINT_VELOCITY":
+        elif control_mode == "JOINT_VELOCITY":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
                                 torch.tensor(data[f"robot{i}_joint_vel"][t_vals]),
@@ -206,12 +203,13 @@ class RobomimicGraphDataset(InMemoryDataset):
         Get y (observation) for time step t. Should contain only task-space joint positions.
         '''
         y = []
-        for t in range(idx, idx - horizon,-1):
-            if t < 0:
-                y.append(self._get_node_pos(data, 0)) # use fixed first observation for beginning of episode
-            else:
-                y.append(self._get_node_pos(data, t))
-        return torch.stack(y, dim=1)
+        if idx - horizon < 0:
+            y.append(self._get_node_feats(data, [0], control_mode="JOINT_POSITION").repeat(1,horizon-idx,1)) # use fixed first observation for beginning of episode
+            y.append(self._get_node_feats(data, [t for t in range(0, idx)], control_mode="JOINT_POSITION"))
+            y = torch.cat(y, dim=1)
+        else: # get all observation steps with single call
+            y = self._get_node_feats(data, list(range(idx - horizon, idx)), control_mode="JOINT_POSITION")
+        return y
 
     
     def process(self):
@@ -266,36 +264,40 @@ class RobomimicGraphDataset(InMemoryDataset):
             "max": torch.max(data, dim=1).values
         }
     
-    def normalize_data(self, data, stats_key, batch_size=1):
-        # avoid division by zero by skipping normalization
-        with torch.no_grad():
-            # duplicate stats for each batch
-            data = data.clone().to(dtype=torch.float64)
-            stats = self.stats[stats_key].copy()
-            stats["min"] = stats["min"].repeat(batch_size, 1)
-            stats["max"] = stats["max"].repeat(batch_size, 1)
-            to_normalize = ~self.constant_stats[stats_key]
-            constant_stats = stats["max"] == stats["min"]
-            stats["min"][constant_stats] = -1
-            stats["max"][constant_stats] = 1
-            for t in range(data.shape[1]):
-                data[:,t,to_normalize] = (data[:,t,to_normalize] - stats['min'][:,to_normalize]) / (stats['max'][:,to_normalize] - stats['min'][:,to_normalize])
-                data[:,t,to_normalize] = data[:,t,to_normalize] * 2 - 1
-        return data
+    def normalize_data(self, data, stats_key):
+        return self.normalizer[stats_key].normalize(data)
+    
+    def unnormalize_data(self, data, stats_key):
+        return self.normalizer[stats_key].unnormalize(data)
 
-    def unnormalize_data(self, data, stats_key, batch_size=1):
-        # avoid division by zero by skipping normalization
-        with torch.no_grad():
-            stats = self.stats[stats_key].copy()
-            # duplicate stats for each batch
-            stats["min"] = stats["min"].repeat(batch_size, 1)
-            stats["max"] = stats["max"].repeat(batch_size, 1)
-            data = data.clone().to(dtype=torch.float64)
-            to_normalize = ~self.constant_stats[stats_key]
-            constant_stats = stats["max"] == stats["min"]
-            stats["min"][constant_stats] = -1
-            stats["max"][constant_stats] = 1
-            for t in range(data.shape[1]):
-                data[:,t,to_normalize] = (data[:,t,to_normalize] + 1) / 2
-                data[:,t,to_normalize] = data[:,t,to_normalize] * (stats['max'][:,to_normalize] - stats['min'][:,to_normalize]) + stats['min'][:,to_normalize]
-        return data
+    def get_normalizer(self):
+        normalizer = LinearNormalizer()
+        data_obs = []
+        data_action = []
+        for idx in range(self.len()):
+            data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
+            data_obs.append(data["y"])
+            data_action.append(data["x"])
+        data_obs = torch.cat(data_obs, dim=1)
+        data_action = torch.cat(data_action, dim=1)
+        
+        normalizer.fit(
+            {
+                "obs": data_obs,
+                "action": data_action
+            }
+        )
+        return normalizer
+    
+    def to_obs_deque(self, data):
+        obs_deque = collections.deque(maxlen=self.obs_horizon)
+        data_t = data.clone()
+        for t in range(self.obs_horizon):
+            data_t.x = data.x[:,t,:]
+            data_t.y = data.y[:,t,:]
+            obs_deque.append(data_t.clone())
+        return obs_deque
+    
+    def get_action(self, data):
+        return data.x[:self.eef_idx[-1] + 1,:,0].T.numpy()
+    

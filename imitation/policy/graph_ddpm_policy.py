@@ -50,7 +50,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.num_diffusion_iters = num_diffusion_iters
         self.lr = lr
         self.use_normalization = use_normalization
-
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
@@ -64,7 +63,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             # clip output to [-1,1] to improve stability
             clip_sample=True,
             # our network predicts noise (instead of denoised action)
-            prediction_type='epsilon'
+            prediction_type='epsilon',
+            beta_start=1e-4,
+            beta_end=2e-2,
         )
         self.noise_addition_std = noise_addition_std
         
@@ -72,7 +73,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.optimizer = None
         self.num_epochs = None
 
-        self.load_nets(self.ckpt_path)
         self.global_epoch = 0
         self.last_naction = torch.zeros((self.action_dim, self.pred_horizon, self.node_feature_dim), device=self.device)
         self.playback_count = 0
@@ -95,6 +95,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             log.error('Error loading pretrained weights.')
             self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
 
+    def save_nets(self, ckpt_path):
+        torch.save(self.ema_noise_pred_net.state_dict(), ckpt_path)
+        log.info(f"Model saved at {ckpt_path}")
+
     def MOCK_get_graph_from_obs(self): # for testing purposes, remove before merge
         # plays back observation from dataset
         playback_graph = self.dataset[self.playback_count]
@@ -103,6 +107,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.playback_count += 7
         log.info(f"Playing back observation {self.playback_count}")
         return obs_cond, playback_graph
+    
     def get_action(self, obs_deque):
         B = 1 # action shape is (B, Ta, Da), observations (B, To, Do)
         # transform deques to numpy arrays
@@ -110,20 +115,20 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         pos = []
         G_t = obs_deque[-1]
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y.unsqueeze(1)) # only quaternions
+            obs_cond.append(obs_deque[i].y.unsqueeze(1))
             pos.append(obs_deque[i].pos)
         nobs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
-            nobs = self.dataset.normalize_data(nobs, stats_key='y')
-            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='x').to(self.device)
+            nobs = self.dataset.normalize_data(nobs, stats_key='obs')
+            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='action').to(self.device)
         else:
             self.last_naction = G_t.x.unsqueeze(1).to(self.device)
 
         with torch.no_grad():
             # initialize action from Guassian noise
             self.last_naction = self.last_naction.repeat(1, self.pred_horizon, 1)[:,:,:1]
-            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn((self.action_dim + 1, self.pred_horizon, self.node_feature_dim), device=self.device) * self.noise_addition_std
+            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn_like(self.last_naction, device=self.device, memory_format=torch.contiguous_format) * self.noise_addition_std
             naction = noisy_action
 
             # init scheduler
@@ -135,8 +140,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     x = naction,
                     edge_index = G_t.edge_index,
                     edge_attr = G_t.edge_attr,
-                    x_coord = nobs[:,-1,:3],
-                    cond = nobs[:,:,3:],
+                    x_coord = G_t.pos[:,:3],    
+                    cond = nobs,
                     timesteps = torch.tensor([k], dtype=torch.long, device=self.device),
                     batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
@@ -152,7 +157,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
         naction = naction.detach().to('cpu')
         if self.use_normalization:
-            naction = self.dataset.unnormalize_data(naction, stats_key='x').numpy()
+            naction = self.dataset.unnormalize_data(naction, stats_key='action').numpy()
         action = naction[:self.action_dim,:,0].T
         
         # (action_horizon, action_dim)
@@ -176,16 +181,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for batch in dataloader:
                 if self.use_normalization:
                     # normalize observation
-                    nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                     # nobs = batch.y
                     # normalize action
-                    naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
-                naction = naction[:,:,:1] # single node feature dim
+                    naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
                 # (B, node, obs_horizon, obs_dim)
-                obs_cond = nobs[:,:,3:]
+                obs_cond = nobs
+                naction = naction[:,:,:1] # joint value
                 # (B, obs_horizon * obs_dim)
                 obs_cond = obs_cond.flatten(start_dim=1)
 
@@ -222,7 +227,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     noisy_actions, 
                     batch.edge_index, 
                     batch.edge_attr, 
-                    x_coord = batch.y[:,-1,:3], 
+                    x_coord = batch.pos[:,:3], 
                     cond=obs_cond,
                     timesteps=timesteps,
                     batch=batch.batch)
@@ -260,7 +265,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         )
 
         ema = EMAModel(
-            parameters=self.noise_pred_net.parameters(),
+            parameters=self.ema_noise_pred_net.parameters(),
             power=0.75)
 
         # Standard ADAM optimizer
@@ -269,7 +274,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         if self.optimizer is None:
             self.optimizer = torch.optim.AdamW(
                 params=self.noise_pred_net.parameters(),
-                lr=self.lr, weight_decay=1e-6)
+                lr=self.lr, 
+                weight_decay=1e-6,
+                betas=[0.95, 0.999],
+                eps=1e-8)
+            
         if self.lr_scheduler is None:
         # Cosine LR schedule with linear warmup
             self.lr_scheduler = get_scheduler(
@@ -288,15 +297,15 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     for batch in tepoch:
                         if self.use_normalization:
                             # normalize observation
-                            nobs = self.dataset.normalize_data(batch.y, stats_key='y', batch_size=batch.num_graphs).to(self.device)
+                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                             # normalize action
-                            naction = self.dataset.normalize_data(batch.x, stats_key='x', batch_size=batch.num_graphs).to(self.device)
-                        naction = naction[:,:,:1]
+                            naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
                         # (B, node, obs_horizon, obs_dim)
-                        obs_cond = nobs[:,:,3:] # only 6D rotation
+                        obs_cond = nobs
+                        naction = naction[:,:,:1] # joint value
                         # (B, obs_horizon * obs_dim)
                         obs_cond = obs_cond.flatten(start_dim=1)
 
@@ -315,8 +324,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         # add noise to first action instead of sampling from Gaussian
                         noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1).float() + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
-                        noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
-
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
 
@@ -334,7 +341,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             noisy_actions, 
                             batch.edge_index, 
                             batch.edge_attr, 
-                            x_coord = batch.y[:,-1,:3], 
+                            x_coord = batch.pos[:,:3], 
                             cond=obs_cond,
                             timesteps=timesteps,
                             batch=batch.batch)
@@ -363,9 +370,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 wandb.log({'epoch': self.global_epoch, 'epoch_loss': np.mean(epoch_loss)})
                 # save model checkpoint
                 # use weights of the EMA model for inference
-                ema_noise_pred_net = self.noise_pred_net
-                ema.copy_to(ema_noise_pred_net.parameters())
-                torch.save(ema_noise_pred_net.state_dict(), model_path)
+                self.save_nets(model_path)
                 self.global_epoch += 1
                 tglobal.set_description(f"Epoch: {self.global_epoch}")
 

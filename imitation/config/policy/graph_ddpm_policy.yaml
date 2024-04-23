@@ -8,20 +8,22 @@ num_edge_types: 2 # robot joints, object-robot
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
-num_diffusion_iters: 100
+num_diffusion_iters: 200
 dataset: ${task.dataset}
 denoising_network:
   _target_: imitation.model.graph_diffusion.ConditionalGraphNoisePred
   node_feature_dim: ${policy.node_feature_dim}
+  cond_feature_dim: 2
   obs_horizon: ${obs_horizon}
   pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
   num_edge_types: ${policy.num_edge_types}
   num_layers: 3
-  hidden_dim: 128
+  hidden_dim: 512
+  diffusion_step_embed_dim: 256
   num_diffusion_steps: ${policy.num_diffusion_iters}
 ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_type}_${task.control_mode}_${policy.num_diffusion_iters}iters.pt
-lr: 5e-5
-batch_size: 32
-noise_addition_std: 0.1
+lr: 1e-4
+batch_size: 64
+noise_addition_std: 1
 use_normalization: True

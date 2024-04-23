@@ -3,11 +3,12 @@ defaults:
   - task: lift_graph
   - policy: graph_ddpm_policy
 
-render: False
+render: True
 output_video: True
 
-num_episodes: 20
-max_steps: ${task.max_steps}
+num_seeds: 1
+num_episodes: 50 # -1 for whole dataset
+max_steps: 1000
 output_dir: ./outputs
 
 

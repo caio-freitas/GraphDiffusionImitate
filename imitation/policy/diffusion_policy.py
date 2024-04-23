@@ -80,7 +80,6 @@ class DiffusionUnet1DPolicy(BasePolicy):
         
 
         self._init_stats()
-        self.load_nets(self.ckpt_path)
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
