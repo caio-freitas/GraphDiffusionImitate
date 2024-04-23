@@ -32,6 +32,12 @@ def eval_main(cfg):
     # instanciate agent from policy
     agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
 
+    try:
+        if cfg.policy.ckpt_path is not None and cfg.load_ckpt:
+            policy.load_nets(cfg.policy.ckpt_path)
+    except:
+        log.error("cfg.policy.ckpt_path doesn't exist")
+
     if __name__ == "__main__":
         wandb.init(
             project=policy.__class__.__name__,
