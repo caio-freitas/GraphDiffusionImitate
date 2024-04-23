@@ -86,7 +86,7 @@ class RobomimicLowdimDataset(torch.utils.data.Dataset):
                           |------------ pred_horizon -------------|
         '''
         idx_global = 0
-        n_latency_steps = -1
+        n_latency_steps = 0
         for key in tqdm(self.dataset_keys):
             episode_length = len(self.dataset_root[f"data/{key}/obs/{self.obs_keys[0]}"])
             for idx in range(episode_length - self.pred_horizon + n_latency_steps):
