@@ -218,14 +218,14 @@ class RobomimicGraphDataset(InMemoryDataset):
         for key in tqdm(self.dataset_keys):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
             
-            for idx in range(episode_length - self.pred_horizon):
+            for idx in range(1, episode_length - self.pred_horizon):
                 
                 data_raw = self.dataset_root["data"][key]["obs"]
                 node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon)
                 edge_index  = self._get_edge_index(node_feats.shape[0])
                 edge_attrs  = self._get_edge_attrs(edge_index)
                 y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
-                pos         = self._get_node_pos(data_raw, idx)
+                pos         = self._get_node_pos(data_raw, idx - 1)
 
                 data  = Data(
                     x=node_feats,
