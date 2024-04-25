@@ -9,7 +9,8 @@ class NodeMasker:
         self.node_feature_dim = dataset[0].x.shape[1:]
         # assert dataset[0].edge_attr.shape[1] == 1, f"Edge feature dim is not 1, got {dataset[0].edge_attr.shape[1]}"  # edge_feature_dim is 1, since edge_attr is just edge type
         self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset[0].edge_attr.unique())}
-        self.NODE_MASK = -100
+        self.NODE_MASK = -1
+        self.POS_MASK = 0
         self.EMPTY_EDGE = 3 # TODO parametrize to num_edge_types + 1
         self.EDGE_MASK = 4 # TODO parametrize to num_edge_types + 2
         # add masks to node and edge types
@@ -72,7 +73,7 @@ class NodeMasker:
         datapoint.x = torch.cat([datapoint.x, masked_node_feature], dim=0)
         datapoint.edge_attr = torch.cat([datapoint.edge_attr, torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0])])
         datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0])]).T], dim=1)
-        datapoint.pos = torch.cat([datapoint.pos, torch.zeros(1, 7)])
+        datapoint.pos = torch.cat([datapoint.pos, torch.zeros(1, 9)])
         return datapoint
 
 
@@ -90,6 +91,7 @@ class NodeMasker:
         # mask node
         datapoint = datapoint.clone()
         datapoint.x[selected_node] = self.NODE_MASK
+        datapoint.pos[selected_node] = self.POS_MASK * torch.ones(9)
         
         # mask edges
         datapoint.edge_attr[datapoint.edge_index[0] == selected_node] = self.EDGE_MASK
@@ -190,4 +192,4 @@ class NodeMasker:
         '''
         Creates an empty graph with n_nodes
         '''
-        return torch_geometric.data.Data(x=torch.ones(n_nodes, *self.node_feature_dim, dtype=torch.int32) * self.NODE_MASK, edge_index=torch.tensor([[0], [0]]), edge_attr=torch.tensor([self.EDGE_MASK]), pos=torch.zeros(n_nodes, 7))
+        return torch_geometric.data.Data(x=torch.ones(n_nodes, *self.node_feature_dim, dtype=torch.int32) * self.NODE_MASK, edge_index=torch.tensor([[0], [0]]), edge_attr=torch.tensor([self.EDGE_MASK]), pos=torch.zeros(n_nodes, 9))
