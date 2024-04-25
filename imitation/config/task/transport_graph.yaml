@@ -3,7 +3,7 @@ task_name: &task_name transport
 dataset_type: &dataset_type ph
 dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
 
-max_steps: ${max_steps}
+max_steps: ${eval:'1200 if "${task.dataset_type}" == "mh" else 800'}
 
 control_mode: "JOINT_POSITION"
 

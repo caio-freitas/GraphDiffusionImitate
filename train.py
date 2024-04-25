@@ -31,7 +31,7 @@ def train(cfg: DictConfig) -> None:
     policy = hydra.utils.instantiate(cfg.policy)
     log.info(f"Training policy {policy.__class__.__name__} with seed {cfg.seed} on task {cfg.task.task_name}")
     try:
-        if cfg.policy.ckpt_path is not None:
+        if cfg.policy.ckpt_path is not None and cfg.load_ckpt:
             policy.load_nets(cfg.policy.ckpt_path)
     except:
         log.error("cfg.policy.ckpt_path doesn't exist")
@@ -53,11 +53,9 @@ def train(cfg: DictConfig) -> None:
     )
     # wandb.watch(policy.model, log="all")
 
-
-    # Split the dataset into train and validation
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
-    )
+    torch.manual_seed(cfg.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(cfg.seed)
 
     # Split the dataset into train and validation
     train_dataset, val_dataset = torch.utils.data.random_split(
