@@ -50,7 +50,6 @@ class EGNNPolicy(BasePolicy):
         
         self.global_epoch = 0
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-
         self.ckpt_path = ckpt_path
         
     def load_nets(self, ckpt_path):
