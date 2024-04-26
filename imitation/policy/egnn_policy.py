@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 class EGNNPolicy(BasePolicy):
     def __init__(self,
                     dataset,
+                    action_dim: int,
                     node_feature_dim: int,
                     obs_node_feature_dim: int,
                     pred_horizon: int,
@@ -30,6 +31,7 @@ class EGNNPolicy(BasePolicy):
         log.info(f"Using device {self.device}")
 
         self.dataset = dataset
+        self.action_dim = action_dim
         self.use_normalization = use_normalization
         self.batch_size = batch_size
         self.node_feature_dim = node_feature_dim
@@ -82,7 +84,7 @@ class EGNNPolicy(BasePolicy):
         if self.use_normalization:
             pred = self.dataset.unnormalize_data(pred, stats_key='action')
         
-        return pred[:9,:,0].T.detach().cpu().numpy() # return joint values only
+        return pred[:self.action_dim,:,0].T.detach().cpu().numpy() # return joint values only
 
     def validate(self, dataset, model_path):
         '''
@@ -100,14 +102,14 @@ class EGNNPolicy(BasePolicy):
                         nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
                     nobs = nbatch.y.to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
-                    action = nbatch.x[:,:,:1].to(self.device).float()
+                    action = nbatch.x[:self.action_dim,:,:1].to(self.device).float()
                     pred, x = self.model(h=nobs, 
                                         edges=nbatch.edge_index.to(self.device).long(),
                                         edge_attr=nbatch.edge_attr.to(self.device).unsqueeze(1).float(),
                                         x=nbatch.pos[:,:3].to(self.device).float(),
                     )
                     pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-                    loss = loss_fn(pred, action)
+                    loss = loss_fn(pred[:self.action_dim,:,:], action)
                     val_loss += loss.item()
         val_loss /= len(dataset)
         return val_loss
@@ -145,7 +147,7 @@ class EGNNPolicy(BasePolicy):
                             nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
                         nobs = nbatch.y.to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
-                        action = nbatch.x[:,:,:1].to(self.device).float()
+                        action = nbatch.x[:self.action_dim,:,:1].to(self.device).float()
 
                         pred, x = self.model(h=nobs, 
                                           edges=nbatch.edge_index.to(self.device).long(),
@@ -153,7 +155,7 @@ class EGNNPolicy(BasePolicy):
                                           x=nbatch.pos[:,:3].to(self.device).float(),
                         )
                         pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-                        loss = loss_fn(pred, action)
+                        loss = loss_fn(pred[:self.action_dim,:,:], action)
                         # loss_x = loss_fn(x, nbatch.pos[:,:3].to(self.device).float())
                         loss.backward()
                         self.optimizer.step()
