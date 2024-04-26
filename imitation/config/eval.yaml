@@ -13,7 +13,7 @@ load_ckpt: True
 
 pred_horizon: 16
 obs_horizon: 2
-action_horizon: 8
+action_horizon: 4
 
 
 env_runner: ${task.env_runner}
