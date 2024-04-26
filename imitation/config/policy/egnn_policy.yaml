@@ -7,3 +7,4 @@ dataset: ${task.dataset}
 ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_egnn_last.pt
 lr: 0.0005
 batch_size: 128
+use_normalization: False
