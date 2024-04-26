@@ -33,8 +33,8 @@ def train(cfg: DictConfig) -> None:
     try:
         if cfg.policy.ckpt_path is not None and cfg.load_ckpt:
             policy.load_nets(cfg.policy.ckpt_path)
-    except:
-        log.error("cfg.policy.ckpt_path doesn't exist")
+    except Exception as e:
+        log.error(f"Error loading checkpoint: {e}")
     
     wandb.init(
         project=policy.__class__.__name__,
