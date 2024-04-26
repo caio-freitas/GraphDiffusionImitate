@@ -71,8 +71,6 @@ class EGNNPolicy(BasePolicy):
         for obs in obs_deque:
             nobs.append(obs.y)
         y = torch.stack(nobs, dim=1)
-        if self.use_normalization:
-            y = self.dataset.normalize_data(y, stats_key='obs')
         
         nobs = y.flatten(start_dim=1)
         pred, x = self.model(h=nobs.to(self.device).float(),
@@ -98,7 +96,6 @@ class EGNNPolicy(BasePolicy):
             with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
                     if self.use_normalization:
-                        nbatch.y = self.dataset.normalize_data(nbatch.y, stats_key='obs')
                         nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
                     nobs = nbatch.y.to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
@@ -143,7 +140,6 @@ class EGNNPolicy(BasePolicy):
                 with tqdm(dataloader, desc="Batch", leave=False) as pbar:
                     for nbatch in pbar:
                         if self.use_normalization:
-                            nbatch.y = self.dataset.normalize_data(nbatch.y, stats_key='obs')
                             nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
                         nobs = nbatch.y.to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
