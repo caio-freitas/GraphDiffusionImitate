@@ -39,9 +39,6 @@ class MLPPolicy(BasePolicy):
 
         self.model = model.to(self.device)
         self.global_epoch = 0
-        # load model from ckpt
-        if ckpt_path is not None:
-            self.load_nets(ckpt_path)
 
         self.ckpt_path = ckpt_path
         
@@ -51,6 +48,10 @@ class MLPPolicy(BasePolicy):
             self.model.load_state_dict(torch.load(ckpt_path))
         except:
             log.error(f"Could not load model from {ckpt_path}")    
+
+    def save_nets(self, ckpt_path):
+        log.info(f"Saving model to {ckpt_path}")
+        torch.save(self.model.state_dict(), ckpt_path)
 
     def get_action(self, obs):
         obs = torch.tensor([obs], dtype=torch.float32).to(self.device)
@@ -104,7 +105,7 @@ class MLPPolicy(BasePolicy):
         # create dataloader
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=32,
+            batch_size=128,
             num_workers=1,
             shuffle=True,
             # accelerate cpu-gpu transfer

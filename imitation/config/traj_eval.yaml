@@ -1,15 +1,16 @@
 defaults:
   - _self_
   - task: lift_graph
-  - policy: egnn_policy
+  - policy: graph_ddpm_policy
 
 render: True
 output_video: True
 
-num_episodes: 20
-max_steps: ${task.max_steps}
+num_seeds: 1
+num_episodes: 50 # -1 for whole dataset
+max_steps: 1000
 output_dir: ./outputs
-load_ckpt: True
+
 
 pred_horizon: 16
 obs_horizon: 2
