@@ -29,6 +29,7 @@ env_runner:
   obs_horizon: ${obs_horizon}
   render: ${render}
   output_video: ${output_video}
+  use_full_pred_after: 0.4 # after 40% of the steps, use full prediction
   env:
     _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
     object_state_sizes: *object_state_sizes

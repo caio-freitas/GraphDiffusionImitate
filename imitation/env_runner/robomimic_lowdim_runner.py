@@ -19,7 +19,8 @@ class RobomimicEnvRunner(BaseRunner):
                 obs_horizon,
                 render=True,
                 fps=30,
-                output_video=False) -> None:
+                output_video=False,
+                use_full_pred_after=1) -> None:
         super().__init__(output_dir)
         self.env = env
         self.action_horizon = action_horizon
@@ -27,6 +28,7 @@ class RobomimicEnvRunner(BaseRunner):
         self.render = render
         self.fps = fps
         self.output_video = output_video
+        self.use_full_pred_after = use_full_pred_after 
         self.output_dir = output_dir
         self.curr_video = None
         if self.output_video: # don't create video writer if not needed
@@ -64,7 +66,9 @@ class RobomimicEnvRunner(BaseRunner):
         done = False
         info = {}
         rewards = []
-        for i in range(n_steps):
+        action_horizon = self.action_horizon
+        i = 0
+        while i < n_steps:
             actions = agent.get_action(self.obs_deque)
             # Make sure the action is always [[...]]
             if len(actions.shape) == 1:
@@ -73,7 +77,10 @@ class RobomimicEnvRunner(BaseRunner):
             elif len(actions.shape) == 3:
                 log.warning("Action shape is 3D, squeezing batch dimension")
                 actions = actions.squeeze(0)
-            for j in range(self.action_horizon):
+            if i >= self.use_full_pred_after * n_steps:
+                log.debug(f"Reaching end of episode, action_horizion = pred_horizon = {len(actions)}")
+                action_horizon = len(actions)
+            for j in range(action_horizon):
                 action = actions[j] 
                 if done:
                     self.env.close()
