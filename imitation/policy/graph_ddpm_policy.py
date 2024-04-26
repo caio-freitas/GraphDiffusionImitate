@@ -121,7 +121,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         nobs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
-            nobs = self.dataset.normalize_data(nobs, stats_key='obs')
+            # nobs = self.dataset.normalize_data(nobs, stats_key='obs') # not normalize 6D rotations
             self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='action').to(self.device)
         else:
             self.last_naction = G_t.x.unsqueeze(1).to(self.device)
@@ -180,9 +180,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         with torch.no_grad():
             val_loss = list()
             for batch in dataloader:
+                nobs = batch.y
                 if self.use_normalization:
-                    # normalize observation
-                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
+                    # not normalize observation (6D rotations)
+                    # nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                     # nobs = batch.y
                     # normalize action
                     naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
@@ -296,9 +297,10 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 # batch loop
                 with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
+                        nobs = batch.y
                         if self.use_normalization:
-                            # normalize observation
-                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
+                            # not normalize observation (6D rotations)
+                            # nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
                             # normalize action
                             naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                         B = batch.num_graphs
