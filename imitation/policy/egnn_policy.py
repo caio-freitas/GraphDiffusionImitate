@@ -70,9 +70,9 @@ class EGNNPolicy(BasePolicy):
             nobs.append(obs.y)
         y = torch.stack(nobs, dim=1).to(self.device).float()
         if self.use_normalization:
-            nobs = self.dataset.normalize_data(y, stats_key='obs')
+            y = self.dataset.normalize_data(y, stats_key='obs')
         
-        nobs = nobs[:,:,:1].flatten(start_dim=1)
+        nobs = y[:,:,:1].flatten(start_dim=1)
         pred, x = self.model(h=nobs,
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
