@@ -68,12 +68,12 @@ class EGNNPolicy(BasePolicy):
         nobs = []
         for obs in obs_deque:
             nobs.append(obs.y)
-        y = torch.stack(nobs, dim=1).to(self.device).float()
+        y = torch.stack(nobs, dim=1)
         if self.use_normalization:
             y = self.dataset.normalize_data(y, stats_key='obs')
         
         nobs = y[:,:,:1].flatten(start_dim=1)
-        pred, x = self.model(h=nobs,
+        pred, x = self.model(h=nobs.to(self.device).float(),
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
                             x=obs.pos[:,:3].to(self.device).float(),
