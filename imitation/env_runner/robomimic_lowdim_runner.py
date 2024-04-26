@@ -78,7 +78,7 @@ class RobomimicEnvRunner(BaseRunner):
                 log.warning("Action shape is 3D, squeezing batch dimension")
                 actions = actions.squeeze(0)
             if i >= self.use_full_pred_after * n_steps:
-                log.debug(f"Reaching end of episode, action_horizion = pred_horizon = {len(actions)}")
+                log.info(f"Reaching end of episode, action_horizion = pred_horizon = {len(actions)}")
                 action_horizon = len(actions)
             for j in range(action_horizon):
                 action = actions[j] 
