@@ -72,7 +72,7 @@ class EGNNPolicy(BasePolicy):
         if self.use_normalization:
             y = self.dataset.normalize_data(y, stats_key='obs')
         
-        nobs = y[:,:,:1].flatten(start_dim=1)
+        nobs = y.flatten(start_dim=1)
         pred, x = self.model(h=nobs.to(self.device).float(),
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
@@ -98,7 +98,7 @@ class EGNNPolicy(BasePolicy):
                     if self.use_normalization:
                         nbatch.y = self.dataset.normalize_data(nbatch.y, stats_key='obs')
                         nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
-                    nobs = nbatch.y[:,:,:1].to(self.device).float()
+                    nobs = nbatch.y.to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
                     action = nbatch.x[:,:,:1].to(self.device).float()
                     pred, x = self.model(h=nobs, 
@@ -143,7 +143,7 @@ class EGNNPolicy(BasePolicy):
                         if self.use_normalization:
                             nbatch.y = self.dataset.normalize_data(nbatch.y, stats_key='obs')
                             nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
-                        nobs = nbatch.y[:,:,:1].to(self.device).float()
+                        nobs = nbatch.y.to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
                         action = nbatch.x[:,:,:1].to(self.device).float()
 

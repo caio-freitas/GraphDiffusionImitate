@@ -32,6 +32,7 @@ class RobomimicGraphDataset(InMemoryDataset):
                  base_link_rotation=[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0]]):
         self.control_mode           : str = control_mode
         self.node_feature_dim       : int = node_feature_dim
+        self.obs_feature_dim        : int = 7 # 6 for rotation, 1 for node ID
         self.robots                 : List = robots
         self.num_robots             : int = len(self.robots)
         self.pred_horizon           : int = pred_horizon
@@ -150,6 +151,37 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)
         return node_feats
     
+    def get_y_feats(self, data, t_vals):
+        '''
+        Calculate observation node features for time steps t_vals
+        '''
+        T = len(t_vals)
+        y = []
+        for i in range(self.num_robots):
+            y.append(torch.cat([
+                            torch.tensor(data[f"robot{i}_joint_pos"][t_vals]),
+                            torch.tensor(data[f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
+        y = torch.cat(y, dim=0) # [num_robots*num_joints, T, 1]
+
+        obj_state_tensor = []
+        for t in t_vals:
+            obj_state_tensor.append(self._get_object_pos(data, t))
+
+        obj_state_tensor = torch.stack(obj_state_tensor, dim=1)
+        # remove positions
+        obj_state_tensor = obj_state_tensor[:,:,3:]
+
+        # add dimensions to match with obj_state_tensor for concatenation
+        y = torch.cat((y, torch.zeros((y.shape[0], obj_state_tensor.shape[1], obj_state_tensor.shape[2] - 1))), dim=2)
+        
+        y = torch.cat((y, obj_state_tensor), dim=0)
+
+        # Add node ID to node features
+        node_id = torch.arange(y.shape[0]).unsqueeze(1).unsqueeze(2).repeat(1, T, 1)
+        y = torch.cat((y, node_id), dim=2)
+
+        return y
+
     def _get_node_feats_horizon(self, data, idx, horizon):
         '''
         Calculate node features for self.obs_horizon time steps
@@ -204,11 +236,11 @@ class RobomimicGraphDataset(InMemoryDataset):
         '''
         y = []
         if idx - horizon < 0:
-            y.append(self._get_node_feats(data, [0], control_mode="JOINT_POSITION").repeat(1,horizon-idx,1)) # use fixed first observation for beginning of episode
-            y.append(self._get_node_feats(data, [t for t in range(0, idx)], control_mode="JOINT_POSITION"))
+            y.append(self.get_y_feats(data, [0]).repeat(1,horizon-idx,1)) # use fixed first observation for beginning of episode
+            y.append(self.get_y_feats(data, [t for t in range(0, idx)]))
             y = torch.cat(y, dim=1)
         else: # get all observation steps with single call
-            y = self._get_node_feats(data, list(range(idx - horizon, idx)), control_mode="JOINT_POSITION")
+            y = self.get_y_feats(data, list(range(idx - horizon, idx)))
         return y
 
     
