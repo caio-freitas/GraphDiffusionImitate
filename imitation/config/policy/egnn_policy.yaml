@@ -1,4 +1,5 @@
 _target_: imitation.policy.egnn_policy.EGNNPolicy
+action_dim: ${task.action_dim}
 node_feature_dim: 1
 obs_node_feature_dim: 7
 pred_horizon: ${pred_horizon}
