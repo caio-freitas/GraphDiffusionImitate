@@ -1,9 +1,11 @@
 _target_: imitation.policy.egnn_policy.EGNNPolicy
+action_dim: ${task.action_dim}
 node_feature_dim: 1
-obs_node_feature_dim: 1
+obs_node_feature_dim: 7
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 dataset: ${task.dataset}
-ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_egnn_last.pt
-lr: 0.0005
+ckpt_path: ./weights/${task.task_name}_${task.dataset_type}_${obs_horizon}_${pred_horizon}_egnn_last.pt
+lr: 1e-4
 batch_size: 128
+use_normalization: False
