@@ -1,0 +1,58 @@
+
+task_name: &task_name can
+dataset_type: &dataset_type ph
+dataset_path: &dataset_path ./data/can/${task.dataset_type}/low_dim_v141.hdf5
+
+max_steps: ${eval:'600 if "${task.dataset_type}" == "mh" else 500'}
+
+control_mode: "JOINT_VELOCITY"
+
+obs_dim: 9
+action_dim: 9
+
+robots: ["Panda"]
+
+# describe all the objects in the scene
+object_state_sizes: &object_state_sizes
+  obj_pos: 3
+  obj_quat: 4
+  obj_to_eef_pos: 3
+  obj_to_eef_quat: 4
+
+
+# describe the object state keys that are used for the graph
+object_state_keys: &object_state_keys
+  can: ["obj_pos", "obj_quat"]
+
+env_runner:
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+  render: ${render}
+  output_video: ${output_video}
+  use_full_pred_after: 0.4 # after 40% of the steps, use full prediction
+  env:
+    _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
+    object_state_sizes: *object_state_sizes
+    object_state_keys:  *object_state_keys
+    max_steps: ${task.max_steps}
+    task: "PickPlaceCan"
+    has_renderer: ${render}
+    robots: ${task.robots}
+    output_video: ${output_video}
+    control_mode: ${task.control_mode}
+    controller_config:
+      interpolation: "linear"
+      ramp_ratio: 0.2
+    base_link_shift: [[-0.56, 0, 0.912]]
+dataset:
+  _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
+  dataset_path: ${task.dataset_path}
+  robots: ${task.robots}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  object_state_sizes: *object_state_sizes
+  object_state_keys:  *object_state_keys
+  control_mode: ${task.control_mode}
+  base_link_shift: [[-0.56, 0, 0.912]]
