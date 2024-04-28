@@ -23,6 +23,7 @@ object_state_sizes: &object_state_sizes
 # describe the object state keys that are used for the graph
 object_state_keys: &object_state_keys
   can: ["obj_pos", "obj_quat"]
+  can_to_eef: ["obj_to_eef_pos", "obj_to_eef_quat"]
 
 env_runner:
   _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
