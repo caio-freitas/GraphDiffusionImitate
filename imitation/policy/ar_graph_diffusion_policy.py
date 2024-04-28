@@ -210,7 +210,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             self.lr_scheduler = get_scheduler(
                 name='cosine',
                 optimizer=self.optimizer,
-                num_warmup_steps=50,
+                num_warmup_steps=1000,
                 num_training_steps=len(dataset) * self.num_epochs
             )
 
