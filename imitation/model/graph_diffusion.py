@@ -125,7 +125,13 @@ class ConditionalARGDenoising(nn.Module):
 
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
-            self.layers.append(MPLayer(hidden_dim, hidden_dim).to(self.device))
+            self.layers.append(E_GCL(
+                input_nf=hidden_dim,
+                output_nf=hidden_dim,
+                hidden_nf=hidden_dim,
+                edges_in_d=hidden_dim,
+                normalize=True # helps in stability / generalization
+            ).to(self.device))
         
         self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -158,7 +164,7 @@ class ConditionalARGDenoising(nn.Module):
         for l in range(self.num_layers):
             # FiLM conditioning
             h_v = scales[l] * h_v + biases[l]
-            h_v = self.layers[l](h_v, edge_index, edge_attr=h_e)
+            h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
         
         # graph-level embedding, from average pooling layer
         graph_embedding = global_mean_pool(h_v, batch=batch)
