@@ -44,7 +44,7 @@ class MPLayer(MessagePassing):
         h_eij = edge_attr
 
         m_ij = self.f(torch.cat([h_vi, h_vj, h_eij], dim=-1))
-        a_ij = self.g(torch.cat([h_vi, h_vj, h_eij], dim=-1))
+        a_ij = torch.sigmoid(self.g(torch.cat([h_vi, h_vj, h_eij], dim=-1)))
         return m_ij * a_ij
 
 
