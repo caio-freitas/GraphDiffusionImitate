@@ -122,7 +122,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
             nobs = self.dataset.normalize_data(obs, stats_key='obs')
-            nobs[:,:,1] = obs[:,:,1] # skip normalization for node IDs
+            nobs[:,:,-1] = obs[:,:,-1] # skip normalization for node IDs
             self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='action').to(self.device)
         else:
             self.last_naction = G_t.x.unsqueeze(1).to(self.device)
@@ -185,7 +185,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 if self.use_normalization:
                     # normalize observation
                     nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
-                    nobs[:,:,1] = batch.y[:,:,1] # skip normalization for node IDs
+                    nobs[:,:,-1] = batch.y[:,:,-1] # skip normalization for node IDs
                     # normalize action
                     naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                 B = batch.num_graphs
@@ -301,7 +301,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         if self.use_normalization:
                             # normalize observation
                             nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
-                            nobs[:,:,1] = batch.y[:,:,1] # skip normalization for node IDs
+                            nobs[:,:,-1] = batch.y[:,:,-1] # skip normalization for node IDs
                             # normalize action
                             naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                         B = batch.num_graphs
