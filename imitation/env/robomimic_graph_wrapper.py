@@ -134,7 +134,9 @@ class RobomimicGraphWrapper(gym.Env):
 
     def _get_object_feats(self, data):
         # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim - 1))
+        obj_state_tensor = torch.zeros((self.num_objects, self.node_feature_dim))
+        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
+        obj_state_tensor[:, -1] = self.OBJECT_NODE_TYPE
         return obj_state_tensor
 
     def _get_object_pos(self, data):
