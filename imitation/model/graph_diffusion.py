@@ -267,8 +267,8 @@ class ConditionalGraphNoisePred(nn.Module):
         x = x.float().to(self.device).flatten(start_dim=1)
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
-        ids = cond[:,0,1].long().to(self.device)
-        cond = cond[:,:,0].float().to(self.device).flatten(start_dim=1)
+        ids = cond[:,0,-1].long().to(self.device)
+        cond = cond[:,:,:-1].float().to(self.device).flatten(start_dim=1)
         x_coord = x_coord.float().to(self.device)
         timesteps = timesteps.to(self.device)
         batch = batch.long().to(self.device)
