@@ -163,9 +163,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                                                                      shuffle=False)
                     G_pred = next(iter(dataloader))
                     # predictions & loss
-                    G_0 = graph.to(self.device)
+                    G_0 = diffusion_trajectory[0].to(self.device)
                     node_order = self.node_decay_ordering(G_0.x.shape[0])
-                    G_pred = diffusion_trajectory[t+1].clone().to(self.device)
+
                     # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
                     joint_values, pos = self.model(G_pred.x[:,:,:self.node_feature_dim],
                                                     G_pred.edge_index,
@@ -210,7 +210,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             self.lr_scheduler = get_scheduler(
                 name='cosine',
                 optimizer=self.optimizer,
-                num_warmup_steps=50,
+                num_warmup_steps=1000,
                 num_training_steps=len(dataset) * self.num_epochs
             )
 

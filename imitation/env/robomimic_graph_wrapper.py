@@ -192,6 +192,27 @@ class RobomimicGraphWrapper(gym.Env):
         return node_feats
 
 
+    def _get_y_feats(self, data):
+        '''
+        Returns observation node features from data
+        '''
+        y = []
+        for i in range(self.num_robots):
+            y.append(torch.tensor([*data[f"robot{i}_joint_pos"], *data[f"robot{i}_gripper_qpos"]]).reshape(1,-1).T)
+        y = torch.cat(y, dim=0)
+        obj_state_tensor = self._get_object_pos(data)
+        # remove positions
+        obj_state_tensor = obj_state_tensor[:,3:]
+
+        # add dimensions to match with obj_state_tensor for concatenation
+        y = torch.cat([y, torch.zeros((y.shape[0], obj_state_tensor.shape[1]-y.shape[1]))], dim=1) 
+        y = torch.cat([y, obj_state_tensor], dim=0)
+
+        # add node ID to node features
+        node_id = torch.arange(y.shape[0]).reshape(-1, 1)
+        y = torch.cat((y, node_id), dim=-1)
+        return y
+
     @lru_cache(maxsize=128)
     def _get_edge_index(self, num_nodes):
         '''
@@ -265,26 +286,22 @@ class RobomimicGraphWrapper(gym.Env):
                 f"robot{i}_gripper_qpos": gripper_pose,
                 f"robot{i}_gripper_qvel": gripper_vel
             })
+        robot_i_data["object"] = obs[self.num_robots*39:]
 
         node_feats = torch.cat([node_feats, self._get_node_feats(robot_i_data)], dim=0)
-        y = torch.cat([node_obs, self._get_node_feats(robot_i_data, control_mode="JOINT_POSITION")], dim=0)
-        robot_i_data["object"] = obs[self.num_robots*39:]
+        
         node_pos = self._get_node_pos(robot_i_data)
+        y = torch.cat([node_obs, self._get_y_feats(robot_i_data)], dim=0)
+
+        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
+        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)
         
         obj_feats_tensor = self._get_object_feats(obs)
         
         node_feats = torch.cat((node_feats, obj_feats_tensor), dim=0)
-        # add dimension for node ID
-        node_feats = torch.cat((node_feats, torch.arange(node_feats.shape[0]).unsqueeze(-1)), dim=1)
-        
-        y = torch.cat((y, obj_feats_tensor), dim=0)
-        # add dimension for node ID
-        y = torch.cat((y, torch.arange(y.shape[0]).unsqueeze(-1)), dim=1)
 
         edge_index = self._get_edge_index(node_feats.shape[0])
-
         edge_attrs = self._get_edge_attrs(edge_index)        
-
 
         # create graph
         graph = torch_geometric.data.Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attrs, y=y, pos=node_pos)

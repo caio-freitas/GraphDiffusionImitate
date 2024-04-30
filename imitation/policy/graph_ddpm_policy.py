@@ -53,7 +53,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
-        self.noise_pred_net = denoising_network
+        self.noise_pred_net = denoising_network.to(self.device)
+        self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
 
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
@@ -180,6 +181,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         with torch.no_grad():
             val_loss = list()
             for batch in dataloader:
+                nobs = batch.y
                 if self.use_normalization:
                     # normalize observation
                     nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
@@ -295,6 +297,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 # batch loop
                 with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
+                        nobs = batch.y
                         if self.use_normalization:
                             # normalize observation
                             nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)

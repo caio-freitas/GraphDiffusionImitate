@@ -13,7 +13,7 @@ dataset: ${task.dataset}
 denoising_network:
   _target_: imitation.model.graph_diffusion.ConditionalGraphNoisePred
   node_feature_dim: ${policy.node_feature_dim}
-  cond_feature_dim: 1
+  cond_feature_dim: 7
   obs_horizon: ${obs_horizon}
   pred_horizon: ${pred_horizon}
   edge_feature_dim: 1
