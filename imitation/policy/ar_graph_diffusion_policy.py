@@ -94,6 +94,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                 masked_data = self.masker.remove_node(masked_data, node)
                 node_order = [n-1 if n > node else n for n in node_order] # update node order to account for removed node
 
+        # invert trajectory, to match naturally with robot actions
+        diffusion_trajectory = diffusion_trajectory[::-1]
         return diffusion_trajectory
 
     @torch.jit.export
@@ -148,7 +150,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     
                     graph = self.masker.idxify(graph)
                     # FiLM generator
-                    embed = self.model.cond_encoder(graph.y, graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1))
+                    embed = self.model.cond_encoder(graph.y[:,:,:-1], graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1), ids=graph.y[:,0,-1])
                     # remove object nodes
                     for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                         graph = self.masker.remove_node(graph, obj_node)
@@ -222,7 +224,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                        
                         graph = self.masker.idxify(graph)
                         # FiLM generator
-                        embed = self.model.cond_encoder(graph.y, graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1))
+                        embed = self.model.cond_encoder(graph.y[:,:,:-1], graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1), ids=graph.y[:,0,-1])
                         # remove object nodes. Last nodes first, to avoid index errors
                         for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                             graph = self.masker.remove_node(graph, obj_node)
@@ -243,7 +245,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                                                         x_coord=G_pred.pos[:,:3],
                                                         film_cond=embed,
                                                         batch=G_pred.batch) # only use node type, E(3) invariant
-                        
+
                         joint_values = joint_values[G_pred.ptr[1:]-1]  # node being masked, this assumes that the masked node is the last node in the graph
                         pos = pos[G_pred.ptr[1:]-1]
 
@@ -333,7 +335,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
         # FiLM generator
-        embed = self.model.cond_encoder(obs_cond, edge_index, obs_pos[:,:3], edge_attr.unsqueeze(-1))
+        embed = self.model.cond_encoder(obs_cond[:,:,:-1], edge_index, obs_pos[:,:3], edge_attr.unsqueeze(-1), ids=obs_cond[:,0,-1])
 
         if self.use_normalization:
             obs_cond = self.dataset.normalize_data(obs_cond, stats_key="obs")
