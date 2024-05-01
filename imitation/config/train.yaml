@@ -28,7 +28,7 @@ max_steps: ${task.max_steps}
 
 # Evaluation during training
 eval_params:
-  eval_every: 10 # evaluate every 50 epochs
+  eval_every: 50 # evaluate every 50 epochs
   val_every: 1
   task: ${task}
   policy: ${policy}
