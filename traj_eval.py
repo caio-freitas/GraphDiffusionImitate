@@ -128,10 +128,12 @@ def traj_eval(cfg: DictConfig) -> None:
     # compute the mean and std of the error for all the samples
     delta_traj = np.array(delta_traj)
     mean_error = np.mean(delta_traj)
+    mean_squared_error = np.mean(np.square(delta_traj))
     std_error = np.std(np.mean(delta_traj, axis=1), axis=0).mean()
     log.info(f"Mean error: {mean_error}")
+    log.info(f"Mean squared error: {mean_squared_error}")
     log.info(f"Std error: {std_error}")
-    wandb.log({"final_mean_error": mean_error, "final_std_error": std_error, "final_mean_execution_time": np.array(times).mean(), "final_std_execution_time": np.array(times).std()})
+    wandb.log({"final_mean_error": mean_error, "final_mean_squared_error": mean_squared_error, "final_std_error": std_error, "final_mean_execution_time": np.array(times).mean(), "final_std_execution_time": np.array(times).std()})
     metrics.to_csv(f"./outputs/traj_eval_{policy.__class__.__name__}_{cfg.policy.ckpt_path.split('/')[-1]}.csv")
 
 

@@ -118,10 +118,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         for i in range(len(obs_deque)):
             obs_cond.append(obs_deque[i].y.unsqueeze(1))
             pos.append(obs_deque[i].pos)
-        nobs = torch.cat(obs_cond, dim=1)
+        obs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
-            # nobs = self.dataset.normalize_data(nobs, stats_key='obs') # not normalize 6D rotations
+            nobs = self.dataset.normalize_data(obs, stats_key='obs')
+            nobs[:,:,-1] = obs[:,:,-1] # skip normalization for node IDs
             self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='action').to(self.device)
         else:
             self.last_naction = G_t.x.unsqueeze(1).to(self.device)
@@ -182,9 +183,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             for batch in dataloader:
                 nobs = batch.y
                 if self.use_normalization:
-                    # not normalize observation (6D rotations)
-                    # nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
-                    # nobs = batch.y
+                    # normalize observation
+                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
+                    nobs[:,:,-1] = batch.y[:,:,-1] # skip normalization for node IDs
                     # normalize action
                     naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                 B = batch.num_graphs
@@ -194,7 +195,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 obs_cond = nobs
                 naction = naction[:,:,:1] # joint value
                 # (B, obs_horizon * obs_dim)
-                obs_cond = obs_cond.flatten(start_dim=1)
 
                 # sample a diffusion iteration for each data point
                 timesteps = torch.randint(
@@ -299,8 +299,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     for batch in tepoch:
                         nobs = batch.y
                         if self.use_normalization:
-                            # not normalize observation (6D rotations)
-                            # nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
+                            # normalize observation
+                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
+                            nobs[:,:,-1] = batch.y[:,:,-1] # skip normalization for node IDs
                             # normalize action
                             naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
                         B = batch.num_graphs
@@ -309,8 +310,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         # (B, node, obs_horizon, obs_dim)
                         obs_cond = nobs
                         naction = naction[:,:,:1] # joint value
-                        # (B, obs_horizon * obs_dim)
-                        obs_cond = obs_cond.flatten(start_dim=1)
 
                         # sample a diffusion iteration for each data point
                         timesteps = torch.randint(
