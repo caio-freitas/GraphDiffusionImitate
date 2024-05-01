@@ -75,7 +75,7 @@ class EGraphConditionEncoder(nn.Module):
         self.fc = Linear(hidden_dim, output_dim).to(self.device)
 
     def forward(self, x, edge_index, coord, edge_attr, batch=None, ids=None):
-        x = x.float().to(self.device)
+        x = x.float().to(self.device).flatten(start_dim=1)
         ids = ids.long().to(self.device)
         coord = coord.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
@@ -274,7 +274,7 @@ class ConditionalGraphNoisePred(nn.Module):
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         ids = cond[:,0,-1].long().to(self.device)
-        cond = cond[:,:,:-1].float().to(self.device).flatten(start_dim=1)
+        cond = cond[:,:,:-1].float().to(self.device)
         x_coord = x_coord.float().to(self.device)
         timesteps = timesteps.to(self.device)
         batch = batch.long().to(self.device)
