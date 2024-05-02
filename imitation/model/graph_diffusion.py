@@ -44,7 +44,7 @@ class MPLayer(MessagePassing):
         h_eij = edge_attr
 
         m_ij = self.f(torch.cat([h_vi, h_vj, h_eij], dim=-1))
-        a_ij = self.g(torch.cat([h_vi, h_vj, h_eij], dim=-1))
+        a_ij = torch.sigmoid(self.g(torch.cat([h_vi, h_vj, h_eij], dim=-1)))
         return m_ij * a_ij
 
 
@@ -75,7 +75,7 @@ class EGraphConditionEncoder(nn.Module):
         self.fc = Linear(hidden_dim, output_dim).to(self.device)
 
     def forward(self, x, edge_index, coord, edge_attr, batch=None, ids=None):
-        x = x.float().to(self.device)
+        x = x.float().to(self.device).flatten(start_dim=1)
         ids = ids.long().to(self.device)
         coord = coord.float().to(self.device)
         edge_attr = edge_attr.float().to(self.device)
@@ -130,7 +130,13 @@ class ConditionalARGDenoising(nn.Module):
 
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
-            self.layers.append(MPLayer(hidden_dim, hidden_dim).to(self.device))
+            self.layers.append(E_GCL(
+                input_nf=hidden_dim,
+                output_nf=hidden_dim,
+                hidden_nf=hidden_dim,
+                edges_in_d=hidden_dim,
+                normalize=True # helps in stability / generalization
+            ).to(self.device))
         
         self.node_pred_layer = nn.Sequential(Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -163,7 +169,7 @@ class ConditionalARGDenoising(nn.Module):
         for l in range(self.num_layers):
             # FiLM conditioning
             h_v = scales[l] * h_v + biases[l]
-            h_v = self.layers[l](h_v, edge_index, edge_attr=h_e)
+            h_v, x_v, edge_attr_pred = self.layers[l](h_v, edge_index, coord=x_v, edge_attr=h_e)
         
         # graph-level embedding, from average pooling layer
         graph_embedding = global_mean_pool(h_v, batch=batch)
@@ -268,7 +274,7 @@ class ConditionalGraphNoisePred(nn.Module):
         edge_attr = edge_attr.float().to(self.device).unsqueeze(-1) # add channel dimension
         edge_index = edge_index.to(self.device)
         ids = cond[:,0,-1].long().to(self.device)
-        cond = cond[:,:,:-1].float().to(self.device).flatten(start_dim=1)
+        cond = cond[:,:,:-1].float().to(self.device)
         x_coord = x_coord.float().to(self.device)
         timesteps = timesteps.to(self.device)
         batch = batch.long().to(self.device)

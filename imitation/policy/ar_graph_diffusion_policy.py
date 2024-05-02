@@ -27,7 +27,6 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                  lr=1e-4,
                  ckpt_path=None,
                  device = None,
-                 mode = 'joint-space',
                  use_normalization = False,):
         super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
@@ -48,8 +47,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                                             weight_decay=1e-6,
                                             betas=[0.95, 0.999],
                                             eps=1e-8)
-        self.mode = mode
-
+        
         self.lr_scheduler = None
         self.num_epochs = None
         
@@ -96,6 +94,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                 masked_data = self.masker.remove_node(masked_data, node)
                 node_order = [n-1 if n > node else n for n in node_order] # update node order to account for removed node
 
+        # invert trajectory, to match naturally with robot actions
+        diffusion_trajectory = diffusion_trajectory[::-1]
         return diffusion_trajectory
 
     @torch.jit.export
@@ -124,12 +124,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         lambda_joint_pos = 0.1
         lambda_joint_values = 1
 
-        pred_joint_vals = pred_feats[:,0] # [pred_horizon, 1]
-        target_joint_vals = target_feats[:,0] # [pred_horizon, 1]
-
         loss_joint_pos_loss = F.pairwise_distance(pred_pos, target_pos, p=2).mean()
         wandb.log({"loss_joint_pos_loss": loss_joint_pos_loss.item()})
-        loss_joint_values = nn.MSELoss()(pred_joint_vals, target_joint_vals)
+        loss_joint_values = nn.MSELoss()(pred_feats, target_feats)
         wandb.log({"loss_joint_values": loss_joint_values.item()})
 
         return lambda_joint_values * loss_joint_values # + lambda_joint_pos * loss_joint_pos
@@ -153,9 +150,9 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     
                     graph = self.masker.idxify(graph)
                     # FiLM generator
-                    embed = self.model.cond_encoder(graph.y, graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1))
+                    embed = self.model.cond_encoder(graph.y[:,:,:-1], graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1), ids=graph.y[:,0,-1])
                     # remove object nodes
-                    for obj_node in graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE]:
+                    for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                         graph = self.masker.remove_node(graph, obj_node)
                     diffusion_trajectory = self.generate_diffusion_trajectory(graph) 
                     dataloader = torch_geometric.data.DataLoader(diffusion_trajectory, 
@@ -163,7 +160,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                                                                      shuffle=False)
                     G_pred = next(iter(dataloader))
                     # predictions & loss
-                    G_0 = diffusion_trajectory[0].to(self.device)
+                    G_0 = graph.to(self.device)
                     node_order = self.node_decay_ordering(G_0.x.shape[0])
 
                     # calculate joint_poses as edge_attr, using pairwise distance (based on edge_index)
@@ -180,8 +177,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                     # calculate loss
                     loss = self.loss_fcn(pred_feats=joint_values,
                                             pred_pos=pos,
-                                            target_feats=G_0.x.float(),
-                                            target_pos=G_0.pos[:G_pred.x.shape[0],:3].float())
+                                            target_feats=G_0.x[:,:,:self.node_feature_dim].float(),
+                                            target_pos=G_0.pos[:,:3].float())
                     total_loss += loss.item()
             return total_loss / len(dataset)
         
@@ -227,7 +224,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                        
                         graph = self.masker.idxify(graph)
                         # FiLM generator
-                        embed = self.model.cond_encoder(graph.y, graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1))
+                        embed = self.model.cond_encoder(graph.y[:,:,:-1], graph.edge_index, graph.pos[:,:3], graph.edge_attr.unsqueeze(-1), ids=graph.y[:,0,-1])
                         # remove object nodes. Last nodes first, to avoid index errors
                         for obj_node in torch.flip(graph.edge_index.unique()[graph.x[:,0,-1] == self.dataset.OBJECT_NODE_TYPE], dims=[0]):
                             graph = self.masker.remove_node(graph, obj_node)
@@ -237,7 +234,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                                                                      shuffle=False)
                         G_pred = next(iter(dataloader))
                         # predictions & loss
-                        G_0 = diffusion_trajectory[0].to(self.device)
+                        G_0 = graph.to(self.device)
                         node_order = self.node_decay_ordering(G_0.x.shape[0])
                         
                         # loop over nodes
@@ -248,7 +245,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                                                         x_coord=G_pred.pos[:,:3],
                                                         film_cond=embed,
                                                         batch=G_pred.batch) # only use node type, E(3) invariant
-                        
+
                         joint_values = joint_values[G_pred.ptr[1:]-1]  # node being masked, this assumes that the masked node is the last node in the graph
                         pos = pos[G_pred.ptr[1:]-1]
 
@@ -267,8 +264,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                         self.optimizer.step()
                         self.optimizer.zero_grad()
                         self.lr_scheduler.step()
-                        self.save_nets(model_path)
                         wandb.log({"graph_loss": acc_loss, "lr": self.lr_scheduler.get_last_lr()[0]})
+                self.save_nets(model_path)
                 self.global_epoch += 1
 
     def get_joint_values(self, x):
@@ -279,12 +276,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         - task-joint-space: return first element
         - end-effector: raise NotImplementedError
         '''
-        if self.mode == 'joint-space' or self.mode == 'task-joint-space':
-            return x[:self.action_dim,:,0].T # all (joint-representing) nodes, all timesteps, first value
-        elif self.mode == 'end-effector':
-            raise NotImplementedError
-        else:
-            raise NotImplementedError
+        return x[:self.action_dim,:,0].T # all (joint-representing) nodes, all timesteps, first value
 
     def _lookup_edge_attr(self, edge_index, edge_attr, action_edge_index):
         '''
@@ -343,7 +335,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         # graph action representation: x, edge_index, edge_attr
         action = self.masker.create_empty_graph(1) # one masked node
         # FiLM generator
-        embed = self.model.cond_encoder(obs_cond, edge_index, obs_pos[:,:3], edge_attr.unsqueeze(-1))
+        embed = self.model.cond_encoder(obs_cond[:,:,:-1], edge_index, obs_pos[:,:3], edge_attr.unsqueeze(-1), ids=obs_cond[:,0,-1])
 
         if self.use_normalization:
             obs_cond = self.dataset.normalize_data(obs_cond, stats_key="obs")
