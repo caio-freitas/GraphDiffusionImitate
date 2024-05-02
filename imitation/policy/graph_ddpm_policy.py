@@ -34,8 +34,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     ckpt_path= None,
                     lr: float = 1e-4,
                     batch_size: int = 256,
-                    use_normalization: bool = True,
-                    noise_addition_std: float = 1):
+                    use_normalization: bool = True):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -68,7 +67,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             beta_start=1e-4,
             beta_end=2e-2,
         )
-        self.noise_addition_std = noise_addition_std
         
         self.lr_scheduler = None
         self.optimizer = None
@@ -129,9 +127,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
         with torch.no_grad():
             # initialize action from Guassian noise
-            self.last_naction = self.last_naction.repeat(1, self.pred_horizon, 1)[:,:,:1]
-            noisy_action = self.last_naction * (1 - self.noise_addition_std) + torch.randn_like(self.last_naction, device=self.device, memory_format=torch.contiguous_format) * self.noise_addition_std
+            noisy_action = torch.randn((G_t.x.shape[0], self.pred_horizon, self.node_feature_dim), device=self.device)
             naction = noisy_action
+            naction[:,0,:] = self.last_naction[:,-1,:1] # keep first action clean
 
             # init scheduler
             self.noise_scheduler.set_timesteps(self.num_diffusion_iters)
@@ -147,13 +145,15 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     timesteps = torch.tensor([k], dtype=torch.long, device=self.device),
                     batch = torch.zeros(naction.shape[0], dtype=torch.long, device=self.device)
                 )
-
+                
                 # inverse diffusion step (remove noise)
                 naction = self.noise_scheduler.step(
                     model_output=noise_pred,
                     timestep=k,
                     sample=naction
                 ).prev_sample
+                naction[:,0,:] = self.last_naction[:,-1,:1] # keep first action clean
+
 
         # add node dimension, to pass through normalizer
         naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
@@ -210,11 +210,14 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                 # sample noise to add to actions
 
-                noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1) + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
+                noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                 noisy_actions = self.noise_scheduler.add_noise(
                     naction, noise, timesteps)
                 
+
+                noisy_actions[:,:,0,:] = naction[:,:,0,:] # keep first action clean
+
                 # guarantees it to be float32
                 noisy_actions = noisy_actions.float()
                 obs_cond = obs_cond.float()
@@ -324,10 +327,13 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
 
                         # add noise to first action instead of sampling from Gaussian
-                        noise = (1 - self.noise_addition_std) * naction[:,:,0,:].unsqueeze(2).repeat(1,1,naction.shape[2],1).float() + self.noise_addition_std * torch.randn(naction.shape, device=self.device, dtype=torch.float32)
+                        noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
+                        
+                        noisy_actions[:,:,0,:] = naction[:,:,0,:] # keep first action clean
+
 
                         # guarantees it to be float32
                         noisy_actions = noisy_actions.float()
