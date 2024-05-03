@@ -5,10 +5,10 @@ dataset_path: &dataset_path ./data/lift/${task.dataset_type}/low_dim_v141.hdf5
 
 max_steps: ${eval:'600 if "${task.dataset_type}" == "mh" else 500'}
 
-control_mode: "JOINT_VELOCITY"
+control_mode: "OSC_POSE"
 
 obs_dim: 9
-action_dim: 9
+action_dim: 7
 
 robots: ["Panda"]
 
