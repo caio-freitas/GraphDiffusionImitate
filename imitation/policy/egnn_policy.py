@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch_geometric.loader import DataLoader
+from torch_geometric.nn.pool import global_mean_pool
 
 from imitation.policy.base_policy import BasePolicy
 from imitation.model.egnn import EGNN
@@ -44,7 +45,7 @@ class EGNNPolicy(BasePolicy):
         self.model = EGNN (
             in_node_nf=self.obs_node_feature_dim * self.obs_horizon,
             hidden_nf=256,
-            out_node_nf=self.node_feature_dim * self.pred_horizon,
+            out_node_nf=self.action_dim * self.pred_horizon,
             in_edge_nf=1,
             n_layers=5,
             normalize=True
@@ -69,20 +70,21 @@ class EGNNPolicy(BasePolicy):
         
         nobs = []
         for obs in obs_deque:
-            nobs.append(obs.y)
-        y = torch.stack(nobs, dim=1)
+            nobs.append(obs.x)
+        nobs = torch.stack(nobs, dim=1)
         
-        nobs = y.flatten(start_dim=1)
+        nobs = nobs.flatten(start_dim=1)
         pred, x = self.model(h=nobs.to(self.device).float(),
                             edges=obs_deque[0].edge_index.to(self.device).long(),
                             edge_attr=obs_deque[0].edge_attr.to(self.device).unsqueeze(1).float(),
                             x=obs.pos[:,:3].to(self.device).float(),
         )
-        pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
+
         if self.use_normalization:
             pred = self.dataset.unnormalize_data(pred, stats_key='action')
-        
-        return pred[:self.action_dim,:,0].T.detach().cpu().numpy() # return joint values only
+        pred = global_mean_pool(pred, batch=torch.zeros(pred.shape[0], dtype=torch.long).to(self.device))
+        pred = pred.reshape(-1, self.pred_horizon, self.action_dim)
+        return pred.detach().cpu().numpy() # return joint values only
 
     def validate(self, dataset, model_path):
         '''
@@ -97,16 +99,17 @@ class EGNNPolicy(BasePolicy):
                 for nbatch in tbatch:
                     if self.use_normalization:
                         nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
-                    nobs = nbatch.y.to(self.device).float()
+                    nobs = nbatch.x.to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
-                    action = nbatch.x[:self.action_dim,:,:1].to(self.device).float()
+                    action = nbatch.y.to(self.device).float()
+                    action = action.flatten(start_dim=1)
                     pred, x = self.model(h=nobs, 
                                         edges=nbatch.edge_index.to(self.device).long(),
                                         edge_attr=nbatch.edge_attr.to(self.device).unsqueeze(1).float(),
                                         x=nbatch.pos[:,:3].to(self.device).float(),
                     )
-                    pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-                    loss = loss_fn(pred[:self.action_dim,:,:], action)
+                    pred = global_mean_pool(pred, torch.zeros(pred.shape[0], dtype=torch.long).to(self.device))
+                    loss = loss_fn(pred, action)
                     val_loss += loss.item()
         val_loss /= len(dataset)
         return val_loss
@@ -141,17 +144,18 @@ class EGNNPolicy(BasePolicy):
                     for nbatch in pbar:
                         if self.use_normalization:
                             nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
-                        nobs = nbatch.y.to(self.device).float()
+                        nobs = nbatch.x.to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
-                        action = nbatch.x[:self.action_dim,:,:1].to(self.device).float()
+                        action = nbatch.y.to(self.device).float()
+                        action = action.flatten(start_dim=1)
 
                         pred, x = self.model(h=nobs, 
                                           edges=nbatch.edge_index.to(self.device).long(),
                                           edge_attr=nbatch.edge_attr.to(self.device).unsqueeze(1).float(),
                                           x=nbatch.pos[:,:3].to(self.device).float(),
                         )
-                        pred = pred.reshape(-1, self.pred_horizon, self.node_feature_dim)
-                        loss = loss_fn(pred[:self.action_dim,:,:], action)
+                        pred = global_mean_pool(pred, nbatch.batch.to(self.device))
+                        loss = loss_fn(pred, action)
                         # loss_x = loss_fn(x, nbatch.pos[:,:3].to(self.device).float())
                         loss.backward()
                         self.optimizer.step()

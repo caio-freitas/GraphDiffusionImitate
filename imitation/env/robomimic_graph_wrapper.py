@@ -192,7 +192,7 @@ class RobomimicGraphWrapper(gym.Env):
         return node_feats
 
 
-    def _get_y_feats(self, data):
+    def _get_obs_feats(self, data):
         '''
         Returns observation node features from data
         '''
@@ -288,23 +288,17 @@ class RobomimicGraphWrapper(gym.Env):
             })
         robot_i_data["object"] = obs[self.num_robots*39:]
 
-        node_feats = torch.cat([node_feats, self._get_node_feats(robot_i_data)], dim=0)
         
         node_pos = self._get_node_pos(robot_i_data)
-        y = torch.cat([node_obs, self._get_y_feats(robot_i_data)], dim=0)
-        obj_feats_tensor = self._get_object_feats(obs)
-
-        # add dimension for NODE_TYPE, which is 0 for robot and 1 for objects
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0],1))), dim=1)        
-        obj_feats_tensor[:, -1] = self.OBJECT_NODE_TYPE
-        
-        node_feats = torch.cat((node_feats, obj_feats_tensor), dim=0)
+        x = torch.cat([node_obs, self._get_obs_feats(robot_i_data)], dim=0)
 
         edge_index = self._get_edge_index(node_feats.shape[0])
         edge_attrs = self._get_edge_attrs(edge_index)        
 
+        actions = torch.zeros((self.num_robots, 16, 7))
+
         # create graph
-        graph = torch_geometric.data.Data(x=node_feats, edge_index=edge_index, edge_attr=edge_attrs, y=y, pos=node_pos)
+        graph = torch_geometric.data.Data(x=x, edge_index=edge_index, edge_attr=edge_attrs, y=actions, pos=node_pos)
 
         return graph
     
@@ -315,22 +309,8 @@ class RobomimicGraphWrapper(gym.Env):
     
 
     def step(self, action):
-        final_action = []
-        for i in range(self.num_robots):
-            '''
-            Robosuite's action space is composed of 7 joint velocities and 1 gripper velocity, while 
-            in the robomimic datasets, it's composed of 7 joint velocities and 2 gripper velocities (for each "finger").
-            '''
-            j = i*9
-            robot_joint_pos = action[j:j + 7]
-            robot_gripper_pos = action[j + 8]
-            final_action = [*final_action, *robot_joint_pos, robot_gripper_pos]
-        if self.control_mode == "JOINT_VELOCITY":
-            obs, reward, done, _, info = self.env.step(final_action)
-        elif self.control_mode == "JOINT_POSITION":
-            obs, reward, done, _, info = self.control_loop(final_action)
-        else:
-            raise ValueError("Invalid control mode")
+        
+        obs, reward, done, _, info = self.env.step(action)
         
         if reward == 1:
             done = True
