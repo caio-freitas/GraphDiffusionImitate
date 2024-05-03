@@ -39,7 +39,7 @@ def train(cfg: DictConfig) -> None:
     wandb.init(
         project=policy.__class__.__name__,
         group=cfg.task.task_name,
-        name=f"v1.2.2",
+        name=f"v1.2.2 - fix first action",
         # track hyperparameters and run metadata
         config={
             "policy": cfg.policy,
