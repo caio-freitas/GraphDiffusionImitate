@@ -29,7 +29,7 @@ env_runner:
   obs_horizon: ${obs_horizon}
   render: ${render}
   output_video: ${output_video}
-  use_full_pred_after: 0.4 # after 40% of the steps, use full prediction
+  use_full_pred_after: 0.2 # after 40% of the steps, use full prediction
   env:
     _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
     object_state_sizes: *object_state_sizes
@@ -40,9 +40,6 @@ env_runner:
     robots: ${task.robots}
     output_video: ${output_video}
     control_mode: ${task.control_mode}
-    controller_config:
-      interpolation: "linear"
-      ramp_ratio: 0.2
     base_link_shift: [[-0.56, 0, 0.912]]
 dataset:
   _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
