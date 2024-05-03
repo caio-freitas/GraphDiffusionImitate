@@ -79,7 +79,7 @@ class RobomimicEnvRunner(BaseRunner):
                 actions = actions.squeeze(0)
             if i >= self.use_full_pred_after * n_steps:
                 log.info(f"Reaching end of episode, action_horizion = pred_horizon = {len(actions)}")
-                action_horizon = len(actions)
+                action_horizon = len(actions) - 1
             for j in range(1, action_horizon + 1): # skip first action
                 action = actions[j] 
                 if done:
