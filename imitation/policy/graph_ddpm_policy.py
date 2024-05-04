@@ -62,8 +62,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             beta_schedule='squaredcos_cap_v2',
             # clip output to [-1,1] to improve stability
             clip_sample=True,
-            # our network predicts noise (instead of denoised action)
-            prediction_type='epsilon',
+            prediction_type='sample',
             beta_start=1e-4,
             beta_end=2e-2,
         )
@@ -228,7 +227,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 noise = noise.flatten(end_dim=1)
 
                 # predict the noise residual
-                noise_pred, x = self.ema_noise_pred_net(
+                pred, x = self.ema_noise_pred_net(
                     noisy_actions, 
                     batch.edge_index, 
                     batch.edge_attr, 
@@ -237,8 +236,14 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     timesteps=timesteps,
                     batch=batch.batch)
                 
+                pred_type = self.noise_scheduler.config.prediction_type 
+                if pred_type == 'epsilon':
+                    target = noise
+                elif pred_type == 'sample':
+                    target = naction
+                
                 # L2 loss
-                loss = nn.functional.mse_loss(noise_pred, noise)
+                loss = nn.functional.mse_loss(pred, target)
                 val_loss.append(loss.item())
         return np.mean(val_loss)
     
