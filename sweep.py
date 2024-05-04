@@ -46,7 +46,7 @@ def train(cfg: DictConfig) -> None:
     cfg.policy.lr = wandb.config.lr
     cfg.policy.denoising_network.hidden_dim = wandb.config.hidden_dim
     cfg.policy.denoising_network.num_layers = wandb.config.num_layers
-    cfg.policy.ckpt_path = cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{wandb.config.hidden_dim}_nl{wandb.config.num_layers}"
+    cfg.policy.ckpt_path = cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{str(wandb.config.hidden_dim)}_nl{str(wandb.config.num_layers)}"
     cfg.task.control_mode = wandb.config.control_mode
 
     # instanciate policy from cfg file
@@ -94,15 +94,15 @@ if __name__ == "__main__":
         "method": "random",
         "metric": {"name": "loss", "goal": "minimize"},
         "parameters": {
-            "lr": {"values": [0.0005, 0.0001, 0.00001, 0.000005]},
-            "hidden_dim": {"values": [16, 32, 64, 128]},
-            "num_layers": {"values": [1, 2, 3, 4, 5]},
-            "control_mode": {"values": ["JOINT_VELOCITY", "JOINT_POSITION"]}
+            "lr": {"values": [0.0001, 0.00005, 0.00001]},
+            "hidden_dim": {"values": [128, 256, 512, 1024]},
+            "num_layers": {"values": [2, 3, 4, 5]},
+            "control_mode": {"values": ["JOINT_VELOCITY"]}
         },
     }
     # 3: Start the sweep
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project="E-GNN-Encoder-Sweep")
-    # sweep_id = "atfrdhoj"
-    wandb.agent(sweep_id, function=train, count=20, project="E-GNN-Encoder-Sweep")
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project="GraphDDPM-Sweep")
+    # sweep_id = "f8mcmx14"
+    wandb.agent(sweep_id, function=train, count=20, project="GraphDDPM-Sweep")
 
 
