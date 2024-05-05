@@ -9,6 +9,7 @@ import pathlib
 
 import hydra
 import wandb
+import torch
 
 from eval import eval_main
 from omegaconf import DictConfig, OmegaConf
@@ -53,36 +54,53 @@ def train(cfg: DictConfig) -> None:
     policy = hydra.utils.instantiate(cfg.policy)
     log.info(f"Training policy {policy.__class__.__name__} with seed {cfg.seed} on task {cfg.task.task_name}")
     try:
-        if cfg.policy.ckpt_path is not None:
+        if cfg.policy.ckpt_path is not None and cfg.load_ckpt:
             policy.load_nets(cfg.policy.ckpt_path)
-    except:
-        log.error("cfg.policy.ckpt_path doesn't exist")
+    except Exception as e:
+        log.error(f"Error loading checkpoint: {e}")
     
 
     
-
+    # Split the dataset into train and validation
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
+    )
     
 
     E = cfg.num_epochs
+    V = cfg.num_epochs
     if cfg.eval_params != "disabled":
         E = cfg.eval_params.eval_every
+        V = cfg.eval_params.val_every
+        assert V <= E, "Validation interval should be smaller than evaluation interval"
+        assert E % V == 0, "Evaluation interval should be multiple of validation interval"
     
-     # evaluate every E epochs
-    for i in range(cfg.num_epochs // E):
+    try:
+        policy.num_epochs = cfg.num_epochs
+    except:
+        log.error("Error setting total num_epochs in policy")
+    
+    # evaluate every E epochs
+    max_success_rate = 0
+    for i in range(1, 1 + cfg.num_epochs // V):
         # train policy
-        policy.train(dataset=policy.dataset.shuffle(),
-                    num_epochs=E,
-                    model_path=cfg.policy.ckpt_path ,
-                    seed=cfg.seed)
-        if cfg.eval_params != "disabled":
-            eval_main(cfg.eval_params)
-
-    # final epochs and evaluation
-    policy.train(dataset=policy.dataset.shuffle(),
-                    num_epochs=cfg.num_epochs % E,
+        policy.train(dataset=train_dataset,
+                    num_epochs=V,
                     model_path=cfg.policy.ckpt_path,
                     seed=cfg.seed)
-    eval_main(cfg.eval_params)
+        log.info(f"Calculating validation loss...")
+        val_loss = policy.validate(
+                dataset=val_dataset,
+                model_path=cfg.policy.ckpt_path,
+            )
+        wandb.log({"validation_loss": val_loss})
+        # evaluate policy
+        if i % (E/V) == 0:
+            success_rate = eval_main(cfg.eval_params)
+            if success_rate >= max_success_rate:
+                max_success_rate = success_rate
+                policy.save_nets(cfg.policy.ckpt_path + f"_best_succ={success_rate}.pt")
+
 
     wandb.finish()
 
@@ -92,7 +110,7 @@ if __name__ == "__main__":
 
     sweep_configuration = {
         "method": "random",
-        "metric": {"name": "loss", "goal": "minimize"},
+        "metric": {"name": "validation_loss", "goal": "minimize"},
         "parameters": {
             "lr": {"values": [0.0001, 0.00005, 0.00001]},
             "hidden_dim": {"values": [128, 256, 512, 1024]},
@@ -101,8 +119,8 @@ if __name__ == "__main__":
         },
     }
     # 3: Start the sweep
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project="GraphDDPM-Sweep")
-    # sweep_id = "f8mcmx14"
+    # sweep_id = wandb.sweep(sweep=sweep_configuration, project="GraphDDPM-Sweep")
+    sweep_id = "8m873pjt"
     wandb.agent(sweep_id, function=train, count=20, project="GraphDDPM-Sweep")
 
 
