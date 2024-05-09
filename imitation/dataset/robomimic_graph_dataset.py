@@ -288,8 +288,8 @@ class RobomimicGraphDataset(InMemoryDataset):
         data_action = []
         for idx in range(self.len()):
             data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
-            data_obs.append(data["y"])
-            data_action.append(data["x"])
+            data_obs.append(data["x"])
+            data_action.append(data["y"])
         data_obs = torch.cat(data_obs, dim=1)
         data_action = torch.cat(data_action, dim=1)
         
