@@ -98,7 +98,7 @@ class EGNNPolicy(BasePolicy):
             with tqdm(dataset, desc='Val Batch', leave=False) as tbatch:
                 for nbatch in tbatch:
                     if self.use_normalization:
-                        nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
+                        nbatch.y = self.dataset.normalize_data(nbatch.y, stats_key='action')
                     nobs = nbatch.x.to(self.device).float()
                     nobs = nobs.flatten(start_dim=1)
                     action = nbatch.y.to(self.device).float()
@@ -143,7 +143,7 @@ class EGNNPolicy(BasePolicy):
                 with tqdm(dataloader, desc="Batch", leave=False) as pbar:
                     for nbatch in pbar:
                         if self.use_normalization:
-                            nbatch.x = self.dataset.normalize_data(nbatch.x, stats_key='action')
+                            nbatch.y = self.dataset.normalize_data(nbatch.y, stats_key='action')
                         nobs = nbatch.x.to(self.device).float()
                         nobs = nobs.flatten(start_dim=1)
                         action = nbatch.y.to(self.device).float()
