@@ -223,8 +223,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                 # stack the batch dimension
                 noisy_actions = noisy_actions.flatten(end_dim=1)
-                # flatten naction, in case 'sample' mode is selected
-                naction = naction.flatten(end_dim=1)
                 # stack noise in the batch dimension
                 noise = noise.flatten(end_dim=1)
 
@@ -348,8 +346,6 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         # stack the batch dimension
                         noisy_actions = noisy_actions.flatten(end_dim=1)
-                        # flatten naction, in case 'sample' mode is selected
-                        naction = naction.flatten(end_dim=1)
                         # stack noise in the batch dimension
                         noise = noise.flatten(end_dim=1)
 
