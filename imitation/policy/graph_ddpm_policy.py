@@ -150,7 +150,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     model_output=noise_pred,
                     timestep=k,
                     sample=naction
-                ).pred_original_sample
+                ).prev_sample
                 naction[:,0,:] = self.last_naction[:,-1,:1] # keep first action clean
 
 
@@ -350,7 +350,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                         noise = noise.flatten(end_dim=1)
 
                         # predict the noise residual
-                        pred, x = self.noise_pred_net(
+                        noise_pred, x = self.noise_pred_net(
                             noisy_actions, 
                             batch.edge_index, 
                             batch.edge_attr, 
@@ -359,14 +359,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             timesteps=timesteps,
                             batch=batch.batch)
 
-                        pred_type = self.noise_scheduler.config.prediction_type 
-                        if pred_type == 'epsilon':
-                            target = noise
-                        elif pred_type == 'sample':
-                            target = naction
-                        
                         # L2 loss
-                        loss = nn.functional.mse_loss(pred, target)
+                        loss = nn.functional.mse_loss(noise_pred, noise)
                         wandb.log({'noise_pred_loss': loss, 'lr': self.lr_scheduler.get_last_lr()[0]})
 
                         # optimize
