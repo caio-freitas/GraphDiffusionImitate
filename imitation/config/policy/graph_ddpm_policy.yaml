@@ -26,3 +26,4 @@ ckpt_path: ./weights/diffusion_graph_policy_${task.task_name}_${task.dataset_typ
 lr: 1e-4
 batch_size: 128
 use_normalization: True
+keep_first_action: True
