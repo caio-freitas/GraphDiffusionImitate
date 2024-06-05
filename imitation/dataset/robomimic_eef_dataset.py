@@ -36,8 +36,8 @@ class RobomimicEefDataset(torch.utils.data.Dataset):
         self.indices = []
         self.data_at_indices = []
         # if indices file exists, load it
-        index_file = dataset_path.replace(".hdf5", f"_indices_{obs_horizon}_{action_horizon}_{pred_horizon}.npy")
-        data_at_indices_file = dataset_path.replace(".hdf5", f"_data_at_indices_{obs_horizon}_{action_horizon}_{pred_horizon}.npy")
+        index_file = dataset_path.replace(".hdf5", f"_eef_indices_{obs_horizon}_{action_horizon}_{pred_horizon}.npy")
+        data_at_indices_file = dataset_path.replace(".hdf5", f"_eef_data_at_indices_{obs_horizon}_{action_horizon}_{pred_horizon}.npy")
         if os.path.exists(index_file):
             self.indices = np.load(index_file)
             self.data_at_indices = np.load(data_at_indices_file, allow_pickle=True)
