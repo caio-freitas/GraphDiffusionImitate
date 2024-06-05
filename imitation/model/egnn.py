@@ -1,3 +1,8 @@
+"""
+From the authors of the original paper on E(N)-Equivariant Graph Neural Networks
+https://github.com/vgsatorras/egnn/blob/main/models/egnn_clean/egnn_clean.py
+"""
+
 from torch import nn
 import torch
 
