@@ -17,6 +17,7 @@ class RobomimicEnvRunner(BaseRunner):
                 output_dir,
                 action_horizon,
                 obs_horizon,
+                action_offset=0,
                 render=True,
                 fps=30,
                 output_video=False,
@@ -25,6 +26,7 @@ class RobomimicEnvRunner(BaseRunner):
         self.env = env
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
+        self.action_offset = action_offset
         self.render = render
         self.fps = fps
         self.output_video = output_video
@@ -79,8 +81,8 @@ class RobomimicEnvRunner(BaseRunner):
                 actions = actions.squeeze(0)
             if i >= self.use_full_pred_after * n_steps:
                 log.info(f"Reaching end of episode, action_horizion = pred_horizon = {len(actions)}")
-                action_horizon = len(actions) - 1
-            for j in range(1, action_horizon + 1): # skip first action
+                action_horizon = len(actions) - self.action_offset
+            for j in range(self.action_offset, action_horizon + self.action_offset): # skip first action
                 action = actions[j] 
                 if done:
                     self.env.close()
