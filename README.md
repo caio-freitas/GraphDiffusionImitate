@@ -6,13 +6,10 @@ Official implementation of master's thesis "Graph Diffusion for Imitation Lerani
 
 
 
-<div style="text-align: center;">
-    <img src="./assets/lift_graph.png" style="margin-right: 20px; display: inline-block;" width="30%" />
-    <img src="./assets/argg_lift_rollout.gif" style="display: inline-block;" width="30%" />
+<div align="center">
+    <img src="./assets/lift_graph.png" width="30%" style="margin-right: 20px;" />
+    <img src="./assets/argg_lift_rollout.gif" width="30%" />
 </div>
-
-
-
 
 
 
