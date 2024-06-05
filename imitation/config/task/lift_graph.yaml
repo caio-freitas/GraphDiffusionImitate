@@ -27,6 +27,7 @@ env_runner:
   output_dir: ${output_dir}
   action_horizon: ${action_horizon}
   obs_horizon: ${obs_horizon}
+  action_offset: ${action_offset}
   render: ${render}
   output_video: ${output_video}
   use_full_pred_after: 0.4 # after 40% of the steps, use full prediction
