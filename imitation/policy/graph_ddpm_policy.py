@@ -34,7 +34,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     ckpt_path= None,
                     lr: float = 1e-4,
                     batch_size: int = 256,
-                    use_normalization: bool = True):
+                    use_normalization: bool = True,
+                    keep_first_action: bool = True,):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -49,6 +50,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.num_diffusion_iters = num_diffusion_iters
         self.lr = lr
         self.use_normalization = use_normalization
+        self.keep_first_action = keep_first_action
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
@@ -129,7 +131,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             # initialize action from Guassian noise
             noisy_action = torch.randn((G_t.x.shape[0], self.pred_horizon, self.node_feature_dim), device=self.device)
             naction = noisy_action
-            naction[:,0,:] = self.last_naction[:,-1,:1] # keep first action clean
+
+            if self.keep_first_action:
+                naction[:,0,:] = self.last_naction[:,-1,:1] 
 
             # init scheduler
             self.noise_scheduler.set_timesteps(self.num_diffusion_iters)
@@ -152,7 +156,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     timestep=k,
                     sample=naction
                 ).prev_sample
-                naction[:,0,:] = self.last_naction[:,-1,:1] # keep first action clean
+
+                if self.keep_first_action:
+                    naction[:,0,:] = self.last_naction[:,-1,:1]
 
 
         # add node dimension, to pass through normalizer
@@ -215,8 +221,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 noisy_actions = self.noise_scheduler.add_noise(
                     naction, noise, timesteps)
                 
-
-                noisy_actions[:,:,0,:] = naction[:,:,0,:] # keep first action clean
+                if self.keep_first_action:
+                    noisy_actions[:,:,0,:] = naction[:,:,0,:]
 
                 # guarantees it to be float32
                 noisy_actions = noisy_actions.float()
@@ -331,8 +337,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
 
                         noisy_actions = self.noise_scheduler.add_noise(
                             naction, noise, timesteps)
-                        
-                        noisy_actions[:,:,0,:] = naction[:,:,0,:] # keep first action clean
+
+                        if self.keep_first_action:
+                            noisy_actions[:,:,0,:] = naction[:,:,0,:]
 
 
                         # guarantees it to be float32
