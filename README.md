@@ -2,6 +2,9 @@
 
 [Caio Freitas](https://caio-freitas.github.io/)
 
+Official implementation of master's thesis "Graph Diffusion for Imitation Leraning in Robotics" at [IAS](https://www.ias.informatik.tu-darmstadt.de/)/[PEARL](https://pearl-lab.com/) - TU Darmstadt, Germany.
+
+
 ## Installation
 
 To install the dependencies, run 
@@ -24,7 +27,24 @@ cd ../../datasets
 mv * ~/workspace/GraphDiffusionImitate/data/
 ```
 
+## Graph Diffusion Policies
+
+### GraphDDPM
+
+Denoising diffusion on top of the graph's node features, based on Denoising Diffusion Probabilistic Models (DDPM) from [Ho et al.](https://arxiv.org/abs/2102.08602).
+
+<center>
+<img src="./assets/GraphDDPM_reverse.png" width="75%">
+</center>
+
+### ARGG (Autorregressive Graph Generative Policy)
+
+Autoregressive graph generation for an graph-structured robot action, based on the GraphARM model from [Kong et al.](https://arxiv.org/pdf/2307.08849).
+
+![ARGG](./assets/argg_reverse_chain.png)
+
 ### Acknowledgements
 This repo relies on the following existing codebases / datasets:
 * Dataset from lift, square and transport tasks from [robosuite](https://robomimic.github.io/docs/datasets/robosuite.html)
-* Franka Kitchen environment and dataset, as well as benchmark model from [diffusion_policy](https://github.com/columbia-ai-robotics/diffusion_policy)
+* Benchmark model from [diffusion_policy](https://github.com/columbia-ai-robotics/diffusion_policy)
+* EGNN implementation from [Satorras](https://github.com/vgsatorras/egnn/)
