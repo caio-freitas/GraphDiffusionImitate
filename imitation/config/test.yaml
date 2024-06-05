@@ -1,19 +1,20 @@
 defaults:
   - _self_
-  - task: lift_lowdim
-  - policy: robomimic_lowdim
+  - task: lift_graph
+  - policy: graph_ddpm_policy
 
-render: True
 output_video: False
+render: True
 
 seed: 0
 num_episodes: 5
 max_steps: 500
 output_dir: ./outputs
 
-pred_horizon: 1
-obs_horizon: 1
-action_horizon: 1
+pred_horizon: 16
+obs_horizon: 4
+action_horizon: 4
+action_offset: 1 # action offset for the policy, 1 if first action is to be ignored
 
 
 agent:

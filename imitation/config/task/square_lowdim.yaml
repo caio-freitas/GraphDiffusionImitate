@@ -3,13 +3,13 @@ task_name: &task_name square
 dataset_type: &dataset_type ph
 dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
 
-max_steps: 1000
+max_steps: ${eval:'800 if "${task.dataset_type}" == "mh" else 500'}
 
-obs_dim: 37
+obs_dim: 32 # 37 + 2 (due to quaternion -> 6D rotation)
 action_dim: 9
 
 
-obs_keys: &obs_keys ['robot0_joint_pos', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
+obs_keys: &obs_keys ['robot0_joint_pos', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'object']
 action_keys: &action_keys ['robot0_joint_vel', 'robot0_gripper_qvel']
 
 env_runner: 

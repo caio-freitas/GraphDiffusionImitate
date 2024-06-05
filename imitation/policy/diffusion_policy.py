@@ -79,7 +79,6 @@ class DiffusionUnet1DPolicy(BasePolicy):
         
 
         self._init_stats()
-        self.load_nets(self.ckpt_path)
 
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
@@ -161,6 +160,12 @@ class DiffusionUnet1DPolicy(BasePolicy):
         action = action_pred[:self.action_horizon,:]
         # (action_horizon, action_dim)
         return action # TODO limit this in runner
+
+    def validate(self, dataset=None, model_path=None):
+        '''
+        Calculate validation loss for noise prediction model in the given dataset
+        '''
+        return None
 
     def train(self, 
               dataset=None, 

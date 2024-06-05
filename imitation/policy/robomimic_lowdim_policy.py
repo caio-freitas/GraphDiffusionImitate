@@ -31,9 +31,6 @@ class RobomimicPretrainedWrapper:
             lr=1e-4
         ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # load model from ckpt
-        if ckpt_path is not None:
-            self.load_nets(ckpt_path)
 
     def load_nets(self, ckpt_path):
         log.info(f"Loading model from {ckpt_path}")
@@ -65,12 +62,16 @@ class RobomimicLowdimPolicy(BasePolicy):
             dataset_type='ph',
             dataset=None,
             ckpt_path=None,
-            lr=1e-4
+            lr=1e-4,
+            batch_size = 64
         ):
         super().__init__()
         # key for robomimic obs input
         # previously this is 'object', 'robot0_eef_pos' etc
         self.dataset = dataset
+        self.batch_size = batch_size
+        assert self.dataset.pred_horizon == self.dataset.obs_horizon == self.dataset.action_horizon, \
+            "Robomimic only supports pred_horizon == obs_horizon"
         self.lr = lr
         obs_key = 'obs'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -115,6 +116,10 @@ class RobomimicLowdimPolicy(BasePolicy):
             self.model.deserialize(torch.load(ckpt_path))
         except Exception as e:
             log.error(f"Could not load model from {ckpt_path}. Error: {e}")
+
+    def save_nets(self, ckpt_path):
+        log.info(f"Saving model to {ckpt_path}")
+        torch.save(self.model.serialize(), ckpt_path)
 
     # =========== inference =============
     def get_action(self, obs):
@@ -167,7 +172,7 @@ class RobomimicLowdimPolicy(BasePolicy):
         self.model.nets.train()
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=64,
+            batch_size=self.batch_size,
             num_workers=1,
             shuffle=False,
             # accelerate cpu-gpu transfer
@@ -192,10 +197,9 @@ class RobomimicLowdimPolicy(BasePolicy):
                             "loss": info['losses']['action_loss'],
                             "log_probs": info['losses']['log_probs']})
                 # save model from dict in self.model.serialize()
-                torch.save(self.model.serialize(), model_path)
+                self.save_nets(model_path)
                 self.global_epoch += 1
-                
-        torch.save(self.model.serialize(), model_path + f'{num_epochs}_ep.pt')
+        self.save_nets(model_path + f'{num_epochs}_ep.pt')
         return info
     
     def get_optimizer(self):

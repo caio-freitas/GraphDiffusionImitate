@@ -92,3 +92,6 @@ weights/
 
 # Archive files
 archive/
+
+# Notebooks
+notebooks/

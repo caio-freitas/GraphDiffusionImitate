@@ -8,8 +8,8 @@ import os
 import pathlib
 
 import hydra
-import torch
 import wandb
+import torch
 
 from eval import eval_main
 from omegaconf import DictConfig, OmegaConf
@@ -21,12 +21,35 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 @hydra.main(
         version_base=None,
-        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')), 
-        config_name="train"
+        config_path=str(pathlib.Path(__file__).parent.joinpath('imitation','config')),
+        config_name="train" # use train parameters as base
         )
 def train(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     log.info("Training policy...")
+    
+    wandb.init(
+        project=cfg.policy,
+        group=cfg.task.task_name,
+        name=f"v1.2.1",
+        # track hyperparameters and run metadata
+        config={
+            "policy": cfg.policy,
+            "dataset_type": cfg.task.dataset_type,
+            "n_epochs": cfg.num_epochs,
+            "seed": cfg.seed,
+            "task": cfg.task.task_name,
+        },
+        # mode="disabled",
+    )
+    # wandb.watch(policy.model, log="all")
+    # override Hydra parameters with WandB parameters
+    cfg.policy.lr = wandb.config.lr
+    cfg.policy.denoising_network.hidden_dim = wandb.config.hidden_dim
+    cfg.policy.denoising_network.num_layers = wandb.config.num_layers
+    cfg.policy.ckpt_path = cfg.policy.ckpt_path + f"_lr{cfg.policy.lr}_hd{str(wandb.config.hidden_dim)}_nl{str(wandb.config.num_layers)}"
+    cfg.task.control_mode = wandb.config.control_mode
+
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy)
     log.info(f"Training policy {policy.__class__.__name__} with seed {cfg.seed} on task {cfg.task.task_name}")
@@ -36,31 +59,13 @@ def train(cfg: DictConfig) -> None:
     except Exception as e:
         log.error(f"Error loading checkpoint: {e}")
     
-    wandb.init(
-        project=policy.__class__.__name__,
-        group=cfg.task.task_name,
-        name=f"v1.2.2",
-        # track hyperparameters and run metadata
-        config={
-            "policy": cfg.policy,
-            "dataset_type": cfg.task.dataset_type,
-            "n_epochs": cfg.num_epochs,
-            "seed": cfg.seed,
-            "lr": cfg.policy.lr,
-            "task": cfg.task.task_name,
-        },
-        # mode="disabled",
-    )
-    # wandb.watch(policy.model, log="all")
 
-    torch.manual_seed(cfg.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(cfg.seed)
-
+    
     # Split the dataset into train and validation
     train_dataset, val_dataset = torch.utils.data.random_split(
         policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
     )
+    
 
     E = cfg.num_epochs
     V = cfg.num_epochs
@@ -74,8 +79,8 @@ def train(cfg: DictConfig) -> None:
         policy.num_epochs = cfg.num_epochs
     except:
         log.error("Error setting total num_epochs in policy")
-
-     # evaluate every E epochs
+    
+    # evaluate every E epochs
     max_success_rate = 0
     for i in range(1, 1 + cfg.num_epochs // V):
         # train policy
@@ -96,9 +101,26 @@ def train(cfg: DictConfig) -> None:
                 max_success_rate = success_rate
                 policy.save_nets(cfg.policy.ckpt_path + f"_best_succ={success_rate}.pt")
 
+
     wandb.finish()
 
 if __name__ == "__main__":
-    train()
+    wandb.login()
+
+
+    sweep_configuration = {
+        "method": "random",
+        "metric": {"name": "validation_loss", "goal": "minimize"},
+        "parameters": {
+            "lr": {"values": [0.0001, 0.00005, 0.00001]},
+            "hidden_dim": {"values": [128, 256, 512, 1024]},
+            "num_layers": {"values": [2, 3, 4, 5]},
+            "control_mode": {"values": ["JOINT_VELOCITY"]}
+        },
+    }
+    # 3: Start the sweep
+    # sweep_id = wandb.sweep(sweep=sweep_configuration, project="GraphDDPM-Sweep")
+    sweep_id = "8m873pjt"
+    wandb.agent(sweep_id, function=train, count=20, project="GraphDDPM-Sweep")
 
 

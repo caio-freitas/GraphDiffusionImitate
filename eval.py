@@ -31,7 +31,12 @@ def eval_main(cfg):
     policy = hydra.utils.instantiate(cfg.policy)
     # instanciate agent from policy
     agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
-
+    try:
+        if cfg.policy.ckpt_path is not None and cfg.load_ckpt:
+            policy.load_nets(cfg.policy.ckpt_path)
+    except Exception as e:
+        log.error(f"Error loading checkpoint {cfg.policy.ckpt_path}: {e}")
+    
     if __name__ == "__main__":
         wandb.init(
             project=policy.__class__.__name__,
@@ -62,6 +67,7 @@ def eval_main(cfg):
             runner.output_video = False
     log.info(f"Success rate: {success_count/cfg.num_episodes}")
     wandb.log({"success_rate": success_count/cfg.num_episodes})
+    return success_count/cfg.num_episodes
 
 if __name__ == "__main__":
     eval_main()
