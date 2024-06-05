@@ -5,6 +5,17 @@
 Official implementation of master's thesis "Graph Diffusion for Imitation Leraning in Robotics" at [IAS](https://www.ias.informatik.tu-darmstadt.de/)/[PEARL](https://pearl-lab.com/) - TU Darmstadt, Germany.
 
 
+
+<div style="text-align: center;">
+    <img src="./assets/lift_graph.png" style="margin-right: 20px; display: inline-block;" width="30%" />
+    <img src="./assets/argg_lift_rollout.gif" style="display: inline-block;" width="30%" />
+</div>
+
+
+
+
+
+
 ## Installation
 
 To install the dependencies, run 
