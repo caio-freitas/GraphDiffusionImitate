@@ -25,7 +25,7 @@ Timing:
   dataset obs[t]  ──actions[t]──►  dataset obs[t+1]
                                     ≈ live obs after env.step(actions[t])
 
-Tolerances (user-specified)
+Tolerances
 ---------------------------
 - Joint-space : 0.06 rad  (small accumulated integration drift is acceptable)
 - Task-space  : 6 mm      (FK Cartesian node positions, derived from joint tol)
@@ -45,13 +45,13 @@ import pytest
 import torch
 from scipy.spatial.transform import Rotation as R
 
-# ── paths ──────────────────────────────────────────────────────────────────────
+# ── paths ────────────────────────────────────────────────────────────────────
 DATASET_PATH = "data/lift/ph/low_dim_v141.hdf5"
 EPISODE_KEY  = "demo_0"
 
-# ── tolerances (user-approved) ────────────────────────────────────────────────
-JOINT_POS_TOL = 0.06   # rad  – max per-joint error over the full episode
-CART_POS_TOL  = 6e-3   # m    – max Cartesian node-position error
+# ── tolerances ────────────────────────────────────────────────────────────── 
+JOINT_POS_TOL = 0.06   # rad  - max per-joint error over the full episode
+CART_POS_TOL  = 6e-3   # m    - max Cartesian node-position error
 
 # ── lift-task config (lift_graph.yaml) ───────────────────────────────────────
 BASE_LINK_SHIFT    = np.array([-0.56, 0.0, 0.912])
@@ -81,7 +81,7 @@ def compute_node_pos_xyz(joint_pos_7: np.ndarray,
                          gripper_qpos_2: np.ndarray) -> torch.Tensor:
     """
     Mirrors RobomimicGraphDataset._get_node_pos for a single robot.
-    Returns shape (9, 3) – Cartesian [x, y, z] of each Panda link node,
+    Returns shape (9, 3) - Cartesian [x, y, z] of each Panda link node,
     after applying the base_link rotation and shift from lift_graph.yaml.
     """
     global _calculate_panda_joints_positions
@@ -161,7 +161,7 @@ class TestNodePosConsistency:
         The env is restored to the recorded t=0 sim state via
         sim.set_state_from_flattened(states[0]).  We then replay each action
         from the dataset and compare:
-          (a) Joint-space: dataset obs[t+1] vs. live joint_pos – must be
+          (a) Joint-space: dataset obs[t+1] vs. live joint_pos - must be
               within JOINT_POS_TOL (0.06 rad).
           (b) Task-space: FK node positions from (a) must agree within
               CART_POS_TOL (6 mm).
@@ -232,7 +232,7 @@ class TestNodePosConsistency:
             f"from the dataset, (2) base_link_shift/rotation is wrong, or "
             f"(3) accumulated integration drift exceeds the tolerance."
         )
-        # Cartesian error is informational – arm geometry non-linearly amplifies
+        # Cartesian error is informational - arm geometry non-linearly amplifies
         # joint errors so we report it but do not assert a hard limit here.
         if max_cart_err > CART_POS_TOL:
             print(
@@ -247,7 +247,7 @@ class TestNodePosConsistency:
         pos_a = compute_node_pos_xyz(joint_pos[0], gripper_qpos[0])
         pos_b = compute_node_pos_xyz(joint_pos[0], gripper_qpos[0])
         assert torch.allclose(pos_a, pos_b), \
-            "FK is not deterministic – unexpected randomness in calculate_panda_joints_positions."
+            "FK is not deterministic - unexpected randomness in calculate_panda_joints_positions."
 
     def test_node_pos_changes_over_episode(self, episode_data):
         """Sanity: FK positions must vary along the episode (data is not static/zero)."""
@@ -255,10 +255,10 @@ class TestNodePosConsistency:
         pos_0  = compute_node_pos_xyz(joint_pos[0],  gripper_qpos[0])
         pos_10 = compute_node_pos_xyz(joint_pos[10], gripper_qpos[10])
         assert not torch.allclose(pos_0, pos_10, atol=1e-4), \
-            "FK positions unchanged between step 0 and step 10 – check data loading."
+            "FK positions unchanged between step 0 and step 10 - check data loading."
 
     def test_initial_joint_positions_are_nonzero(self, episode_data):
         """Sanity: the recorded initial joint positions should not be all zeros."""
         joint_pos, _, _, _ = episode_data
         assert np.any(np.abs(joint_pos[0]) > 1e-4), \
-            "Initial joint positions are all near zero – dataset may not be loaded correctly."
+            "Initial joint positions are all near zero - dataset may not be loaded correctly."
