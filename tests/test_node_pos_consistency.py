@@ -204,12 +204,10 @@ class TestNodePosConsistency:
         per_step_eef_errs   = []
 
         for t in range(T):
-            env.step(actions[t])
-            live_obs       = env._get_observations()
+            live_obs, _, _, _ = env.step(actions[t])
             live_joint_pos = live_obs["robot0_joint_pos"]    # (7,)
             live_gripper   = live_obs["robot0_gripper_qpos"] # (2,)
             live_eef_pos   = live_obs["robot0_eef_pos"]      # (3,)
-
             # Dataset state after action[t] = obs[t+1]
             next_idx     = min(t + 1, T - 1)
             ds_joint_pos = dataset_joint_pos[next_idx]
