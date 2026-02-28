@@ -35,6 +35,21 @@ cd ../../datasets
 mv * ~/workspace/GraphDiffusionImitate/data/
 ```
 
+## Testing
+
+Tests live in the `tests/` directory and use [pytest](https://docs.pytest.org/). Make sure the `imitation` conda environment is active before running any tests.
+
+```bash
+mamba activate imitation
+```
+
+### Run all tests
+
+```bash
+pytest tests/ -v
+```
+
+
 ## Graph Diffusion Policies
 
 ### GraphDDPM
