@@ -203,16 +203,17 @@ class TestNodePosConsistency:
         per_step_cart_errs  = []
         per_step_eef_errs   = []
 
-        for t in range(T):
+        # Iterate only while t+1 is a valid dataset index so we can always
+        # compare the post-step live state against obs[t+1] without clamping.
+        for t in range(T - 1):
             live_obs, _, _, _ = env.step(actions[t])
             live_joint_pos = live_obs["robot0_joint_pos"]    # (7,)
             live_gripper   = live_obs["robot0_gripper_qpos"] # (2,)
             live_eef_pos   = live_obs["robot0_eef_pos"]      # (3,)
-            # Dataset state after action[t] = obs[t+1]
-            next_idx     = min(t + 1, T - 1)
-            ds_joint_pos = dataset_joint_pos[next_idx]
-            ds_gripper   = dataset_gripper_qpos[next_idx]
-            ds_eef_pos   = dataset_eef_pos[next_idx]          # (3,)
+            # Dataset state after action[t] is always obs[t+1]
+            ds_joint_pos = dataset_joint_pos[t + 1]
+            ds_gripper   = dataset_gripper_qpos[t + 1]
+            ds_eef_pos   = dataset_eef_pos[t + 1]            # (3,)
 
             # ── (a) joint-space ────────────────────────────────────────────────
             joint_err = float(np.max(np.abs(ds_joint_pos - live_joint_pos)))
