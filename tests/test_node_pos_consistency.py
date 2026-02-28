@@ -52,6 +52,7 @@ EPISODE_KEY  = "demo_0"
 # ── tolerances ────────────────────────────────────────────────────────────── 
 JOINT_POS_TOL = 0.06   # rad  - max per-joint error over the full episode
 CART_POS_TOL  = 6e-3   # m    - max Cartesian node-position error
+EEF_POS_TOL   = 1.2e-2   # m    - max EEF-position error (live env vs. dataset)
 
 # ── lift-task config (lift_graph.yaml) ───────────────────────────────────────
 BASE_LINK_SHIFT    = np.array([-0.56, 0.0, 0.912])
@@ -140,9 +141,10 @@ def episode_data():
         ep = f[f"data/{EPISODE_KEY}"]
         joint_pos    = ep["obs/robot0_joint_pos"][:]     # (T, 7)
         gripper_qpos = ep["obs/robot0_gripper_qpos"][:]  # (T, 2)
+        eef_pos      = ep["obs/robot0_eef_pos"][:]       # (T, 3): EEF xyz in world frame
         actions      = ep["actions"][:]                   # (T, 7): OSC_POSE + gripper
         states       = ep["states"][:]                    # (T, 32): flat MuJoCo sim state
-    return joint_pos, gripper_qpos, actions, states
+    return joint_pos, gripper_qpos, eef_pos, actions, states
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
@@ -165,6 +167,10 @@ class TestNodePosConsistency:
               within JOINT_POS_TOL (0.06 rad).
           (b) Task-space: FK node positions from (a) must agree within
               CART_POS_TOL (6 mm).
+          (c) EEF-position: live env's robot0_eef_pos vs. dataset obs[t+1]
+              eef_pos - must be within EEF_POS_TOL (6 mm). This verifies
+              that the simulated state is consistent with robosuite's own
+              EEF reporting at record time.
 
         A failure means either:
           - The FK in _get_node_pos uses stale / off-by-one joint data.
@@ -172,7 +178,7 @@ class TestNodePosConsistency:
           - There is accumulated integration drift (expected to be small for
             a deterministic OSC_POSE controller given the same starting state).
         """
-        dataset_joint_pos, dataset_gripper_qpos, actions, states = episode_data
+        dataset_joint_pos, dataset_gripper_qpos, dataset_eef_pos, actions, states = episode_data
         T = actions.shape[0]
 
         env = make_env()
@@ -184,21 +190,26 @@ class TestNodePosConsistency:
 
         max_joint_err = 0.0
         max_cart_err  = 0.0
+        max_eef_err   = 0.0
         worst_joint_t = -1
         worst_cart_t  = -1
+        worst_eef_t   = -1
         per_step_joint_errs = []
         per_step_cart_errs  = []
+        per_step_eef_errs   = []
 
         for t in range(T):
             env.step(actions[t])
             live_obs       = env._get_observations()
             live_joint_pos = live_obs["robot0_joint_pos"]    # (7,)
             live_gripper   = live_obs["robot0_gripper_qpos"] # (2,)
+            live_eef_pos   = live_obs["robot0_eef_pos"]      # (3,)
 
             # Dataset state after action[t] = obs[t+1]
             next_idx     = min(t + 1, T - 1)
             ds_joint_pos = dataset_joint_pos[next_idx]
             ds_gripper   = dataset_gripper_qpos[next_idx]
+            ds_eef_pos   = dataset_eef_pos[next_idx]          # (3,)
 
             # ── (a) joint-space ────────────────────────────────────────────────
             joint_err = float(np.max(np.abs(ds_joint_pos - live_joint_pos)))
@@ -216,6 +227,17 @@ class TestNodePosConsistency:
                 max_cart_err = cart_err
                 worst_cart_t = t
 
+            # ── (c) EEF position (live env vs. dataset) ────────────────────────
+            # Compares the EEF xyz reported by robosuite live against the value
+            # stored in the dataset at the same timestep.  This is independent
+            # of the FK pipeline and directly validates that the replayed sim
+            # state matches the original recording.
+            eef_err = float(np.max(np.abs(live_eef_pos - ds_eef_pos)))
+            per_step_eef_errs.append(eef_err)
+            if eef_err > max_eef_err:
+                max_eef_err = eef_err
+                worst_eef_t = t
+
         env.close()
 
         print(f"\n── Episode replay summary ({EPISODE_KEY}) ──────────────────")
@@ -224,6 +246,8 @@ class TestNodePosConsistency:
         print(f"  Mean joint-pos error (rad)    : {np.mean(per_step_joint_errs):.6f}")
         print(f"  Max FK Cartesian err (m)      : {max_cart_err:.6f}  at step {worst_cart_t}")
         print(f"  Mean FK Cartesian err (m)     : {np.mean(per_step_cart_errs):.6f}")
+        print(f"  Max EEF position err (m)      : {max_eef_err:.6f}  at step {worst_eef_t}")
+        print(f"  Mean EEF position err (m)     : {np.mean(per_step_eef_errs):.6f}")
 
         assert max_joint_err <= JOINT_POS_TOL, (
             f"Joint-position error {max_joint_err:.5f} rad at step {worst_joint_t} "
@@ -241,9 +265,18 @@ class TestNodePosConsistency:
                 f"This is a consequence of the joint-position drift above."
             )
 
+        assert max_eef_err <= EEF_POS_TOL, (
+            f"EEF-position error {max_eef_err:.5f} m at step {worst_eef_t} "
+            f"exceeds tolerance {EEF_POS_TOL} m.\n"
+            f"The live robosuite EEF position diverged from the dataset recording. "
+            f"This may indicate: (1) the sim state restoration is incomplete, "
+            f"(2) the controller or environment parameters differ from the recording, or "
+            f"(3) accumulated integration drift in the end-effector pose."
+        )
+
     def test_fk_is_deterministic(self, episode_data):
         """Sanity: FK must be bit-for-bit deterministic for the same inputs."""
-        joint_pos, gripper_qpos, _, _ = episode_data
+        joint_pos, gripper_qpos, _, _, _ = episode_data
         pos_a = compute_node_pos_xyz(joint_pos[0], gripper_qpos[0])
         pos_b = compute_node_pos_xyz(joint_pos[0], gripper_qpos[0])
         assert torch.allclose(pos_a, pos_b), \
@@ -251,7 +284,7 @@ class TestNodePosConsistency:
 
     def test_node_pos_changes_over_episode(self, episode_data):
         """Sanity: FK positions must vary along the episode (data is not static/zero)."""
-        joint_pos, gripper_qpos, _, _ = episode_data
+        joint_pos, gripper_qpos, _, _, _ = episode_data
         pos_0  = compute_node_pos_xyz(joint_pos[0],  gripper_qpos[0])
         pos_10 = compute_node_pos_xyz(joint_pos[10], gripper_qpos[10])
         assert not torch.allclose(pos_0, pos_10, atol=1e-4), \
@@ -259,6 +292,6 @@ class TestNodePosConsistency:
 
     def test_initial_joint_positions_are_nonzero(self, episode_data):
         """Sanity: the recorded initial joint positions should not be all zeros."""
-        joint_pos, _, _, _ = episode_data
+        joint_pos, _, _, _, _ = episode_data
         assert np.any(np.abs(joint_pos[0]) > 1e-4), \
             "Initial joint positions are all near zero - dataset may not be loaded correctly."
