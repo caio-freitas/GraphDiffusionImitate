@@ -107,34 +107,38 @@ def compute_node_pos_xyz(joint_pos_7: np.ndarray,
 
 # ── robosuite env factory ─────────────────────────────────────────────────────
 
-def make_env():
+def make_env(dataset_path: str = DATASET_PATH):
     """
-    Re-creates the robosuite environment matching the recording parameters
-    stored in the HDF5 env_args (OSC_POSE, control_freq=20).
-    """
-    import robosuite as suite
-    from robosuite.controllers import load_controller_config
+    Re-creates the robosuite environment whose parameters are stored verbatim
+    in the HDF5 ``data/env_args`` attribute written at record time.
 
-    controller_config = load_controller_config(default_controller="OSC_POSE")
-    controller_config.update({
-        "input_max": 1, "input_min": -1,
-        "output_max": [0.05, 0.05, 0.05, 0.5, 0.5, 0.5],
-        "output_min": [-0.05, -0.05, -0.05, -0.5, -0.5, -0.5],
-        "kp": 150, "damping": 1, "impedance_mode": "fixed",
-        "control_delta": True, "uncouple_pos_ori": True,
-        "interpolation": None, "ramp_ratio": 0.2,
-    })
-    return suite.make(
-        "Lift",
-        robots=["Panda"],
-        use_camera_obs=False,
-        has_offscreen_renderer=False,
-        has_renderer=False,
-        reward_shaping=False,
-        control_freq=20,
-        ignore_done=True,
-        controller_configs=controller_config,
-    )
+    Reading from the dataset (instead of hardcoding controller parameters)
+    guarantees that the replay configuration always matches the recording
+    even if the dataset or controller settings change in the future.
+
+    The only values overridden here are the three renderer/reward flags that
+    must be ``False`` for a headless test replay:
+      - has_renderer
+      - has_offscreen_renderer
+      - reward_shaping
+    """
+    import json
+    import robosuite as suite
+    import h5py
+
+    # ── read env_args written by robomimic at record time ─────────────────────
+    with h5py.File(dataset_path, "r") as f:
+        env_args = json.loads(f["data"].attrs["env_args"])
+
+    env_name   = env_args["env_name"]          # e.g. "Lift"
+    env_kwargs = dict(env_args["env_kwargs"])  # shallow copy so we can override
+
+    # Force headless / no reward-shaping for test replay
+    env_kwargs["has_renderer"]          = False
+    env_kwargs["has_offscreen_renderer"] = False
+    env_kwargs["reward_shaping"]         = False
+
+    return suite.make(env_name, **env_kwargs)
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
