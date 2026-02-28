@@ -261,15 +261,16 @@ class TestNodePosConsistency:
             f"from the dataset, (2) base_link_shift/rotation is wrong, or "
             f"(3) accumulated integration drift exceeds the tolerance."
         )
-        # Cartesian error is informational - arm geometry non-linearly amplifies
-        # joint errors so we report it but do not assert a hard limit here.
-        if max_cart_err > CART_POS_TOL:
-            print(
-                f"\n  [info] Max FK Cartesian node error {max_cart_err:.5f} m "
-                f"(>{CART_POS_TOL} m) at step {worst_cart_t}. "
-                f"This is a consequence of the joint-position drift above."
-            )
 
+        assert max_cart_err <= CART_POS_TOL, (
+            f"FK Cartesian node-position error {max_cart_err:.5f} m at step {worst_cart_t} "
+            f"exceeds tolerance {CART_POS_TOL} m.\n"
+            f"This may indicate: (1) _get_node_pos is producing inconsistent node "
+            f"positions relative to the live robosuite environment, (2) the "
+            f"FK pipeline (including base_link_shift/rotation) is misconfigured, or "
+            f"(3) accumulated joint-position drift is being non-linearly amplified "
+            f"by the arm kinematics beyond the allowed bound."
+        )
         assert max_eef_err <= EEF_POS_TOL, (
             f"EEF-position error {max_eef_err:.5f} m at step {worst_eef_t} "
             f"exceeds tolerance {EEF_POS_TOL} m.\n"
