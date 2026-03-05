@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from tqdm.auto import tqdm
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import wandb
 
@@ -159,13 +160,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         # only take action_horizon number of actions
         action = action_pred[:self.action_horizon,:]
         # (action_horizon, action_dim)
-        return action # TODO limit this in runner
-
-    def validate(self, dataset=None, model_path=None):
-        '''
-        Calculate validation loss for noise prediction model in the given dataset
-        '''
-        return None
+        return action
 
     def train(self, 
               dataset=None, 
@@ -188,10 +183,9 @@ class DiffusionUnet1DPolicy(BasePolicy):
         # accelerates training and improves stability
         # holds a copy of the model weights
 
-        # TODO use EMA
-        # ema = EMAModel(
-        #     model=noise_pred_net,
-        #     power=0.75)
+        ema = EMAModel(
+            parameters=self.noise_pred_net.parameters(),
+            power=0.75)
 
         # Standard ADAM optimizer
         # Note that EMA parameters are not optimized
@@ -262,9 +256,8 @@ class DiffusionUnet1DPolicy(BasePolicy):
                         # this is different from standard pytorch behavior
                         lr_scheduler.step()
 
-                        # TODO use EMA
                         # update Exponential Moving Average of the model weights
-                        # ema.step(noise_pred_net)
+                        ema.step(self.noise_pred_net.parameters())
 
 
                         # logging
@@ -273,10 +266,10 @@ class DiffusionUnet1DPolicy(BasePolicy):
                         tepoch.set_postfix(loss=loss_cpu)
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
                 wandb.log({'epoch_loss': np.mean(epoch_loss)})
+                # Weights of the EMA model are used for inference
+                ema_noise_pred_net = self.noise_pred_net
+                ema.copy_to(ema_noise_pred_net.parameters())
                 # save model checkpoint
-                torch.save(self.noise_pred_net.state_dict(), model_path)
+                torch.save(ema_noise_pred_net.state_dict(), model_path)
 
-        # Weights of the EMA model
-        # is used for inference
-        # ema_noise_pred_net = ema.averaged_model
-        self.ema_noise_pred_net = self.noise_pred_net
+        

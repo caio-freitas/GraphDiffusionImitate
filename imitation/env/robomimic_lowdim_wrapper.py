@@ -86,11 +86,12 @@ class RobomimicLowdimWrapper(gym.Env):
             j = i*39
             # 7  - sin of joint angles
             robot_joint_pos = obs[j:j + 7]
-           # 7  - sin of joint angles
+            # 7  - sin of joint angles
             # robot_joint_sin = obs[j + 7:j + 14]
             # 7  - cos of joint angles
             # robot_joint_cos = obs[j + 14:j + 21]
             # 7  - joint velocities
+            # robot_joint_vel = obs[j + 21:j + 28]
             eef_pose = obs[j + 28:j + 31]
             eef_quat = obs[j + 31:j + 35]
             eef_6d = self.rotation_transformer.forward(eef_quat)

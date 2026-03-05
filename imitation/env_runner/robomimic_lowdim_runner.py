@@ -61,8 +61,9 @@ class RobomimicEnvRunner(BaseRunner):
         self.obs_deque = collections.deque(
             [self.obs] * self.obs_horizon, maxlen=self.obs_horizon)
 
-    def run(self, agent: BaseAgent, n_steps: int) -> Dict:
+    def run(self, agent: BaseAgent, n_steps: int = 100) -> Dict:
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
+        self.reset()
         if self.output_video:
             self.start_video()
         done = False
@@ -89,12 +90,12 @@ class RobomimicEnvRunner(BaseRunner):
                     if self.output_video:
                         self.end_video()
                     return rewards, info
+                
                 obs, reward, done, info = self.env.step(action)
                 self.obs_deque.append(obs)
                 
                 if self.render:
                     self.env.render()
-                    # time.sleep(1/self.fps) # TODO properly fix the rendering speed or not
 
                 if self.output_video:
                     # We need to directly grab full observations so we can get image data

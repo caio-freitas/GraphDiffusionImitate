@@ -17,6 +17,10 @@ dependencies:
     - -e git+https://github.com/ARISE-Initiative/robomimic@main#egg=robomimic
     - diffusers
     - zarr
+    - h5py
+    - robomimic
+    - diffusers
+    - zarr
     - einops
     - tqdm
     - pybullet

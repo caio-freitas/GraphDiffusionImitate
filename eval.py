@@ -55,7 +55,6 @@ def eval_main(cfg):
     # run policy in environment
     success_count = 0
     for i in range(cfg.num_episodes):
-        runner.reset()
         rewards, info = runner.run(agent, cfg.max_steps)
         assert "success" in info, "info['success'] not returned in info from runner"
         print(f"info: {info}")
