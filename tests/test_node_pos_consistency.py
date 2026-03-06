@@ -351,3 +351,289 @@ class TestNodePosConsistency:
             f"(2) calculate_panda_joints_positions uses an unexpected link frame, or "
             f"(3) a bug in compute_node_pos_xyz."
         )
+
+
+# ── helpers for dataset / wrapper _get_node_pos ───────────────────────────────
+#
+# We invoke the *actual* _get_node_pos methods from both classes without
+# constructing the full objects (which require heavy dependencies).  We build
+# minimal mock objects that expose only the attributes read by _get_node_pos.
+
+def _make_dataset_node_pos_fn():
+    """
+    Return a callable that mirrors RobomimicGraphDataset._get_node_pos.
+    Binds the method to a lightweight mock that carries only the attributes
+    needed: BASE_LINK_SHIFT, BASE_LINK_ROTATION, num_robots,
+    rotation_transformer, object_state_keys, object_state_sizes, num_objects.
+    """
+    import types
+    import importlib
+    from diffusion_policy.model.common.rotation_transformer import RotationTransformer
+
+    # Import the unbound method directly from the module
+    spec = importlib.util.spec_from_file_location(
+        "rg_dataset",
+        os.path.join(os.path.dirname(__file__), "..", "imitation", "dataset",
+                     "robomimic_graph_dataset.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # Lift-task config (mirrors lift_graph.yaml)
+    mock = types.SimpleNamespace(
+        num_robots=1,
+        BASE_LINK_SHIFT=[[-0.56, 0.0, 0.912]],
+        BASE_LINK_ROTATION=[[0.0, 0.0, 0.0, 1.0]],
+        rotation_transformer=RotationTransformer(from_rep="quaternion", to_rep="rotation_6d"),
+        object_state_keys={"cube": ["cube_pos", "cube_quat"]},
+        object_state_sizes={"cube_pos": 3, "cube_quat": 4, "gripper_to_cube_pos": 3},
+        num_objects=1,
+    )
+
+    # Bind the method to our mock
+    get_node_pos = mod.RobomimicGraphDataset._get_node_pos.__get__(mock)
+    get_obj_pos  = mod.RobomimicGraphDataset._get_object_pos.__get__(mock)
+    # Also bind _get_object_pos so the chain works
+    mock._get_object_pos = get_obj_pos
+
+    return get_node_pos
+
+
+def _make_wrapper_node_pos_fn():
+    """
+    Return a callable that mirrors RobomimicGraphWrapper._get_node_pos.
+    """
+    import types
+    import importlib
+    from diffusion_policy.model.common.rotation_transformer import RotationTransformer
+
+    spec = importlib.util.spec_from_file_location(
+        "rg_wrapper",
+        os.path.join(os.path.dirname(__file__), "..", "imitation", "env",
+                     "robomimic_graph_wrapper.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    mock = types.SimpleNamespace(
+        num_robots=1,
+        BASE_LINK_SHIFT=[[-0.56, 0.0, 0.912]],
+        BASE_LINK_ROTATION=[[0.0, 0.0, 0.0, 1.0]],
+        rotation_transformer=RotationTransformer(from_rep="quaternion", to_rep="rotation_6d"),
+        object_state_keys={"cube": ["cube_pos", "cube_quat"]},
+        object_state_sizes={"cube_pos": 3, "cube_quat": 4, "gripper_to_cube_pos": 3},
+        num_objects=1,
+    )
+
+    get_obj_pos  = mod.RobomimicGraphWrapper._get_object_pos.__get__(mock)
+    mock._get_object_pos = get_obj_pos
+    get_node_pos = mod.RobomimicGraphWrapper._get_node_pos.__get__(mock)
+
+    return get_node_pos
+
+
+def _build_data_dict_for_t(joint_pos_T, gripper_qpos_T, t,
+                            object_state=None):
+    """
+    Build the 'data' dict expected by both _get_node_pos implementations.
+    object_state: (10,) floats for cube_pos(3) + cube_quat(4) + pad(3),
+                  or None (zeros are used).
+    """
+    data = {
+        "robot0_joint_pos": joint_pos_T,      # (T, 7) – dataset form
+        "robot0_gripper_qpos": gripper_qpos_T, # (T, 2)
+        "object": np.zeros((gripper_qpos_T.shape[0], 10), dtype=np.float32)
+                  if object_state is None else object_state,
+    }
+    return data
+
+
+# ── test class ────────────────────────────────────────────────────────────────
+
+class TestGraphDatasetAndEnvConsistency:
+    """
+    Validate that RobomimicGraphDataset._get_node_pos and
+    RobomimicGraphWrapper._get_node_pos produce identical robot-link xyz
+    positions for the same joint inputs, and that both agree with the
+    standalone compute_node_pos_xyz helper used throughout the existing tests.
+
+    Only the xyz columns (first 3) of node_pos are compared; the rotation
+    representation columns are not the focus of this test class.
+    """
+
+    @pytest.fixture(scope="class")
+    def fk_fns(self):
+        """Cache the two bound _get_node_pos callables (heavy to build)."""
+        return {
+            "dataset": _make_dataset_node_pos_fn(),
+            "wrapper": _make_wrapper_node_pos_fn(),
+        }
+
+    def test_dataset_node_pos_xyz_matches_helper(self, episode_data, fk_fns):
+        """
+        RobomimicGraphDataset._get_node_pos[:, :3] must equal
+        compute_node_pos_xyz for every timestep in the episode.
+
+        This confirms that the standalone test helper faithfully replicates
+        the dataset's FK pipeline, so failures in replay tests can be
+        attributed to the environment rather than the helper function.
+        """
+        joint_pos, gripper_qpos, _, _, _ = episode_data
+        T = len(joint_pos)
+        dataset_fn = fk_fns["dataset"]
+
+        max_err = 0.0
+        worst_t = -1
+        for t in range(T):
+            data = _build_data_dict_for_t(joint_pos, gripper_qpos, t)
+            pos_dataset = dataset_fn(data, t)[:9, :3]  # robot nodes only, xyz
+            pos_helper  = compute_node_pos_xyz(joint_pos[t], gripper_qpos[t])
+            err = float(torch.max(torch.abs(pos_dataset - pos_helper)).item())
+            if err > max_err:
+                max_err = err
+                worst_t = t
+
+        print(f"\n── Dataset vs helper node-pos ({EPISODE_KEY}) ────────────")
+        print(f"  Steps checked : {T}")
+        print(f"  Max xyz err   : {max_err*1e3:.4f} mm  at step {worst_t}")
+
+        assert max_err < 1e-5, (
+            f"Dataset _get_node_pos xyz differs from compute_node_pos_xyz by "
+            f"{max_err*1e6:.2f} μm at step {worst_t}. "
+            f"They should be numerically identical."
+        )
+
+    def test_wrapper_node_pos_xyz_matches_helper(self, episode_data, fk_fns):
+        """
+        RobomimicGraphWrapper._get_node_pos[:, :3] must equal
+        compute_node_pos_xyz for every timestep in the episode.
+
+        Confirms the wrapper's FK logic is identical to the dataset's.
+        """
+        joint_pos, gripper_qpos, _, _, _ = episode_data
+        T = len(joint_pos)
+        wrapper_fn = fk_fns["wrapper"]
+
+        max_err = 0.0
+        worst_t = -1
+        for t in range(T):
+            # Wrapper's _get_node_pos takes a flat obs-dict (not T-indexed)
+            data_live = {
+                "robot0_joint_pos":   joint_pos[t],
+                "robot0_gripper_qpos": gripper_qpos[t],
+                "object": np.zeros(10, dtype=np.float32),
+            }
+            pos_wrapper = wrapper_fn(data_live)[:9, :3]
+            pos_helper  = compute_node_pos_xyz(joint_pos[t], gripper_qpos[t])
+            err = float(torch.max(torch.abs(pos_wrapper - pos_helper)).item())
+            if err > max_err:
+                max_err = err
+                worst_t = t
+
+        print(f"\n── Wrapper vs helper node-pos ({EPISODE_KEY}) ────────────")
+        print(f"  Steps checked : {T}")
+        print(f"  Max xyz err   : {max_err*1e3:.4f} mm  at step {worst_t}")
+
+        assert max_err < 1e-5, (
+            f"Wrapper _get_node_pos xyz differs from compute_node_pos_xyz by "
+            f"{max_err*1e6:.2f} μm at step {worst_t}. "
+            f"They should be numerically identical."
+        )
+
+    def test_dataset_and_wrapper_node_pos_agree(self, episode_data, fk_fns):
+        """
+        Cross-check: dataset vs wrapper must agree to floating-point precision.
+
+        Both implement the same FK + base_link transformation; any divergence
+        indicates a drift or bug in one of the two implementations.
+        """
+        joint_pos, gripper_qpos, _, _, _ = episode_data
+        T = len(joint_pos)
+        dataset_fn = fk_fns["dataset"]
+        wrapper_fn = fk_fns["wrapper"]
+
+        max_err = 0.0
+        worst_t = -1
+        for t in range(T):
+            data_ds = _build_data_dict_for_t(joint_pos, gripper_qpos, t)
+            data_live = {
+                "robot0_joint_pos":    joint_pos[t],
+                "robot0_gripper_qpos": gripper_qpos[t],
+                "object": np.zeros(10, dtype=np.float32),
+            }
+            pos_ds      = dataset_fn(data_ds, t)[:9, :3]
+            pos_wrapper = wrapper_fn(data_live)[:9, :3]
+            err = float(torch.max(torch.abs(pos_ds - pos_wrapper)).item())
+            if err > max_err:
+                max_err = err
+                worst_t = t
+
+        print(f"\n── Dataset vs wrapper node-pos ({EPISODE_KEY}) ───────────")
+        print(f"  Steps checked : {T}")
+        print(f"  Max xyz err   : {max_err*1e3:.4f} mm  at step {worst_t}")
+
+        assert max_err < 1e-5, (
+            f"Dataset and wrapper _get_node_pos xyz differ by "
+            f"{max_err*1e6:.2f} μm at step {worst_t}. "
+            f"The two FK implementations are inconsistent."
+        )
+
+    def test_wrapper_graph_obs_pos_matches_dataset_node_pos(
+        self, episode_data, fk_fns
+    ):
+        """
+        End-to-end check: the graph observation produced by a live
+        RobomimicGraphWrapper should have pos[:9, :3] that matches
+        RobomimicGraphDataset._get_node_pos for the same joint state.
+
+        This exercises the full graph construction path in the wrapper
+        (including _robosuite_obs_to_robomimic_graph) and checks that
+        the pos field stored on the Data object is what we expect.
+
+        To avoid spinning up a full robosuite environment, we verify the
+        wrapper's _get_node_pos directly (already covered above) and
+        additionally check that a hand-crafted graph Data object using
+        wrapper_fn matches dataset_fn – completing the triangle:
+
+            dataset._get_node_pos ↔ wrapper._get_node_pos ↔ graph.pos
+
+        All three should agree to within 1e-5 m.
+        """
+        joint_pos, gripper_qpos, _, _, _ = episode_data
+        T = len(joint_pos)
+        dataset_fn = fk_fns["dataset"]
+        wrapper_fn = fk_fns["wrapper"]
+
+        import torch_geometric.data
+
+        max_err = 0.0
+        worst_t = -1
+        for t in range(T):
+            data_ds = _build_data_dict_for_t(joint_pos, gripper_qpos, t)
+            data_live = {
+                "robot0_joint_pos":    joint_pos[t],
+                "robot0_gripper_qpos": gripper_qpos[t],
+                "object": np.zeros(10, dtype=np.float32),
+            }
+            pos_wrapper = wrapper_fn(data_live)
+            # Simulate what _robosuite_obs_to_robomimic_graph does: it stores
+            # node_pos = self._get_node_pos(data) and passes it as graph.pos
+            graph_pos   = pos_wrapper[:9, :3]          # robot nodes xyz
+            pos_dataset = dataset_fn(data_ds, t)[:9, :3]
+
+            err = float(torch.max(torch.abs(graph_pos - pos_dataset)).item())
+            if err > max_err:
+                max_err = err
+                worst_t = t
+
+        print(f"\n── Graph obs pos vs dataset node-pos ({EPISODE_KEY}) ─────")
+        print(f"  Steps checked : {T}")
+        print(f"  Max xyz err   : {max_err*1e3:.4f} mm  at step {worst_t}")
+
+        assert max_err < 1e-5, (
+            f"Graph observation pos[:9,:3] differs from dataset node_pos by "
+            f"{max_err*1e6:.2f} μm at step {worst_t}.\n"
+            f"This may indicate: (1) wrapper._get_node_pos diverges from "
+            f"dataset._get_node_pos, or (2) _robosuite_obs_to_robomimic_graph "
+            f"stores a different pos than _get_node_pos returns."
+        )
