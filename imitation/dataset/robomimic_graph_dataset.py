@@ -77,11 +77,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         names = [f"data_{i}.pt" for i in range(self.len())]
         return names
 
-    @lru_cache(maxsize=None)
-    def _get_object_feats(self, num_objects, node_feature_dim, T): # no associated joint value
-        # create tensor of same dimension return super()._get_node_feats(data, t) as node_feats
-        obj_state_tensor = torch.zeros((num_objects, T, node_feature_dim))
-        return obj_state_tensor
 
     def _get_object_pos(self, data, t):
         obj_state_tensor = torch.zeros((self.num_objects, 9)) # 3 for position, 6 for 6D rotation
@@ -117,7 +112,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         node_pos = torch.cat((node_pos, obj_pos_tensor), dim=0)
         return node_pos
     
-    def _get_node_feats(self, data, t_vals, control_mode=None):
+    def _get_target_actions(self, data, t_vals, actions, control_mode=None):
         '''
         Calculate node features for time steps t_vals
         t_vals: list of time steps
@@ -127,8 +122,9 @@ class RobomimicGraphDataset(InMemoryDataset):
         if control_mode is None:
             control_mode = self.control_mode
         if control_mode == "OSC_POSE":
-            for i in range(self.num_robots):
-                node_feats.append(torch.cat([torch.tensor(data["robot0_eef_pos"][t_vals]), torch.tensor(data["robot0_eef_quat"][t_vals])], dim=0))
+            # actions_raw is (episode_len, 7) — index time axis first, action dims second
+            action_slice = torch.tensor(np.array(actions[t_vals, :]), dtype=torch.float32)  # (T, 7)
+            node_feats.append(action_slice.T.unsqueeze(2))  # (7, T, 1)
         elif control_mode == "JOINT_POSITION":
             for i in range(self.num_robots):
                 node_feats.append(torch.cat([
@@ -140,55 +136,46 @@ class RobomimicGraphDataset(InMemoryDataset):
                                 torch.tensor(data[f"robot{i}_joint_vel"][t_vals]),
                                 torch.tensor(data[f"robot{i}_gripper_qvel"][t_vals])], dim=1).T.unsqueeze(2))
         node_feats = torch.cat(node_feats, dim=0) # [num_robots*num_joints, T, 1]
-        obj_state_tensor = self._get_object_feats(self.num_objects, self.node_feature_dim, T)
-
-        # add dimension for NODE_TYPE
-        node_feats = torch.cat((node_feats, self.ROBOT_NODE_TYPE*torch.ones((node_feats.shape[0], node_feats.shape[1],1))), dim=2)
-        obj_state_tensor[:, :, -1] = self.OBJECT_NODE_TYPE
-    
-        node_feats = torch.cat((node_feats, obj_state_tensor), dim=0)        
         return node_feats
     
-    def get_y_feats(self, data, t_vals):
+    def _get_x_feats(self, data, t_vals):
         '''
         Calculate observation node features for time steps t_vals
         '''
         T = len(t_vals)
-        y = []
+        x = []
         for i in range(self.num_robots):
-            y.append(torch.cat([
+            x.append(torch.cat([
                             torch.tensor(data[f"robot{i}_joint_pos"][t_vals]),
                             torch.tensor(data[f"robot{i}_gripper_qpos"][t_vals])], dim=1).T.unsqueeze(2))
-        y = torch.cat(y, dim=0) # [num_robots*num_joints, T, 1]
+        x = torch.cat(x, dim=0) # [num_robots*num_joints, T, 1]
 
         obj_state_tensor = []
         for t in t_vals:
             obj_state_tensor.append(self._get_object_pos(data, t))
 
         obj_state_tensor = torch.stack(obj_state_tensor, dim=1)
-        # remove positions
-        obj_state_tensor = obj_state_tensor[:,:,3:]
 
         # add dimensions to match with obj_state_tensor for concatenation
-        y = torch.cat((y, torch.zeros((y.shape[0], obj_state_tensor.shape[1], obj_state_tensor.shape[2] - 1))), dim=2)
+        x = torch.cat((x, torch.zeros((x.shape[0], obj_state_tensor.shape[1], obj_state_tensor.shape[2] - 1))), dim=2)
         
-        y = torch.cat((y, obj_state_tensor), dim=0)
+        x = torch.cat((x, obj_state_tensor), dim=0)
 
-        # Add node ID to node features
-        node_id = torch.arange(y.shape[0]).unsqueeze(1).unsqueeze(2).repeat(1, T, 1)
-        y = torch.cat((y, node_id), dim=2)
+        # add column for node ID (used as embedding index by the model)
+        num_nodes = x.shape[0]
+        node_ids = torch.arange(num_nodes, dtype=torch.float32).unsqueeze(1).unsqueeze(1)  # (N, 1, 1)
+        node_ids = node_ids.expand(-1, x.shape[1], -1)  # (N, T, 1)
+        x = torch.cat((x, node_ids), dim=2)
 
-        return y
+        return x
 
-    def _get_node_feats_horizon(self, data, idx, horizon):
+    def _get_target_actions_horizon(self, data, idx, horizon, actions):
         '''
-        Calculate node features for self.obs_horizon time steps
+        Calculate node features for self.pred_horizon time steps.
+        For OSC_POSE, ``actions`` is the episode-level actions array (Tx7).
         '''
-        node_feats = []
-        # calculate node features for timesteps idx to idx + horizon
         t_vals = list(range(idx, idx + horizon))
-        node_feats = self._get_node_feats(data, t_vals)
-        return node_feats
+        return self._get_target_actions(data, t_vals, actions)
     
     @lru_cache(maxsize=None)
     def _get_edge_attrs(self, edge_index):
@@ -228,17 +215,17 @@ class RobomimicGraphDataset(InMemoryDataset):
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         return edge_index
     
-    def _get_y_horizon(self, data, idx, horizon):
+    def _get_x_horizon(self, data, idx, horizon):
         '''
         Get y (observation) for time step t. Should contain only task-space joint positions.
         '''
         y = []
         if idx - horizon < 0:
-            y.append(self.get_y_feats(data, [0]).repeat(1,horizon-idx,1)) # use fixed first observation for beginning of episode
-            y.append(self.get_y_feats(data, [t for t in range(0, idx)]))
+            y.append(self._get_x_feats(data, [0]).repeat(1,horizon-idx,1)) # use fixed first observation for beginning of episode
+            y.append(self._get_x_feats(data, [t for t in range(0, idx)]))
             y = torch.cat(y, dim=1)
         else: # get all observation steps with single call
-            y = self.get_y_feats(data, list(range(idx - horizon, idx)))
+            y = self._get_x_feats(data, list(range(idx - horizon, idx)))
         return y
 
     
@@ -247,21 +234,25 @@ class RobomimicGraphDataset(InMemoryDataset):
 
         for key in tqdm(self.dataset_keys):
             episode_length = self.dataset_root[f"data/{key}/obs/object"].shape[0]
-            
+            data_raw    = self.dataset_root["data"][key]["obs"]
+            # actions are stored alongside obs, not inside it
+            actions_raw = self.dataset_root["data"][key]["actions"]  # (episode_len, 7) for OSC_POSE
+
             for idx in range(1, episode_length - self.pred_horizon):
-                
-                data_raw = self.dataset_root["data"][key]["obs"]
-                node_feats  = self._get_node_feats_horizon(data_raw, idx, self.pred_horizon)
-                edge_index  = self._get_edge_index(node_feats.shape[0])
+                actions  = self._get_target_actions_horizon(data_raw, idx, self.pred_horizon,
+                                                           actions=actions_raw)
+                observations= self._get_x_horizon(data_raw, idx, self.obs_horizon)
+                # edge_index must cover ALL observation nodes (robot + objects)
+                # so that PyG batching (which uses x's node count) is consistent
+                edge_index  = self._get_edge_index(observations.shape[0])
                 edge_attrs  = self._get_edge_attrs(edge_index)
-                y           = self._get_y_horizon(data_raw, idx, self.obs_horizon)
-                pos         = self._get_node_pos(data_raw, idx - 1)
+                pos         = self._get_node_pos(data_raw, idx)
 
                 data  = Data(
-                    x=node_feats,
+                    x=observations,
                     edge_index=edge_index,
                     edge_attr=edge_attrs,
-                    y=y,
+                    y=actions,
                     time=torch.tensor([idx], dtype=torch.long)/ episode_length,
                     pos=pos
                 )
@@ -306,8 +297,8 @@ class RobomimicGraphDataset(InMemoryDataset):
         data_action = []
         for idx in range(self.len()):
             data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
-            data_obs.append(data["y"])
-            data_action.append(data["x"])
+            data_obs.append(data["x"])      # x = observations
+            data_action.append(data["y"])    # y = actions
         data_obs = torch.cat(data_obs, dim=1)
         data_action = torch.cat(data_action, dim=1)
         
@@ -329,5 +320,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         return obs_deque
     
     def get_action(self, data):
-        return data.x[:self.eef_idx[-1] + 1,:,0].T.numpy()
+        # y = actions; for OSC_POSE: (7+obj, T, 1) → extract 7 action dims
+        return data.y[:self.eef_idx[-1] + 1,:,0].T.numpy()
     
