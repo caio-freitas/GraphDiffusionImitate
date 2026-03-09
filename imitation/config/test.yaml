@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - task: lift_graph
-  - policy: graph_ddpm_policy
+  - policy: gddpm_policy
 
 output_video: False
 render: True
@@ -13,8 +13,8 @@ output_dir: ./outputs
 
 pred_horizon: 16
 obs_horizon: 4
-action_horizon: 4
-action_offset: 1 # action offset for the policy, 1 if first action is to be ignored
+action_horizon: 16
+action_offset: 0 # action offset for the policy, 1 if first action is to be ignored
 
 
 agent:
