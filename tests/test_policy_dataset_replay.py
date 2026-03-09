@@ -13,10 +13,10 @@ offline validation set but poorly in the real environment.
 
 Tests
 -----
-1. test_obs_deque_y_matches_dataset_y
-   The y tensor passed to the policy at inference is assembled from an
-   obs_deque of RobomimicGraphWrapper observations.  The y tensor used
-   during training comes from RobomimicGraphDataset.get_y_feats().
+1. test_obs_x_matches_dataset_x
+   The x tensor passed to the policy at inference is assembled from an
+   obs_deque of RobomimicGraphWrapper observations.  The x tensor used
+   during training comes from RobomimicGraphDataset._get_x_feats().
    They must agree for the same joint state.
 
 2. test_dataset_playback_obs_format
@@ -31,9 +31,9 @@ Tests
    This confirms that the action representation used in the dataset is
    compatible with the wrapper's step() interface.
 
-4. test_dataset_y_and_wrapper_y_feature_order_match
-   The obs feature vector (y) must have the same column ordering between
-   dataset and wrapper, because the normalizer is fit on the dataset's y.
+4. test_dataset_x_and_wrapper_x_feature_order_match
+   The obs feature vector (x) must have the same column ordering between
+   dataset and wrapper, because the normalizer is fit on the dataset's x.
    Columns: [joint_pos(7), gripper_qpos(2), node_id(1)] for robot nodes.
 """
 
@@ -119,8 +119,8 @@ def dataset():
 
 
 @pytest.fixture(scope="module")
-def wrapper_get_y_fn():
-    """Return a bound _get_y_feats callable from RobomimicGraphWrapper."""
+def wrapper_get_x_fn():
+    """Return a bound _get_x_feats callable from RobomimicGraphWrapper."""
     from diffusion_policy.model.common.rotation_transformer import RotationTransformer
 
     mod = _load_module("rg_wrapper", "imitation/env/robomimic_graph_wrapper.py")
@@ -133,16 +133,18 @@ def wrapper_get_y_fn():
         object_state_keys={"cube": ["cube_pos", "cube_quat"]},
         object_state_sizes={"cube_pos": 3, "cube_quat": 4, "gripper_to_cube_pos": 3},
         num_objects=1,
+        ROBOT_NODE_TYPE=1,
+        OBJECT_NODE_TYPE=-1,
     )
     get_obj_pos  = mod.RobomimicGraphWrapper._get_object_pos.__get__(mock)
     mock._get_object_pos = get_obj_pos
-    get_y_feats  = mod.RobomimicGraphWrapper._get_y_feats.__get__(mock)
-    return get_y_feats
+    get_x_feats  = mod.RobomimicGraphWrapper._get_x_feats.__get__(mock)
+    return get_x_feats
 
 
 @pytest.fixture(scope="module")
-def dataset_get_y_fn():
-    """Return a bound get_y_feats callable from RobomimicGraphDataset."""
+def dataset_get_x_fn():
+    """Return a bound _get_x_feats callable from RobomimicGraphDataset."""
     from diffusion_policy.model.common.rotation_transformer import RotationTransformer
 
     mod = _load_module("rg_dataset2", "imitation/dataset/robomimic_graph_dataset.py")
@@ -156,11 +158,13 @@ def dataset_get_y_fn():
         object_state_sizes={"cube_pos": 3, "cube_quat": 4, "gripper_to_cube_pos": 3},
         num_objects=1,
         obs_feature_dim=7,
+        ROBOT_NODE_TYPE=1,
+        OBJECT_NODE_TYPE=-1,
     )
     get_obj_pos = mod.RobomimicGraphDataset._get_object_pos.__get__(mock)
     mock._get_object_pos = get_obj_pos
-    get_y_feats = mod.RobomimicGraphDataset.get_y_feats.__get__(mock)
-    return get_y_feats
+    get_x_feats = mod.RobomimicGraphDataset._get_x_feats.__get__(mock)
+    return get_x_feats
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -187,28 +191,28 @@ def _build_dataset_data_dict(episode_data):
     }
 
 
-# ── Test 1: obs y tensors agree ───────────────────────────────────────────────
+# ── Test 1: obs x tensors agree ───────────────────────────────────────────────
 
-class TestObsYConsistency:
+class TestObsXConsistency:
     """
-    The y tensor (observations) fed to the GDDPM must be identical whether
+    The x tensor (observations) fed to the GDDPM must be identical whether
     it comes from the dataset (training path) or from the wrapper (eval path).
 
     A mismatch here means the network sees a completely different conditioning
     signal at eval time than it was trained on — a guaranteed performance cliff.
     """
 
-    def test_wrapper_y_matches_dataset_y_at_each_step(
-        self, episode_data, wrapper_get_y_fn, dataset_get_y_fn
+    def test_wrapper_x_matches_dataset_x_at_each_step(
+        self, episode_data, wrapper_get_x_fn, dataset_get_x_fn
     ):
         """
         For every timestep t, compare:
-          - wrapper._get_y_feats(obs_dict_at_t)         → shape (num_nodes, feat)
-          - dataset.get_y_feats(data_dict, t_vals=[t])  → shape (num_nodes, 1, feat)
+          - wrapper._get_x_feats(obs_dict_at_t)          → shape (num_nodes, feat)
+          - dataset._get_x_feats(data_dict, t_vals=[t])  → shape (num_nodes, 1, feat)
 
         Both should agree on the robot-node rows (indices 0..8).
-        The last column (node ID) is part of y in both paths; it is the
-        running index 0..num_nodes-1 and should be identical.
+        The last column (node ID) is part of x in both paths; it is the
+        node type flag and should be identical.
         """
         data_dict = _build_dataset_data_dict(episode_data)
         T = len(episode_data["joint_pos"])
@@ -216,52 +220,52 @@ class TestObsYConsistency:
         max_err = 0.0
         worst_t = -1
         for t in range(T):
-            obs_dict   = _build_wrapper_obs_dict(episode_data, t)
-            y_wrapper  = wrapper_get_y_fn(obs_dict)              # (num_nodes, feat)
-            y_dataset  = dataset_get_y_fn(data_dict, [t])        # (num_nodes, 1, feat)
-            y_ds_t     = y_dataset[:, 0, :]                      # (num_nodes, feat)
+            obs_dict    = _build_wrapper_obs_dict(episode_data, t)
+            x_wrapper   = wrapper_get_x_fn(obs_dict)              # (num_nodes, feat)
+            x_dataset   = dataset_get_x_fn(data_dict, [t])        # (num_nodes, 1, feat)
+            x_ds_t      = x_dataset[:, 0, :]                      # (num_nodes, feat)
 
             # Compare robot nodes only (first 9)
-            robot_rows_w = y_wrapper[:9, :]
-            robot_rows_d = y_ds_t[:9, :]
+            robot_rows_w = x_wrapper[:9, :]
+            robot_rows_d = x_ds_t[:9, :]
 
             err = float(torch.max(torch.abs(robot_rows_w - robot_rows_d)).item())
             if err > max_err:
                 max_err = err
                 worst_t = t
 
-        print(f"\n── Wrapper y vs dataset y (robot nodes) ─────────────────")
+        print(f"\n── Wrapper x vs dataset x (robot nodes) ─────────────────")
         print(f"  Steps checked : {T}")
         print(f"  Max element error : {max_err:.6f}  at step {worst_t}")
 
         assert max_err <= Y_MATCH_TOL, (
-            f"Wrapper._get_y_feats and dataset.get_y_feats disagree by "
+            f"Wrapper._get_x_feats and dataset._get_x_feats disagree by "
             f"{max_err:.2e} at step {worst_t} (tolerance {Y_MATCH_TOL:.0e}).\n"
             f"The network sees different obs conditioning at train vs eval time.\n"
             f"Check that both use the same feature ordering: "
             f"[joint_pos(7), gripper_qpos(2), node_id(1)] for robot nodes."
         )
 
-    def test_obs_y_feature_shape_is_consistent(
-        self, episode_data, wrapper_get_y_fn, dataset_get_y_fn
+    def test_obs_x_feature_shape_is_consistent(
+        self, episode_data, wrapper_get_x_fn, dataset_get_x_fn
     ):
         """
-        y from the wrapper (single step) and from the dataset (single step)
+        x from the wrapper (single step) and from the dataset (single step)
         must have the same number of columns (feature dimensionality).
         """
         data_dict = _build_dataset_data_dict(episode_data)
         obs_dict  = _build_wrapper_obs_dict(episode_data, 0)
 
-        y_wrapper = wrapper_get_y_fn(obs_dict)
-        y_dataset = dataset_get_y_fn(data_dict, [0])
+        x_wrapper = wrapper_get_x_fn(obs_dict)
+        x_dataset = dataset_get_x_fn(data_dict, [0])
 
-        print(f"\n── y feature shape ──────────────────────────────────────")
-        print(f"  wrapper  y.shape : {tuple(y_wrapper.shape)}")
-        print(f"  dataset  y.shape : {tuple(y_dataset[:, 0, :].shape)}")
+        print(f"\n── x feature shape ──────────────────────────────────────")
+        print(f"  wrapper  x.shape : {tuple(x_wrapper.shape)}")
+        print(f"  dataset  x.shape : {tuple(x_dataset[:, 0, :].shape)}")
 
-        assert y_wrapper.shape == y_dataset[:, 0, :].shape, (
-            f"y shape mismatch: wrapper {tuple(y_wrapper.shape)} vs "
-            f"dataset {tuple(y_dataset[:, 0, :].shape)}.\n"
+        assert x_wrapper.shape == x_dataset[:, 0, :].shape, (
+            f"x shape mismatch: wrapper {tuple(x_wrapper.shape)} vs "
+            f"dataset {tuple(x_dataset[:, 0, :].shape)}.\n"
             f"The policy obs conditioning tensor has the wrong number of features."
         )
 
@@ -290,8 +294,8 @@ class TestObsDequeAssembly:
         for i in range(self.OBS_HORIZON):
             idx  = max(0, start_idx - (self.OBS_HORIZON - 1 - i))
             data = dataset.get(idx)
-            # data.y shape: (nodes, obs_horizon, feat) — take last step
-            obs_cond.append(data.y[:, -1:, :])   # (nodes, 1, feat)
+            # data.x shape: (nodes, obs_horizon, feat) — take last step
+            obs_cond.append(data.x[:, -1:, :])   # (nodes, 1, feat)
         obs = torch.cat(obs_cond, dim=1)          # (nodes, obs_horizon, feat)
         return obs
 
@@ -429,16 +433,16 @@ class TestActionStepMatchesDatasetTransition:
 
     def test_wrapper_step_with_dataset_action_matches_next_obs(self, episode_data):
         """
-        Same as above, but stepping through RobomimicGraphWrapper.step() to
-        test the wrapper's action interpretation end-to-end.
+        Step through RobomimicGraphWrapper.step() with OSC_POSE control mode
+        and verify the resulting joint positions match dataset obs[t+1].
 
-        The wrapper expects a 9-element action vector (one per graph node).
-        We pad the 7-DOF dataset action with zeros at positions 7 and 8
-        (gripper fingers), matching the expected format.
+        The dataset (low_dim_v141.hdf5) was recorded with OSC_POSE, so we use
+        an OSC_POSE wrapper and pass the raw 7-D dataset actions directly.
+        This is the correct control-mode pairing for this dataset.
 
         NOTE: this test deliberately targets the first N_STEPS of demo_0
         to keep runtime short.  A failure indicates the wrapper's step()
-        action slicing is wrong.
+        action forwarding is wrong.
         """
         from imitation.env.robomimic_graph_wrapper import RobomimicGraphWrapper
 
@@ -448,7 +452,7 @@ class TestActionStepMatchesDatasetTransition:
             task="Lift",
             has_renderer=False,
             robots=["Panda"],
-            control_mode="JOINT_VELOCITY",
+            control_mode="OSC_POSE",
             base_link_shift=BASE_LINK_SHIFT,
             base_link_rotation=BASE_LINK_ROTATION,
         )
@@ -458,7 +462,7 @@ class TestActionStepMatchesDatasetTransition:
         wrapper.env.env.sim.set_state_from_flattened(episode_data["states"][0])
         wrapper.env.env.sim.forward()
 
-        actions_raw = episode_data["actions"]   # (T, 7) raw velocities
+        actions_raw = episode_data["actions"]   # (T, 7) OSC_POSE actions
         joint_pos   = episode_data["joint_pos"]  # (T, 7) ground truth
 
         max_err = 0.0
@@ -466,22 +470,10 @@ class TestActionStepMatchesDatasetTransition:
         per_step = []
 
         for t in range(min(self.N_STEPS, len(actions_raw) - 1)):
-            # Pad to 9-element graph action: [j0..j6, gripper_f0, gripper_f1]
-            # Dataset stores 7-DOF velocities; gripper comes from gripper_qvel
-            gripper_vel = episode_data["gripper_qvel"][t]
+            # For OSC_POSE, pass the 7-D action directly (no padding needed)
+            graph_obs, _, done, _ = wrapper.step(actions_raw[t])
 
-            # Build and pass a 9-element action to wrapper.step()
-            graph_action = np.concatenate([
-                actions_raw[t],              # 7 joint velocities / OSC DOF
-                gripper_vel[:2],             # 2 gripper DOF
-            ])                               # total: 9 elements
-
-            graph_obs, _, done, _ = wrapper.step(graph_action)
-
-            # Extract joint_pos from the graph observation's y field
-            # y shape: (num_nodes, feat) where feat = [jp0..jp6, gp0, gp1, node_id]
-            # Robot nodes 0..8; joint pos is stored in y[:9, 0..6]
-            live_jpos = graph_obs.y[:7, 0].detach().numpy()   # nodes 0-6 → 7 joints
+            live_jpos = graph_obs.x[:7, 0].detach().numpy()   # nodes 0-6 → 7 joints
             ds_jpos   = joint_pos[t + 1]
 
             err = float(np.max(np.abs(live_jpos - ds_jpos)))
@@ -495,7 +487,7 @@ class TestActionStepMatchesDatasetTransition:
 
         wrapper.close()
 
-        print(f"\n── Wrapper step joint_pos match ─────────────────────────")
+        print(f"\n── Wrapper step joint_pos match (OSC_POSE) ──────────────")
         print(f"  Steps replayed   : {len(per_step)}")
         print(f"  Max joint error  : {max_err:.5f} rad  at step {worst_t}")
         print(f"  Mean joint error : {np.mean(per_step):.5f} rad")
@@ -503,93 +495,82 @@ class TestActionStepMatchesDatasetTransition:
         assert max_err <= JOINT_STEP_TOL, (
             f"wrapper.step() joint_pos error {max_err:.5f} rad at step {worst_t} "
             f"exceeds {JOINT_STEP_TOL} rad.\n"
-            f"This verifies that even with perfect dataset actions, the wrapper "
-            f"does not correctly advance the simulator state.\n"
+            f"This verifies that OSC_POSE dataset actions correctly advance the "
+            f"simulator state through the wrapper.\n"
             f"Likely causes: (1) control_freq mismatch between dataset and wrapper, "
-            f"(2) wrong action slicing (action[j+8] instead of action[j+7]), "
-            f"(3) wrong control mode (OSC_POSE vs JOINT_VELOCITY)."
+            f"(2) wrong control mode, (3) sim state restoration incomplete."
         )
 
 
-# ── Test 4: y feature ordering ────────────────────────────────────────────────
+# ── Test 4: x feature ordering ────────────────────────────────────────────────
 
-class TestObsYFeatureOrdering:
+class TestObsXFeatureOrdering:
     """
-    Validate that wrapper._get_y_feats and dataset.get_y_feats produce
+    Validate that wrapper._get_x_feats and dataset._get_x_feats produce
     identical feature *ordering* for robot nodes:
-        col 0..6  : joint_pos  (7 values)
-        col 7..8  : gripper_qpos (2 values)
-        col 9     : node_id
+        col 0..6  : joint_pos  (7 values) — stored sparsely, one per node
+        col 7..8  : gripper_qpos (2 values) — stored sparsely
+        col -1    : sequential node ID (0-indexed, used as embedding index)
 
     A column-ordering mismatch would mean the normalizer scales the wrong
     physical quantities, making the policy conditioning signal meaningless.
     """
 
-    def test_robot_y_columns_are_joint_pos_then_gripper_then_id(
-        self, episode_data, wrapper_get_y_fn, dataset_get_y_fn
+    def test_robot_x_columns_agree_between_wrapper_and_dataset(
+        self, episode_data, wrapper_get_x_fn, dataset_get_x_fn
     ):
         """
-        At a known timestep, check that columns 0-6 of y[:9] match joint_pos,
-        columns 7-8 match gripper_qpos, and column 9 (if present) matches
-        the node index 0..8.
+        At a known timestep, check that the wrapper and dataset x feature
+        tensors agree on robot nodes and sequential node IDs (last column).
 
-        This pins down the actual in-memory layout, making any accidental
-        reordering immediately visible.
+        Node IDs are sequential integers (0, 1, ..., N-1) used as embedding
+        indices by EGraphConditionEncoder — not node-type flags.
         """
         t = 5     # arbitrary mid-episode step
         obs_dict  = _build_wrapper_obs_dict(episode_data, t)
         data_dict = _build_dataset_data_dict(episode_data)
 
-        y_wrapper = wrapper_get_y_fn(obs_dict)           # (num_nodes, feat)
-        y_dataset = dataset_get_y_fn(data_dict, [t])[:, 0, :]  # (num_nodes, feat)
+        x_wrapper = wrapper_get_x_fn(obs_dict)           # (num_nodes, feat)
+        x_dataset = dataset_get_x_fn(data_dict, [t])[:, 0, :]  # (num_nodes, feat)
 
-        jp  = torch.tensor(episode_data["joint_pos"][t])    # (7,)
-        gp  = torch.tensor(episode_data["gripper_qpos"][t]) # (2,)
+        num_nodes = x_wrapper.shape[0]
 
-        # Robot nodes 0..6 correspond to 7 joints; nodes 7 & 8 are gripper nodes.
-        # get_y_feats packs each robot node with its own joint feature:
-        #   node i → [joint_i_val, 0, 0, ..., node_id]  (sparse, one joint per node)
+        print(f"\n── x feature ordering check (t={t}) ──────────────────────")
+        print(f"  Wrapper x[:10,:] =\n{x_wrapper[:10,:]}")
+        print(f"  Dataset x[:10,:] =\n{x_dataset[:10,:]}")
 
-        print(f"\n── y feature ordering check (t={t}) ──────────────────────")
-        print(f"  Wrapper y[:10,:] =\n{y_wrapper[:10,:]}")
-        print(f"  Dataset y[:10,:] =\n{y_dataset[:10,:]}")
-        print(f"  Expected jp: {jp.numpy()}")
-        print(f"  Expected gp: {gp.numpy()}")
+        # Last column must be sequential node IDs (0, 1, ..., N-1) for both
+        expected_ids = torch.arange(num_nodes, dtype=torch.float32)
+        wrapper_ids = x_wrapper[:, -1]
+        dataset_ids = x_dataset[:, -1]
 
-        # Verify node IDs (last column) for both wrapper and dataset
-        num_robot_nodes = 9
-        expected_node_ids = torch.arange(num_robot_nodes, dtype=y_wrapper.dtype)
-
-        wrapper_node_ids = y_wrapper[:num_robot_nodes, -1]
-        dataset_node_ids = y_dataset[:num_robot_nodes, -1]
-
-        assert torch.allclose(wrapper_node_ids, expected_node_ids, atol=1e-3), (
-            f"Wrapper y node IDs {wrapper_node_ids.tolist()} != expected {expected_node_ids.tolist()}.\n"
-            f"The node-ID column ordering is wrong in the wrapper."
+        assert torch.all(wrapper_ids == expected_ids), (
+            f"Wrapper x node IDs {wrapper_ids.tolist()} != expected {expected_ids.tolist()}.\n"
+            f"The node-ID column (last) must be sequential 0..N-1 for the embedding lookup."
         )
-        assert torch.allclose(dataset_node_ids, expected_node_ids, atol=1e-3), (
-            f"Dataset y node IDs {dataset_node_ids.tolist()} != expected {expected_node_ids.tolist()}.\n"
-            f"The node-ID column ordering is wrong in the dataset."
+        assert torch.all(dataset_ids == expected_ids), (
+            f"Dataset x node IDs {dataset_ids.tolist()} != expected {expected_ids.tolist()}.\n"
+            f"The node-ID column (last) must be sequential 0..N-1 for the embedding lookup."
         )
 
 
-# ── Test 5: OSC_POSE node features shape and content ─────────────────────────
+# ── Test 5: OSC_POSE observation features shape and content ───────────────────
 
 class TestOscPoseNodeFeats:
     """
-    Verify that RobomimicGraphWrapper._get_node_feats for control_mode='OSC_POSE'
-    produces the same 9-node structure as JOINT modes, preserving graph topology.
+    Verify that RobomimicGraphWrapper._get_x_feats produces the same 10-node
+    graph observation structure for OSC_POSE as for JOINT modes.
 
-    Expected behavior (node_feature_dim=1):
-    - Shape: (9, 1) -- 9 robot nodes x 1 scalar feature each
-    - Nodes 0-2: eef_pos  components (3D position)
-    - Nodes 3-6: eef_quat components (4D quaternion)
-    - Node 7:    unused (0.0)
-    - Node 8:    mean gripper_qpos
+    For OSC_POSE, the graph observations (x) are identical to JOINT modes:
+    joint_pos + gripper_qpos per robot node, object pos/rot for object nodes.
+    Only the actions (y) differ (flat 7-D EEF vector vs per-node joint values).
+
+    Expected shape: (10, K) — 9 robot + 1 object nodes, K features including
+    the sequential node-ID column at the end.
     """
 
-    def _make_wrapper_node_feats_fn(self):
-        """Build bound _get_node_feats callable with OSC_POSE control mode."""
+    def _make_wrapper_x_feats_fn(self):
+        """Build bound _get_x_feats callable with OSC_POSE control mode."""
         import types
         from diffusion_policy.model.common.rotation_transformer import RotationTransformer
 
@@ -603,80 +584,77 @@ class TestOscPoseNodeFeats:
             object_state_keys={"cube": ["cube_pos", "cube_quat"]},
             object_state_sizes={"cube_pos": 3, "cube_quat": 4, "gripper_to_cube_pos": 3},
             num_objects=1,
+            ROBOT_NODE_TYPE=1,
+            OBJECT_NODE_TYPE=-1,
         )
-        return mod.RobomimicGraphWrapper._get_node_feats.__get__(mock)
+        get_obj_pos = mod.RobomimicGraphWrapper._get_object_pos.__get__(mock)
+        mock._get_object_pos = get_obj_pos
+        return mod.RobomimicGraphWrapper._get_x_feats.__get__(mock)
 
-    def _build_obs_dict_osc(self, episode_data, t):
-        """Build obs dict with eef_pos and eef_quat_raw for OSC_POSE _get_node_feats."""
-        with h5py.File(DATASET_PATH, "r") as f:
-            ep = f["data/demo_0"]
-            eef_pos  = ep["obs/robot0_eef_pos"][t]
-            eef_quat = ep["obs/robot0_eef_quat"][t]
+    def _build_obs_dict(self, episode_data, t):
+        """Build obs dict for _get_x_feats (uses joint_pos + gripper_qpos)."""
         return {
             "robot0_joint_pos":    episode_data["joint_pos"][t],
             "robot0_joint_vel":    episode_data["joint_vel"][t],
             "robot0_gripper_qpos": episode_data["gripper_qpos"][t],
             "robot0_gripper_qvel": episode_data["gripper_qvel"][t],
-            "robot0_eef_pos":      eef_pos,
-            "robot0_eef_quat_raw": eef_quat,  # raw 4D
+            "object":              episode_data["object_obs"][t],
         }
 
-    def test_osc_pose_node_feats_shape(self, episode_data):
-        """OSC_POSE node features must be (9, 1) -- matching JOINT mode topology."""
-        get_node_feats = self._make_wrapper_node_feats_fn()
-        obs_dict = self._build_obs_dict_osc(episode_data, 10)
-        feats = get_node_feats(obs_dict, control_mode="OSC_POSE")
-        assert feats.shape == (9, 1), (
-            f"OSC_POSE node features have shape {tuple(feats.shape)}, expected (9, 1).\n"
-            f"The graph topology must have 9 robot nodes for GDDPM compatibility."
+    def test_osc_pose_x_feats_shape(self, episode_data):
+        """_get_x_feats for OSC_POSE must return (10, K) — 9 robot + 1 object nodes."""
+        get_x_feats = self._make_wrapper_x_feats_fn()
+        obs_dict = self._build_obs_dict(episode_data, 10)
+        feats = get_x_feats(obs_dict)
+        assert feats.shape[0] == 10, (
+            f"OSC_POSE x feats have {feats.shape[0]} nodes, expected 10 "
+            f"(9 robot + 1 object). Graph topology must be preserved."
         )
 
-    def test_osc_pose_nodes_0to2_match_eef_pos(self, episode_data):
-        """Nodes 0-2 must match the raw eef_pos values."""
-        get_node_feats = self._make_wrapper_node_feats_fn()
+    def test_osc_pose_x_feats_node_ids_sequential(self, episode_data):
+        """Last column of _get_x_feats must be sequential node IDs 0..9."""
+        get_x_feats = self._make_wrapper_x_feats_fn()
+        obs_dict = self._build_obs_dict(episode_data, 10)
+        feats = get_x_feats(obs_dict)
+        num_nodes = feats.shape[0]
+        expected_ids = torch.arange(num_nodes, dtype=torch.float32)
+        assert torch.all(feats[:, -1] == expected_ids), (
+            f"OSC_POSE node IDs {feats[:, -1].tolist()} != expected {expected_ids.tolist()}.\n"
+            f"Node IDs must be sequential 0..N-1 for embedding lookup."
+        )
+
+    def test_osc_pose_robot_nodes_first_feature_is_joint_pos(self, episode_data):
+        """Robot nodes 0..6 must have their joint_pos value in the first feature column."""
+        get_x_feats = self._make_wrapper_x_feats_fn()
         t = 10
-        obs_dict = self._build_obs_dict_osc(episode_data, t)
-        feats = get_node_feats(obs_dict, control_mode="OSC_POSE")
-        expected_pos = torch.tensor(obs_dict["robot0_eef_pos"], dtype=torch.float32)
-        assert torch.allclose(feats[:3, 0], expected_pos, atol=1e-5), (
-            f"OSC_POSE nodes 0-2 (eef_pos) mismatch:\n"
-            f"  got      {feats[:3, 0].tolist()}\n"
-            f"  expected {expected_pos.tolist()}"
+        obs_dict = self._build_obs_dict(episode_data, t)
+        feats = get_x_feats(obs_dict)
+        expected_jp = torch.tensor(episode_data["joint_pos"][t], dtype=torch.float32)
+        assert torch.allclose(feats[:7, 0], expected_jp, atol=1e-5), (
+            f"OSC_POSE robot node joint_pos mismatch:\n"
+            f"  got      {feats[:7, 0].tolist()}\n"
+            f"  expected {expected_jp.tolist()}"
         )
 
-    def test_osc_pose_nodes_3to6_match_eef_quat(self, episode_data):
-        """Nodes 3-6 must match the raw eef_quat (4D) values."""
-        get_node_feats = self._make_wrapper_node_feats_fn()
+    def test_osc_pose_x_feats_match_joint_velocity_x_feats(
+        self, episode_data, wrapper_get_x_fn
+    ):
+        """
+        _get_x_feats output must be the same for OSC_POSE and JOINT_VELOCITY wrappers.
+        Graph observations are control-mode-agnostic (joint_pos + gripper_qpos).
+        """
         t = 10
-        obs_dict = self._build_obs_dict_osc(episode_data, t)
-        feats = get_node_feats(obs_dict, control_mode="OSC_POSE")
-        expected_quat = torch.tensor(obs_dict["robot0_eef_quat_raw"], dtype=torch.float32)
-        assert torch.allclose(feats[3:7, 0], expected_quat, atol=1e-5), (
-            f"OSC_POSE nodes 3-6 (eef_quat) mismatch:\n"
-            f"  got      {feats[3:7, 0].tolist()}\n"
-            f"  expected {expected_quat.tolist()}"
-        )
+        obs_dict = self._build_obs_dict(episode_data, t)
+        x_osc = self._make_wrapper_x_feats_fn()(obs_dict)
+        x_jv  = wrapper_get_x_fn(obs_dict)
 
-    def test_osc_pose_node7_is_zero(self, episode_data):
-        """Node 7 (unused) must be 0.0."""
-        get_node_feats = self._make_wrapper_node_feats_fn()
-        obs_dict = self._build_obs_dict_osc(episode_data, 10)
-        feats = get_node_feats(obs_dict, control_mode="OSC_POSE")
-        assert float(feats[7, 0]) == 0.0, (
-            f"OSC_POSE node 7 (unused) is {float(feats[7, 0])}, expected 0.0."
+        assert x_osc.shape == x_jv.shape, (
+            f"OSC_POSE _get_x_feats shape {tuple(x_osc.shape)} != "
+            f"JOINT_VELOCITY shape {tuple(x_jv.shape)}"
         )
-
-    def test_osc_pose_node8_is_gripper(self, episode_data):
-        """Node 8 must contain the mean gripper_qpos."""
-        get_node_feats = self._make_wrapper_node_feats_fn()
-        for t in range(len(episode_data["gripper_qpos"])):
-            if np.any(np.abs(episode_data["gripper_qpos"][t]) > 0.01):
-                break
-        obs_dict = self._build_obs_dict_osc(episode_data, t)
-        feats = get_node_feats(obs_dict, control_mode="OSC_POSE")
-        expected_val = float(np.mean(episode_data["gripper_qpos"][t]))
-        assert abs(float(feats[8, 0]) - expected_val) < 1e-5, (
-            f"OSC_POSE gripper node {float(feats[8, 0]):.6f} != expected {expected_val:.6f}"
+        assert torch.allclose(x_osc, x_jv, atol=1e-5), (
+            f"_get_x_feats differs between OSC_POSE and JOINT_VELOCITY wrappers.\n"
+            f"Graph observations must be control-mode-agnostic."
         )
 
 
@@ -797,9 +775,9 @@ class TestOscPoseWrapperStep:
         for t in range(min(self.N_STEPS, len(actions) - 1)):
             graph_obs, reward, done, info = wrapper.step(actions[t])
 
-            # y field stores [joint_pos(7), gripper(2), node_id] per robot node
-            # Each robot node i stores its own joint value at y[i, 0]
-            live_jpos = graph_obs.y[:7, 0].detach().numpy()
+            # x field stores [joint_pos(7), gripper(2), node_type] per robot node
+            # Each robot node i stores its own joint value at x[i, 0]
+            live_jpos = graph_obs.x[:7, 0].detach().numpy()
             ds_jpos   = joint_pos[t + 1]
             err = float(np.max(np.abs(live_jpos - ds_jpos)))
             per_step.append(err)

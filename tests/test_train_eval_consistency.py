@@ -345,7 +345,7 @@ class TestNormalizerRange:
         all_y_norm = []
         for i in indices:
             data = ds.get(i)
-            y    = data.y                                      # (nodes, obs_horizon, feat)
+            y    = data.x                                     # (nodes, obs_horizon, feat)
             y_norm = ds.normalize_data(y, stats_key="obs")
             y_norm_no_id = y_norm[:, :, :-1]                  # exclude node-ID column
             all_y_norm.append(y_norm_no_id.reshape(-1).detach().numpy())
@@ -380,7 +380,7 @@ class TestNormalizerRange:
         all_x_norm = []
         for i in indices:
             data = ds.get(i)
-            x    = data.x   # (nodes, pred_horizon, feat)
+            x    = data.y   # (nodes, pred_horizon, feat) — y holds actions
             # Only the first feature dim (joint value/velocity), excluding node-type
             x_val   = x[:, :, :1]
             x_norm  = ds.normalize_data(
