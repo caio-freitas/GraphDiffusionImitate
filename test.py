@@ -25,6 +25,7 @@ def test(cfg):
     runner = hydra.utils.instantiate(cfg.task.env_runner)
     # instanciate policy from cfg file
     policy = hydra.utils.instantiate(cfg.policy)
+    policy.load_nets(policy.ckpt_path)
     # instanciate agent from policy
     agent = hydra.utils.instantiate(cfg.agent, policy=policy, env=runner.env)
 
