@@ -332,58 +332,84 @@ class GDDPMNoisePred(nn.Module):
             x_coord:    (N_total, 3)  unchanged (kept for API compatibility)
         """
         # ---- move to device / cast ----------------------------------------
-        x          = x.float().to(self.device)          # (N, T, F)
+        x          = x.float().to(self.device)          # (N_act, T, F)
         edge_attr  = edge_attr.float().to(self.device)
         edge_index = edge_index.to(self.device)
         x_coord    = x_coord.float().to(self.device)
         timesteps  = timesteps.to(self.device)
+        cond       = cond.float().to(self.device)
+        # obs_batch maps OBS nodes to graphs; x may have fewer nodes per graph
         if batch is None:
-            batch = torch.zeros(x.shape[0], dtype=torch.long, device=self.device)
+            obs_batch = torch.zeros(cond.shape[0], dtype=torch.long, device=self.device)
         else:
-            batch = batch.long().to(self.device)
+            obs_batch = batch.long().to(self.device)
+
+        B       = obs_batch.max().item() + 1
+        obs_npg = cond.shape[0] // B   # obs nodes per graph (e.g. 10)
+        act_npg = x.shape[0] // B      # action nodes per graph (e.g. 9)
+
+        # action_batch: maps action nodes to their graph index
+        action_batch = torch.arange(B, dtype=torch.long, device=self.device).repeat_interleave(act_npg)
 
         # separate node-id from conditioning features (last channel of cond)
         ids  = cond[:, 0, -1].long().to(self.device)
-        cond_feats = cond[:, :, :-1].float().to(self.device)   # (N, obs_horizon, C)
+        cond_feats = cond[:, :, :-1].float().to(self.device)   # (N_obs, obs_horizon, C)
 
-        # ---- add self-loops for GatedGraphConv compatibility ---------------
+        # ---- obs edge_index with self-loops (for EGraphConditionEncoder) ----
         edge_attr_1d = edge_attr.reshape(-1)
-        edge_index_sl, edge_attr_sl = add_self_loops(
+        obs_edge_index_sl, obs_edge_attr_sl = add_self_loops(
             edge_index, edge_attr_1d,
+            num_nodes=cond.shape[0], fill_value=0.0
+        )
+
+        # ---- action edge_index: filter to robot-only edges, remap indices ---
+        if act_npg < obs_npg:
+            src, dst = edge_index
+            src_local = src % obs_npg
+            dst_local = dst % obs_npg
+            mask = (src_local < act_npg) & (dst_local < act_npg)
+            act_ei = edge_index[:, mask]
+            act_ea = edge_attr_1d[mask]
+            graph_ids_ei = act_ei[0] // obs_npg
+            act_ei = act_ei % obs_npg + graph_ids_ei * act_npg
+        else:
+            act_ei = edge_index
+            act_ea = edge_attr_1d
+        act_edge_index_sl, act_edge_attr_sl = add_self_loops(
+            act_ei, act_ea,
             num_nodes=x.shape[0], fill_value=0.0
         )
 
         # ---- Graph-level conditioning vector --------------------------------
         # EGraphConditionEncoder returns (B, cond_channels)
         graph_cond = self.cond_encoder(
-            cond_feats, edge_index_sl, x_coord, edge_attr_sl.unsqueeze(-1),
-            batch=batch, ids=ids
+            cond_feats, obs_edge_index_sl, x_coord, obs_edge_attr_sl.unsqueeze(-1),
+            batch=obs_batch, ids=ids
         )                                                   # (B, cond_channels)
 
         # ---- Up-sample conditioning to pred_horizon -------------------------
         cond_up = self.cond_upsampler(graph_cond)          # (B, pred_horizon)
 
-        # Broadcast from per-graph to per-node
-        cond_up_node = cond_up[batch]                      # (N, pred_horizon)
-        cond_up_node = cond_up_node.unsqueeze(1)           # (N, 1, pred_horizon)
+        # Broadcast from per-graph to per-ACTION-node
+        cond_up_node = cond_up[action_batch]               # (N_act, pred_horizon)
+        cond_up_node = cond_up_node.unsqueeze(1)           # (N_act, 1, pred_horizon)
 
         # ---- Diffusion step embedding ----------------------------------------
         diffusion_step = self.diffusion_embedding(timesteps)   # (B, hidden_dim)
-        diffusion_step_node = diffusion_step[batch]            # (N, hidden_dim)
+        diffusion_step_node = diffusion_step[action_batch]     # (N_act, hidden_dim)
 
-        # ---- Reshape x: (N, T, F) -> (N, F, T) for Conv1d ------------------
-        x_conv = x.permute(0, 2, 1)                           # (N, F, T)
-        h = F.leaky_relu(self.input_projection(x_conv), 0.4)  # (N, C, T')
+        # ---- Reshape x: (N_act, T, F) -> (N_act, F, T) for Conv1d ----------
+        x_conv = x.permute(0, 2, 1)                           # (N_act, F, T)
+        h = F.leaky_relu(self.input_projection(x_conv), 0.4)  # (N_act, C, T')
 
         # ---- Residual stack --------------------------------------------------
-        # Trim h to pred_horizon (circular padding may have added extra steps)
         skip_sum = None
         for block in self.residual_blocks:
             h, skip = block(
                 h,
                 cond_up_node,
                 diffusion_step_node,
-                edge_index_sl,
+                act_edge_index_sl,
                 edge_weight=None,
             )
             if skip_sum is None:
@@ -415,4 +441,264 @@ class GDDPMNoisePred(nn.Module):
         # (N, F, T) -> (N, T, F)
         noise_pred = out.permute(0, 2, 1)
 
+        return noise_pred, x_coord
+
+
+# ---------------------------------------------------------------------------
+# Flat residual block: dilated conv only, no GatedGraphConv
+# ---------------------------------------------------------------------------
+
+class FlatResidualBlock(nn.Module):
+    """
+    Dilated-conv residual block for flat (non-graph) action sequences.
+
+    Operates on batch-level tensors (B, C, T) instead of node-level (N_total, C, T).
+    Same gated activation as ResidualBlock, without the GatedGraphConv branch.
+    """
+    def __init__(self,
+                 hidden_size: int,
+                 residual_channels: int,
+                 dilation: int):
+        super().__init__()
+        self.residual_channels = residual_channels
+
+        self.dilated_conv = nn.Conv1d(
+            residual_channels,
+            2 * residual_channels,
+            kernel_size=3,
+            padding=dilation,
+            dilation=dilation,
+            padding_mode="circular",
+        )
+        self.diffusion_projection = nn.Linear(hidden_size, 2 * residual_channels)
+        self.conditioner_projection = nn.Conv1d(
+            1, 2 * residual_channels, kernel_size=1, padding=2, padding_mode="circular"
+        )
+        self.output_projection = nn.Conv1d(residual_channels, 2 * residual_channels, 1)
+
+        nn.init.kaiming_normal_(self.conditioner_projection.weight)
+        nn.init.kaiming_normal_(self.output_projection.weight)
+
+    def forward(self,
+                x: torch.Tensor,
+                conditioner: torch.Tensor,
+                diffusion_step: torch.Tensor) -> tuple:
+        """
+        x:              (B, residual_channels, T)
+        conditioner:    (B, 1, pred_horizon)
+        diffusion_step: (B, hidden_size)
+        Returns: (residual_out, skip) both (B, residual_channels, T_min)
+        """
+        B, C, T = x.shape
+
+        cond_proj = self.conditioner_projection(conditioner)    # (B, 2C, T')
+        min_cond  = min(cond_proj.shape[-1], T)
+        cond_proj = cond_proj[..., :min_cond]
+
+        diff_proj = self.diffusion_projection(diffusion_step)   # (B, 2C)
+        diff_proj = diff_proj.unsqueeze(-1)                     # (B, 2C, 1)
+
+        y_temporal = self.dilated_conv(x)                       # (B, 2C, T')
+        T_conv = y_temporal.shape[-1]
+
+        T_min = min(T_conv, min_cond)
+        y = (y_temporal[..., :T_min]
+             + cond_proj[..., :T_min]
+             + diff_proj.expand(B, 2 * C, T_min))              # (B, 2C, T_min)
+
+        gate, filt = torch.chunk(y, 2, dim=1)
+        y = torch.sigmoid(gate) * torch.tanh(filt)             # (B, C, T_min)
+
+        y = F.leaky_relu(self.output_projection(y), 0.4)
+        residual, skip = torch.chunk(y, 2, dim=1)              # each (B, C, T_min)
+
+        T_res = min(residual.shape[-1], T)
+        residual_out = (x[..., :T_res] + residual[..., :T_res]) / math.sqrt(2.0)
+        return residual_out, skip[..., :T_res]
+
+
+# ---------------------------------------------------------------------------
+# Flat GDDPM noise predictor: graph obs encoding + flat action denoising
+# ---------------------------------------------------------------------------
+
+class FlatGDDPMNoisePred(nn.Module):
+    """
+    Drop-in replacement for GDDPMNoisePred where the action is a flat
+    (B, pred_horizon, action_dim) tensor instead of per-node.
+
+    The graph structure is used *only* for observation encoding via
+    EGraphConditionEncoder.  The residual denoising blocks operate on the
+    full action batch at graph granularity (B, ...).
+
+    Args:
+        action_dim:             flat action dimensionality (e.g. 7 for OSC_POSE)
+        cond_feature_dim:       obs feature dim (excl. node-id), e.g. 9
+        obs_horizon:            number of observation steps for conditioning
+        pred_horizon:           number of prediction steps
+        edge_feature_dim:       edge attribute size (usually 1)
+        num_edge_types:         number of edge type categories
+        residual_layers:        number of FlatResidualBlock layers
+        residual_channels:      channels inside each block
+        dilation_cycle_length:  dilation doubles every this many layers
+        hidden_dim:             hidden size for EGraphConditionEncoder
+        diffusion_step_embed_dim: sinusoidal embedding size
+        num_diffusion_steps:    total DDPM timesteps
+    """
+
+    def __init__(self,
+                 action_dim: int,
+                 cond_feature_dim: int,
+                 obs_horizon: int,
+                 pred_horizon: int,
+                 edge_feature_dim: int,
+                 num_edge_types: int,
+                 residual_layers: int = 8,
+                 residual_channels: int = 32,
+                 dilation_cycle_length: int = 2,
+                 hidden_dim: int = 256,
+                 diffusion_step_embed_dim: int = 64,
+                 num_diffusion_steps: int = 100,
+                 device=None):
+        super().__init__()
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = device
+
+        self.action_dim = action_dim
+        self.pred_horizon = pred_horizon
+        self.hidden_dim = hidden_dim
+        self.residual_channels = residual_channels
+
+        self.cond_channels = hidden_dim
+        self.cond_encoder = EGraphConditionEncoder(
+            input_dim=cond_feature_dim * obs_horizon,
+            output_dim=self.cond_channels,
+            hidden_dim=hidden_dim,
+            device=self.device,
+        ).to(self.device)
+
+        self.diffusion_embedding = DiffusionEmbedding(
+            dim=diffusion_step_embed_dim,
+            proj_dim=hidden_dim,
+            max_steps=num_diffusion_steps,
+        ).to(self.device)
+
+        self.cond_upsampler = CondUpsampler(
+            cond_length=self.cond_channels,
+            target_dim=pred_horizon,
+        ).to(self.device)
+
+        self.input_projection = nn.Conv1d(
+            action_dim,
+            residual_channels,
+            kernel_size=1,
+            padding=2,
+            padding_mode="circular",
+        ).to(self.device)
+
+        self.residual_blocks = nn.ModuleList([
+            FlatResidualBlock(
+                hidden_size=hidden_dim,
+                residual_channels=residual_channels,
+                dilation=2 ** (i % dilation_cycle_length),
+            )
+            for i in range(residual_layers)
+        ])
+        self.residual_blocks.to(self.device)
+
+        self.skip_projection = nn.Conv1d(
+            residual_channels, residual_channels, kernel_size=3
+        ).to(self.device)
+        self.output_projection = nn.Conv1d(
+            residual_channels, action_dim, kernel_size=3
+        ).to(self.device)
+
+        nn.init.kaiming_normal_(self.input_projection.weight)
+        nn.init.kaiming_normal_(self.skip_projection.weight)
+        nn.init.zeros_(self.output_projection.weight)
+
+    def forward(self,
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                edge_attr: torch.Tensor,
+                x_coord: torch.Tensor,
+                cond: torch.Tensor,
+                timesteps: torch.Tensor,
+                batch: torch.Tensor = None):
+        """
+        Args:
+            x:          (B, pred_horizon, action_dim)   flat noisy action
+            edge_index: (2, E)
+            edge_attr:  (E,) or (E, 1)
+            x_coord:    (N_total, 3)
+            cond:       (N_total, obs_horizon, cond_feature_dim+1)  graph obs (+node-id)
+            timesteps:  (B,)
+            batch:      (N_total,)  node-to-graph mapping for EGraphConditionEncoder
+
+        Returns:
+            noise_pred: (B, pred_horizon, action_dim)
+            x_coord:    (N_total, 3) unchanged
+        """
+        x          = x.float().to(self.device)
+        edge_attr  = edge_attr.float().to(self.device)
+        edge_index = edge_index.to(self.device)
+        x_coord    = x_coord.float().to(self.device)
+        timesteps  = timesteps.to(self.device)
+        if batch is None:
+            batch = torch.zeros(x_coord.shape[0], dtype=torch.long, device=self.device)
+        else:
+            batch = batch.long().to(self.device)
+
+        ids        = cond[:, 0, -1].long().to(self.device)
+        cond_feats = cond[:, :, :-1].float().to(self.device)
+
+        edge_attr_1d = edge_attr.reshape(-1)
+        edge_index_sl, edge_attr_sl = add_self_loops(
+            edge_index, edge_attr_1d,
+            num_nodes=x_coord.shape[0], fill_value=0.0
+        )
+
+        # Graph-level conditioning: (B, cond_channels)
+        graph_cond = self.cond_encoder(
+            cond_feats, edge_index_sl, x_coord, edge_attr_sl.unsqueeze(-1),
+            batch=batch, ids=ids
+        )
+
+        # Up-sample conditioning to pred_horizon: (B, pred_horizon) -> (B, 1, pred_horizon)
+        cond_up = self.cond_upsampler(graph_cond).unsqueeze(1)
+
+        # Diffusion step embedding: (B, hidden_dim)
+        diffusion_step = self.diffusion_embedding(timesteps)
+
+        # x: (B, T, Da) -> (B, Da, T) for Conv1d
+        x_conv = x.permute(0, 2, 1)
+        h = F.leaky_relu(self.input_projection(x_conv), 0.4)
+
+        skip_sum = None
+        for block in self.residual_blocks:
+            h, skip = block(h, cond_up, diffusion_step)
+            if skip_sum is None:
+                skip_sum = skip
+            else:
+                min_T = min(skip_sum.shape[-1], skip.shape[-1])
+                skip_sum = (skip_sum[..., :min_T] + skip[..., :min_T])
+
+        n_layers = len(self.residual_blocks)
+        skip_sum = skip_sum / math.sqrt(n_layers)
+
+        out = F.leaky_relu(self.skip_projection(skip_sum), 0.4)
+        out = self.output_projection(out)                       # (B, Da, T''')
+
+        T_out = out.shape[-1]
+        if T_out >= self.pred_horizon:
+            out = out[..., :self.pred_horizon]
+        else:
+            pad = torch.zeros(
+                out.shape[0], out.shape[1], self.pred_horizon - T_out,
+                device=self.device
+            )
+            out = torch.cat([out, pad], dim=-1)
+
+        noise_pred = out.permute(0, 2, 1)                      # (B, T, Da)
         return noise_pred, x_coord

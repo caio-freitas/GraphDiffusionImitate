@@ -1,0 +1,30 @@
+_target_: imitation.policy.osc_ddpm_policy.OSCGraphDDPMPolicy
+
+action_dim: ${task.action_dim}   # 7 for OSC_POSE
+num_edge_types: 2
+pred_horizon: ${pred_horizon}
+obs_horizon: ${obs_horizon}
+action_horizon: ${action_horizon}
+num_diffusion_iters: 100
+dataset: ${task.dataset}
+
+denoising_network:
+  _target_: imitation.model.gddpm.FlatGDDPMNoisePred
+  action_dim: ${policy.action_dim}
+  cond_feature_dim: 9        # 9-D obs features: pos(3) + rot_6d(6)
+  obs_horizon: ${obs_horizon}
+  pred_horizon: ${pred_horizon}
+  edge_feature_dim: 1
+  num_edge_types: ${policy.num_edge_types}
+  residual_layers: 8
+  residual_channels: 32
+  dilation_cycle_length: 2
+  hidden_dim: 256
+  diffusion_step_embed_dim: 64
+  num_diffusion_steps: ${policy.num_diffusion_iters}
+
+ckpt_path: ./weights/osc_ddpm_policy_${task.task_name}_${task.control_mode}_${policy.num_diffusion_iters}iters.pt
+lr: 1e-4
+batch_size: 128
+use_normalization: True
+keep_first_action: True
