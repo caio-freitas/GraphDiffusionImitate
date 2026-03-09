@@ -19,6 +19,17 @@ from torch_geometric.data import DataLoader
 log = logging.getLogger(__name__)
 
 
+def compute_snr(timesteps: torch.Tensor, noise_scheduler) -> torch.Tensor:
+    """Compute signal-to-noise ratio at each timestep."""
+    alphas_cumprod = noise_scheduler.alphas_cumprod.to(timesteps.device)
+    sqrt_alphas_cumprod = alphas_cumprod ** 0.5
+    sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+    alpha_t = sqrt_alphas_cumprod[timesteps]
+    sigma_t = sqrt_one_minus_alphas_cumprod[timesteps]
+    snr = (alpha_t / sigma_t) ** 2
+    return snr
+
+
 class OSCGraphDDPMPolicy(BasePolicy):
     """
     DDPM policy for OSC_POSE control.
@@ -48,7 +59,8 @@ class OSCGraphDDPMPolicy(BasePolicy):
                  lr: float = 1e-4,
                  batch_size: int = 256,
                  use_normalization: bool = True,
-                 keep_first_action: bool = True):
+                 keep_first_action: bool = True,
+                 num_warmup_steps: int = 100):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -62,6 +74,7 @@ class OSCGraphDDPMPolicy(BasePolicy):
         self.lr = lr
         self.use_normalization = use_normalization
         self.keep_first_action = keep_first_action
+        self.num_warmup_steps = num_warmup_steps
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
 
@@ -83,6 +96,13 @@ class OSCGraphDDPMPolicy(BasePolicy):
 
         self.global_epoch = 0
         # (1, pred_horizon, action_dim)
+        self.last_naction = torch.zeros(
+            (1, self.pred_horizon, self.action_dim), device=self.device
+        )
+        self.playback_count = 0
+
+    def reset(self):
+        """Reset stateful inference buffers between episodes."""
         self.last_naction = torch.zeros(
             (1, self.pred_horizon, self.action_dim), device=self.device
         )
@@ -169,17 +189,14 @@ class OSCGraphDDPMPolicy(BasePolicy):
         self.last_naction = naction
 
         if self.use_normalization:
-            # Reshape to per-node format for unnormalize_data, then back
-            naction_node = (
-                naction.permute(0, 2, 1)        # (1, action_dim, pred_horizon)
-                       .unsqueeze(-1)           # (1, action_dim, pred_horizon, 1)
-                       .reshape(self.action_dim, self.pred_horizon, 1)
-            )
-            naction_node = self.dataset.unnormalize_data(naction_node, stats_key='action')
-            # (action_horizon, action_dim)
-            action = naction_node[:, :self.action_horizon, 0].T
+            # naction[0] is (pred_horizon, action_dim) — matches per-dim normalizer
+            # (scale shape (action_dim,)) which expects last dim = action_dim
+            action = self.dataset.unnormalize_data(
+                naction[0], stats_key='action'
+            )  # (pred_horizon, action_dim)
+            action = action[:self.pred_horizon, :].numpy()
         else:
-            action = naction[0, :self.action_horizon, :].numpy()
+            action = naction[0, :self.pred_horizon, :].numpy()
 
         return action
 
@@ -198,17 +215,17 @@ class OSCGraphDDPMPolicy(BasePolicy):
             for batch in dataloader:
                 B = batch.num_graphs
                 nobs = batch.x
+                # batch.y: (action_dim*B, pred_horizon, 1) from PyG DataLoader
+                # Reshape to (B, pred_horizon, action_dim) BEFORE normalizing so
+                # the per-dim normalizer (scale shape (action_dim,)) sees last dim=action_dim
+                action_raw = batch.y.view(B, self.action_dim, self.pred_horizon, 1)
+                action_raw = action_raw[:, :, :, 0].permute(0, 2, 1)  # (B, T, Da)
                 if self.use_normalization:
                     nobs = self.dataset.normalize_data(batch.x, stats_key='obs').to(self.device)
                     nobs[:, :, -1] = batch.x[:, :, -1]
-                    naction_raw = self.dataset.normalize_data(batch.y, stats_key='action').to(self.device)
+                    naction = self.dataset.normalize_data(action_raw, stats_key='action').to(self.device)
                 else:
-                    naction_raw = batch.y.to(self.device)
-
-                # batch.y: (action_dim*B, pred_horizon, 1)
-                # reshape to (B, pred_horizon, action_dim)
-                naction = naction_raw.view(B, self.action_dim, self.pred_horizon, 1)
-                naction = naction[:, :, :, 0].permute(0, 2, 1)   # (B, T, Da)
+                    naction = action_raw.to(self.device)
 
                 timesteps = torch.randint(
                     0, self.noise_scheduler.config.num_train_timesteps,
@@ -224,16 +241,22 @@ class OSCGraphDDPMPolicy(BasePolicy):
                 obs_cond = nobs.float()
                 noisy_actions = noisy_actions.float()
 
-                noise_pred, _ = self.ema_noise_pred_net(
-                    noisy_actions,
-                    batch.edge_index,
-                    batch.edge_attr,
-                    x_coord=batch.pos[:, :3],
-                    cond=obs_cond,
-                    timesteps=timesteps,
-                    batch=batch.batch,
-                )
-                loss = F.mse_loss(noise_pred, noise)
+                with torch.cuda.amp.autocast():
+                    noise_pred, _ = self.ema_noise_pred_net(
+                        noisy_actions,
+                        batch.edge_index,
+                        batch.edge_attr,
+                        x_coord=batch.pos[:, :3],
+                        cond=obs_cond,
+                        timesteps=timesteps,
+                        batch=batch.batch,
+                    )
+                    # Per-sample MSE loss
+                    loss_per_sample = F.mse_loss(noise_pred, noise, reduction='none').mean(dim=(1, 2))  # (B,)
+                    # Min-SNR-5 reweighting
+                    snr = compute_snr(timesteps, self.noise_scheduler)
+                    min_snr_weight = torch.clamp(snr, max=5.0) / snr
+                    loss = (min_snr_weight * loss_per_sample).mean()
                 val_loss.append(loss.item())
 
         return np.mean(val_loss)
@@ -250,7 +273,7 @@ class OSCGraphDDPMPolicy(BasePolicy):
         log.info('Training noise prediction network.')
 
         if self.num_epochs is None:
-            log.warn(f"Global num_epochs not set. Using {num_epochs}.")
+            log.warning(f"Global num_epochs not set. Using {num_epochs}.")
             self.num_epochs = num_epochs
 
         torch.manual_seed(seed)
@@ -275,29 +298,31 @@ class OSCGraphDDPMPolicy(BasePolicy):
             self.lr_scheduler = get_scheduler(
                 name='cosine',
                 optimizer=self.optimizer,
-                num_warmup_steps=500,
+                num_warmup_steps=self.num_warmup_steps,
                 num_training_steps=len(dataloader) * self.num_epochs,
             )
 
+        scaler = torch.cuda.amp.GradScaler() if torch.cuda.is_available() else None
+
         with tqdm(range(num_epochs), desc='Epoch') as tglobal:
-            for epoch_idx in tglobal:
+            for _ in tglobal:
                 epoch_loss = []
                 with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
                         B = batch.num_graphs
 
                         nobs = batch.x
+                        # batch.y: (action_dim*B, pred_horizon, 1) from PyG DataLoader
+                        # Reshape to (B, pred_horizon, action_dim) BEFORE normalizing so
+                        # the per-dim normalizer (scale shape (action_dim,)) sees last dim=action_dim
+                        action_raw = batch.y.view(B, self.action_dim, self.pred_horizon, 1)
+                        action_raw = action_raw[:, :, :, 0].permute(0, 2, 1)  # (B, T, Da)
                         if self.use_normalization:
                             nobs = self.dataset.normalize_data(batch.x, stats_key='obs').to(self.device)
                             nobs[:, :, -1] = batch.x[:, :, -1]
-                            naction_raw = self.dataset.normalize_data(batch.y, stats_key='action').to(self.device)
+                            naction = self.dataset.normalize_data(action_raw, stats_key='action').to(self.device)
                         else:
-                            naction_raw = batch.y.to(self.device)
-
-                        # batch.y: (action_dim*B, pred_horizon, 1) from PyG DataLoader
-                        # Reshape to (B, pred_horizon, action_dim)
-                        naction = naction_raw.view(B, self.action_dim, self.pred_horizon, 1)
-                        naction = naction[:, :, :, 0].permute(0, 2, 1)   # (B, T, Da)
+                            naction = action_raw.to(self.device)
 
                         timesteps = torch.randint(
                             0, self.noise_scheduler.config.num_train_timesteps,
@@ -313,24 +338,40 @@ class OSCGraphDDPMPolicy(BasePolicy):
                         noisy_actions = noisy_actions.float()
                         obs_cond = nobs.float()
 
-                        noise_pred, _ = self.noise_pred_net(
-                            noisy_actions,
-                            batch.edge_index,
-                            batch.edge_attr,
-                            x_coord=batch.pos[:, :3],
-                            cond=obs_cond,
-                            timesteps=timesteps,
-                            batch=batch.batch,
-                        )
+                        with torch.cuda.amp.autocast():
+                            noise_pred, _ = self.noise_pred_net(
+                                noisy_actions,
+                                batch.edge_index,
+                                batch.edge_attr,
+                                x_coord=batch.pos[:, :3],
+                                cond=obs_cond,
+                                timesteps=timesteps,
+                                batch=batch.batch,
+                            )
 
-                        loss = F.mse_loss(noise_pred, noise)
+                            # Per-sample MSE loss
+                            loss_per_sample = F.mse_loss(noise_pred, noise, reduction='none').mean(dim=(1, 2))  # (B,)
+                            # Min-SNR-5 reweighting
+                            snr = compute_snr(timesteps, self.noise_scheduler)
+                            min_snr_weight = torch.clamp(snr, max=5.0) / snr
+                            loss = (min_snr_weight * loss_per_sample).mean()
+
                         wandb.log({
                             'noise_pred_loss': loss,
                             'lr': self.lr_scheduler.get_last_lr()[0],
+                            'min_snr_weight_mean': min_snr_weight.mean().item(),
                         })
 
-                        loss.backward()
-                        self.optimizer.step()
+                        if scaler is not None:
+                            scaler.scale(loss).backward()
+                            scaler.unscale_(self.optimizer)
+                            torch.nn.utils.clip_grad_norm_(self.noise_pred_net.parameters(), max_norm=1.0)
+                            scaler.step(self.optimizer)
+                            scaler.update()
+                        else:
+                            loss.backward()
+                            torch.nn.utils.clip_grad_norm_(self.noise_pred_net.parameters(), max_norm=1.0)
+                            self.optimizer.step()
                         self.optimizer.zero_grad()
                         self.lr_scheduler.step()
                         ema.step(self.noise_pred_net.parameters())

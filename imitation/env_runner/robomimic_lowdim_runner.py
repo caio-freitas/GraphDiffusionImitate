@@ -62,6 +62,7 @@ class RobomimicEnvRunner(BaseRunner):
             [self.obs] * self.obs_horizon, maxlen=self.obs_horizon)
 
     def run(self, agent: BaseAgent, n_steps: int) -> Dict:
+        agent.policy.reset()
         log.info(f"Running agent {agent.__class__.__name__} for {n_steps} steps")
         if self.output_video:
             self.start_video()

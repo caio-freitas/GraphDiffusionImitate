@@ -35,7 +35,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     lr: float = 1e-4,
                     batch_size: int = 256,
                     use_normalization: bool = True,
-                    keep_first_action: bool = True,):
+                    keep_first_action: bool = True,
+                    num_warmup_steps: int = 100):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -51,6 +52,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.lr = lr
         self.use_normalization = use_normalization
         self.keep_first_action = keep_first_action
+        self.num_warmup_steps = num_warmup_steps
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
@@ -298,7 +300,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             self.lr_scheduler = get_scheduler(
                 name='cosine',
                 optimizer=self.optimizer,
-                num_warmup_steps=500,
+                num_warmup_steps=self.num_warmup_steps,
                 num_training_steps=len(dataloader) * self.num_epochs
             )
 

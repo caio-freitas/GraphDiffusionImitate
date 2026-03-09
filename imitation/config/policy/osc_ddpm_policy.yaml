@@ -5,7 +5,7 @@ num_edge_types: 2
 pred_horizon: ${pred_horizon}
 obs_horizon: ${obs_horizon}
 action_horizon: ${action_horizon}
-num_diffusion_iters: 100
+num_diffusion_iters: 50
 dataset: ${task.dataset}
 
 denoising_network:
@@ -27,4 +27,5 @@ ckpt_path: ./weights/osc_ddpm_policy_${task.task_name}_${task.control_mode}_${po
 lr: 1e-4
 batch_size: 128
 use_normalization: True
-keep_first_action: True
+keep_first_action: False
+num_warmup_steps: 100

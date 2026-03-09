@@ -300,8 +300,14 @@ class RobomimicGraphDataset(InMemoryDataset):
             data_obs.append(data["x"])      # x = observations
             data_action.append(data["y"])    # y = actions
         data_obs = torch.cat(data_obs, dim=1)
-        data_action = torch.cat(data_action, dim=1)
-        
+        data_action = torch.cat(data_action, dim=1)  # (action_dim, N*T, feat_dim)
+
+        if self.control_mode == "OSC_POSE":
+            # data_action shape: (action_dim=7, N*T, 1)
+            # Reshape to (N*T, action_dim) so LinearNormalizer fits per-dim stats
+            # (with last_n_dims=1, scale/offset will be shape (action_dim,)).
+            data_action = data_action[:, :, 0].T.contiguous()  # (N*T, action_dim)
+
         normalizer.fit(
             {
                 "obs": data_obs,
@@ -309,7 +315,20 @@ class RobomimicGraphDataset(InMemoryDataset):
             }
         )
         return normalizer
-    
+
+    def refit_normalizer(self, indices):
+        """Recompute normalizer stats using only the given sample indices (e.g. train set)."""
+        data_obs, data_action = [], []
+        for idx in indices:
+            data = torch.load(osp.join(self.processed_dir, f'data_{idx}.pt'))
+            data_obs.append(data["x"])
+            data_action.append(data["y"])
+        data_obs    = torch.cat(data_obs,    dim=1)
+        data_action = torch.cat(data_action, dim=1)
+        if self.control_mode == "OSC_POSE":
+            data_action = data_action[:, :, 0].T.contiguous()
+        self.normalizer.fit({'obs': data_obs, 'action': data_action})
+
     def to_obs_deque(self, data):
         obs_deque = collections.deque(maxlen=self.obs_horizon)
         data_t = data.clone()

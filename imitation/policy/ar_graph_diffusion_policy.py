@@ -27,7 +27,8 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
                  lr=1e-4,
                  ckpt_path=None,
                  device = None,
-                 use_normalization = False,):
+                 use_normalization = False,
+                 num_warmup_steps: int = 100):
         super(AutoregressiveGraphDiffusionPolicy, self).__init__()
         if device == None:
            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -39,6 +40,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
         self.num_edge_types = num_edge_types
         self.model = denoising_network
         self.use_normalization = use_normalization
+        self.num_warmup_steps = num_warmup_steps
         self.masker = NodeMasker(dataset)
         self.global_epoch = 0
 
@@ -207,7 +209,7 @@ class AutoregressiveGraphDiffusionPolicy(nn.Module):
             self.lr_scheduler = get_scheduler(
                 name='cosine',
                 optimizer=self.optimizer,
-                num_warmup_steps=1000,
+                num_warmup_steps=self.num_warmup_steps,
                 num_training_steps=len(dataset) * self.num_epochs
             )
 
