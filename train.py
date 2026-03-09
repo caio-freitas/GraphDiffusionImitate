@@ -8,6 +8,7 @@ import os
 import pathlib
 
 import hydra
+import numpy as np
 import torch
 import wandb
 
@@ -57,10 +58,32 @@ def train(cfg: DictConfig) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed(cfg.seed)
 
-    # Split the dataset into train and validation
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        policy.dataset, [len(policy.dataset) - int(cfg.val_fraction * len(policy.dataset)), int(cfg.val_fraction * len(policy.dataset))]
-    )
+    # Episode-aware train/val split — keeps entire episodes on one side to avoid
+    # temporal leakage between samples from the same demonstration.
+    ds = policy.dataset
+    episode_sample_ranges = []
+    idx_global = 0
+    for key in ds.dataset_keys:
+        ep_len = ds.dataset_root[f"data/{key}/obs/object"].shape[0]
+        n_samples = ep_len - ds.pred_horizon - 1
+        episode_sample_ranges.append(list(range(idx_global, idx_global + n_samples)))
+        idx_global += n_samples
+
+    rng = np.random.default_rng(cfg.seed)
+    episode_order = rng.permutation(len(episode_sample_ranges)).tolist()
+    n_val_eps = max(1, int(cfg.val_fraction * len(episode_order)))
+    val_eps   = episode_order[:n_val_eps]
+    train_eps = episode_order[n_val_eps:]
+
+    train_indices = [i for ep in train_eps for i in episode_sample_ranges[ep]]
+    val_indices   = [i for ep in val_eps   for i in episode_sample_ranges[ep]]
+
+    train_dataset = torch.utils.data.Subset(ds, train_indices)
+    val_dataset   = torch.utils.data.Subset(ds, val_indices)
+
+    # Recompute normalizer on training data only (removes val leakage).
+    log.info("Refitting normalizer on training episodes...")
+    ds.refit_normalizer(train_indices)
 
     E = cfg.num_epochs
     V = cfg.num_epochs

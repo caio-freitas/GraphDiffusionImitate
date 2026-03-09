@@ -264,7 +264,7 @@ class RobomimicGraphDataset(InMemoryDataset):
         # calculate length of dataset based on self.dataset_root
         length = 0
         for key in self.dataset_keys:
-            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon - self.obs_horizon - 1
+            length += self.dataset_root[f"data/{key}/obs/object"].shape[0] - self.pred_horizon - 1
         return length
     
     def get(self, idx):

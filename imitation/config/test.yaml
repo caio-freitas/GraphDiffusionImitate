@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - task: lift_graph
-  - policy: gddpm_policy
+  - policy: osc_ddpm_policy
 
 output_video: False
 render: True
@@ -13,7 +13,7 @@ output_dir: ./outputs
 
 pred_horizon: 16
 obs_horizon: 4
-action_horizon: 16
+action_horizon: 12
 action_offset: 0 # action offset for the policy, 1 if first action is to be ignored
 
 
