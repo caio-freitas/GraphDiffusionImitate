@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 
@@ -60,7 +61,8 @@ class OSCGraphDDPMPolicy(BasePolicy):
                  batch_size: int = 256,
                  use_normalization: bool = True,
                  keep_first_action: bool = True,
-                 num_warmup_steps: int = 100):
+                 num_warmup_steps: int = 100,
+                 ema_decay: float = 0.9999):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -75,11 +77,25 @@ class OSCGraphDDPMPolicy(BasePolicy):
         self.use_normalization = use_normalization
         self.keep_first_action = keep_first_action
         self.num_warmup_steps = num_warmup_steps
+        self.ema_decay = ema_decay
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
 
         self.noise_pred_net = denoising_network.to(self.device)
-        self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+        # ema_noise_pred_net is a separate deep-copy used for inference
+        self.ema_noise_pred_net = copy.deepcopy(self.noise_pred_net).to(self.device)
+
+        # EMA tracker — persistent across train() calls so state accumulates
+        if ema_decay is not None and ema_decay > 0:
+            self._ema = EMAModel(
+                parameters=self.noise_pred_net.parameters(),
+                decay=ema_decay,
+                power=0.75,
+            )
+            log.info(f"EMA enabled with decay={ema_decay}")
+        else:
+            self._ema = None
+            log.info("EMA disabled")
 
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
@@ -108,27 +124,44 @@ class OSCGraphDDPMPolicy(BasePolicy):
         )
         self.playback_count = 0
 
+    def _sync_ema_to_inference_net(self):
+        """Copy current EMA averaged weights into ema_noise_pred_net for inference."""
+        if self._ema is not None:
+            self._ema.copy_to(self.ema_noise_pred_net.parameters())
+        else:
+            self.ema_noise_pred_net.load_state_dict(self.noise_pred_net.state_dict())
+
     def load_nets(self, ckpt_path):
         if ckpt_path is None:
             log.info('No pretrained weights given.')
-            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+            self._sync_ema_to_inference_net()
             return
         if not os.path.isfile(ckpt_path):
             log.error(f"Pretrained weights not found at {ckpt_path}.")
-            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+            self._sync_ema_to_inference_net()
             return
         try:
-            state_dict = torch.load(ckpt_path, map_location=self.device)
-            self.ema_noise_pred_net = self.noise_pred_net
-            self.ema_noise_pred_net.load_state_dict(state_dict)
-            self.ema_noise_pred_net.to(self.device)
+            checkpoint = torch.load(ckpt_path, map_location=self.device)
+            # Support both new dict format and legacy bare state-dict format
+            if isinstance(checkpoint, dict) and 'model' in checkpoint:
+                self.noise_pred_net.load_state_dict(checkpoint['model'])
+                if self._ema is not None and 'ema' in checkpoint:
+                    self._ema.load_state_dict(checkpoint['ema'])
+                    log.info('EMA state loaded from checkpoint.')
+            else:
+                # Legacy: bare state dict (EMA weights saved directly)
+                self.noise_pred_net.load_state_dict(checkpoint)
+            self._sync_ema_to_inference_net()
             log.info('Pretrained weights loaded.')
         except Exception:
             log.error('Error loading pretrained weights.')
-            self.ema_noise_pred_net = self.noise_pred_net.to(self.device)
+            self._sync_ema_to_inference_net()
 
     def save_nets(self, ckpt_path):
-        torch.save(self.ema_noise_pred_net.state_dict(), ckpt_path)
+        checkpoint = {'model': self.noise_pred_net.state_dict()}
+        if self._ema is not None:
+            checkpoint['ema'] = self._ema.state_dict()
+        torch.save(checkpoint, ckpt_path)
         log.info(f"Model saved at {ckpt_path}")
 
     # ------------------------------------------------------------------
@@ -282,8 +315,6 @@ class OSCGraphDDPMPolicy(BasePolicy):
 
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        ema = EMAModel(parameters=self.ema_noise_pred_net.parameters(), power=0.75)
-
         self.noise_pred_net.to(self.device)
         if self.optimizer is None:
             self.optimizer = torch.optim.AdamW(
@@ -374,7 +405,8 @@ class OSCGraphDDPMPolicy(BasePolicy):
                             self.optimizer.step()
                         self.optimizer.zero_grad()
                         self.lr_scheduler.step()
-                        ema.step(self.noise_pred_net.parameters())
+                        if self._ema is not None:
+                            self._ema.step(self.noise_pred_net.parameters())
 
                         loss_cpu = loss.item()
                         epoch_loss.append(loss_cpu)
@@ -382,6 +414,7 @@ class OSCGraphDDPMPolicy(BasePolicy):
 
                 tglobal.set_postfix(loss=np.mean(epoch_loss))
                 wandb.log({'epoch': self.global_epoch, 'epoch_loss': np.mean(epoch_loss)})
+                self._sync_ema_to_inference_net()
                 self.save_nets(model_path)
                 self.global_epoch += 1
                 tglobal.set_description(f"Epoch: {self.global_epoch}")
