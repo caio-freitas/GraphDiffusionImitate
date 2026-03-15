@@ -34,7 +34,7 @@ Tests
 4. test_dataset_x_and_wrapper_x_feature_order_match
    The obs feature vector (x) must have the same column ordering between
    dataset and wrapper, because the normalizer is fit on the dataset's x.
-   Columns: [joint_pos(7), gripper_qpos(2), node_id(1)] for robot nodes.
+   Columns: [joint_pos(7), gripper_qpos(2)] for robot nodes.
 """
 
 import importlib.util
@@ -243,7 +243,7 @@ class TestObsXConsistency:
             f"{max_err:.2e} at step {worst_t} (tolerance {Y_MATCH_TOL:.0e}).\n"
             f"The network sees different obs conditioning at train vs eval time.\n"
             f"Check that both use the same feature ordering: "
-            f"[joint_pos(7), gripper_qpos(2), node_id(1)] for robot nodes."
+            f"[joint_pos(7), gripper_qpos(2)] for robot nodes."
         )
 
     def test_obs_x_feature_shape_is_consistent(
@@ -316,7 +316,7 @@ class TestObsDequeAssembly:
         )
 
     def test_nobs_normalised_range(self, dataset):
-        """Normalized nobs (excluding node-ID column) is in [-NORM_RANGE_TOL, NORM_RANGE_TOL]."""
+        """Normalized nobs is in [-NORM_RANGE_TOL, NORM_RANGE_TOL]."""
         CHECK_N = 20
         step    = max(1, dataset.len() // CHECK_N)
 
@@ -324,9 +324,7 @@ class TestObsDequeAssembly:
         for start_idx in range(0, dataset.len(), step):
             obs   = self._assemble_nobs(dataset, start_idx=start_idx)
             nobs  = dataset.normalize_data(obs, stats_key="obs")
-            # Exclude node-ID column (last feature)
-            nobs_no_id = nobs[:, :, :-1]
-            all_norm.append(nobs_no_id.reshape(-1).detach().numpy())
+            all_norm.append(nobs.reshape(-1).detach().numpy())
 
         import numpy as np
         all_norm = np.concatenate(all_norm)
@@ -510,7 +508,6 @@ class TestObsXFeatureOrdering:
     identical feature *ordering* for robot nodes:
         col 0..6  : joint_pos  (7 values) — stored sparsely, one per node
         col 7..8  : gripper_qpos (2 values) — stored sparsely
-        col -1    : sequential node ID (0-indexed, used as embedding index)
 
     A column-ordering mismatch would mean the normalizer scales the wrong
     physical quantities, making the policy conditioning signal meaningless.
@@ -521,10 +518,7 @@ class TestObsXFeatureOrdering:
     ):
         """
         At a known timestep, check that the wrapper and dataset x feature
-        tensors agree on robot nodes and sequential node IDs (last column).
-
-        Node IDs are sequential integers (0, 1, ..., N-1) used as embedding
-        indices by EGraphConditionEncoder — not node-type flags.
+        tensors agree on robot nodes.
         """
         t = 5     # arbitrary mid-episode step
         obs_dict  = _build_wrapper_obs_dict(episode_data, t)
@@ -533,24 +527,16 @@ class TestObsXFeatureOrdering:
         x_wrapper = wrapper_get_x_fn(obs_dict)           # (num_nodes, feat)
         x_dataset = dataset_get_x_fn(data_dict, [t])[:, 0, :]  # (num_nodes, feat)
 
-        num_nodes = x_wrapper.shape[0]
-
         print(f"\n── x feature ordering check (t={t}) ──────────────────────")
         print(f"  Wrapper x[:10,:] =\n{x_wrapper[:10,:]}")
         print(f"  Dataset x[:10,:] =\n{x_dataset[:10,:]}")
 
-        # Last column must be sequential node IDs (0, 1, ..., N-1) for both
-        expected_ids = torch.arange(num_nodes, dtype=torch.float32)
-        wrapper_ids = x_wrapper[:, -1]
-        dataset_ids = x_dataset[:, -1]
-
-        assert torch.all(wrapper_ids == expected_ids), (
-            f"Wrapper x node IDs {wrapper_ids.tolist()} != expected {expected_ids.tolist()}.\n"
-            f"The node-ID column (last) must be sequential 0..N-1 for the embedding lookup."
+        assert x_wrapper.shape == x_dataset.shape, (
+            f"Wrapper x shape {tuple(x_wrapper.shape)} != dataset x shape {tuple(x_dataset.shape)}."
         )
-        assert torch.all(dataset_ids == expected_ids), (
-            f"Dataset x node IDs {dataset_ids.tolist()} != expected {expected_ids.tolist()}.\n"
-            f"The node-ID column (last) must be sequential 0..N-1 for the embedding lookup."
+        assert torch.allclose(x_wrapper.float(), x_dataset.float(), atol=1e-5), (
+            f"Wrapper and dataset x feature tensors disagree.\n"
+            f"A column-ordering mismatch means the normalizer scales wrong features."
         )
 
 
@@ -565,8 +551,8 @@ class TestOscPoseNodeFeats:
     joint_pos + gripper_qpos per robot node, object pos/rot for object nodes.
     Only the actions (y) differ (flat 7-D EEF vector vs per-node joint values).
 
-    Expected shape: (10, K) — 9 robot + 1 object nodes, K features including
-    the sequential node-ID column at the end.
+    Expected shape: (10, K) — 9 robot + 1 object nodes, K features
+    (joint_pos(7) + gripper_qpos(2) per robot node, object pose for object node).
     """
 
     def _make_wrapper_x_feats_fn(self):
@@ -609,18 +595,6 @@ class TestOscPoseNodeFeats:
         assert feats.shape[0] == 10, (
             f"OSC_POSE x feats have {feats.shape[0]} nodes, expected 10 "
             f"(9 robot + 1 object). Graph topology must be preserved."
-        )
-
-    def test_osc_pose_x_feats_node_ids_sequential(self, episode_data):
-        """Last column of _get_x_feats must be sequential node IDs 0..9."""
-        get_x_feats = self._make_wrapper_x_feats_fn()
-        obs_dict = self._build_obs_dict(episode_data, 10)
-        feats = get_x_feats(obs_dict)
-        num_nodes = feats.shape[0]
-        expected_ids = torch.arange(num_nodes, dtype=torch.float32)
-        assert torch.all(feats[:, -1] == expected_ids), (
-            f"OSC_POSE node IDs {feats[:, -1].tolist()} != expected {expected_ids.tolist()}.\n"
-            f"Node IDs must be sequential 0..N-1 for embedding lookup."
         )
 
     def test_osc_pose_robot_nodes_first_feature_is_joint_pos(self, episode_data):

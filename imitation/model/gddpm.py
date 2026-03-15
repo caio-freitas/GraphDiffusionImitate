@@ -207,7 +207,7 @@ class GDDPMNoisePred(nn.Module):
 
     Args:
         node_feature_dim:       feature dimension per node per step (e.g. 1 for joint value)
-        cond_feature_dim:       obs feature dim (excl. node-id), e.g. 6 for 6D rotation
+        cond_feature_dim:       obs feature dim, e.g. 9 for joint_pos+gripper_qpos features
         obs_horizon:            number of observation steps for conditioning
         pred_horizon:           number of prediction steps (action horizon)
         edge_feature_dim:       edge attribute size (usually 1)
@@ -323,7 +323,7 @@ class GDDPMNoisePred(nn.Module):
             edge_index: (2, E)
             edge_attr:  (E,) or (E, 1)  — edge attributes / types
             x_coord:    (N_total, 3) — 3D node positions
-            cond:       (N_total, obs_horizon, cond_feature_dim+1)  — obs (+node-id last)
+            cond:       (N_total, obs_horizon, cond_feature_dim)  — obs features
             timesteps:  (B,)  — diffusion timestep per graph in batch
             batch:      (N_total,)  — maps each node to its graph index
 
@@ -351,9 +351,9 @@ class GDDPMNoisePred(nn.Module):
         # action_batch: maps action nodes to their graph index
         action_batch = torch.arange(B, dtype=torch.long, device=self.device).repeat_interleave(act_npg)
 
-        # separate node-id from conditioning features (last channel of cond)
-        ids  = cond[:, 0, -1].long().to(self.device)
-        cond_feats = cond[:, :, :-1].float().to(self.device)   # (N_obs, obs_horizon, C)
+        # auto-generate node IDs from node order (no longer stored in cond)
+        ids        = torch.arange(cond.shape[0], device=self.device) % obs_npg
+        cond_feats = cond.float().to(self.device)   # (N_obs, obs_horizon, C)
 
         # ---- obs edge_index with self-loops (for EGraphConditionEncoder) ----
         edge_attr_1d = edge_attr.reshape(-1)
@@ -532,7 +532,7 @@ class FlatGDDPMNoisePred(nn.Module):
 
     Args:
         action_dim:             flat action dimensionality (e.g. 7 for OSC_POSE)
-        cond_feature_dim:       obs feature dim (excl. node-id), e.g. 9
+        cond_feature_dim:       obs feature dim, e.g. 9 for joint_pos+gripper_qpos features
         obs_horizon:            number of observation steps for conditioning
         pred_horizon:           number of prediction steps
         edge_feature_dim:       edge attribute size (usually 1)
@@ -571,7 +571,7 @@ class FlatGDDPMNoisePred(nn.Module):
         self.residual_channels = residual_channels
 
         self.cond_channels = hidden_dim
-        self.cond_encoder = EGraphConditionEncoder(
+        self.cond_encoder = EGraphConditionEncoder( # TODO create clean graph encoder for this model, based on the paper
             input_dim=cond_feature_dim * obs_horizon,
             output_dim=self.cond_channels,
             hidden_dim=hidden_dim,
@@ -632,7 +632,7 @@ class FlatGDDPMNoisePred(nn.Module):
             edge_index: (2, E)
             edge_attr:  (E,) or (E, 1)
             x_coord:    (N_total, 3)
-            cond:       (N_total, obs_horizon, cond_feature_dim+1)  graph obs (+node-id)
+            cond:       (N_total, obs_horizon, cond_feature_dim)  graph obs features
             timesteps:  (B,)
             batch:      (N_total,)  node-to-graph mapping for EGraphConditionEncoder
 
@@ -650,8 +650,9 @@ class FlatGDDPMNoisePred(nn.Module):
         else:
             batch = batch.long().to(self.device)
 
-        ids        = cond[:, 0, -1].long().to(self.device)
-        cond_feats = cond[:, :, :-1].float().to(self.device)
+        # auto-generate node IDs from node order (no longer stored in cond)
+        ids        = torch.arange(cond.shape[0], device=self.device) % (cond.shape[0] // B)
+        cond_feats = cond.float().to(self.device)
 
         edge_attr_1d = edge_attr.reshape(-1)
         edge_index_sl, edge_attr_sl = add_self_loops(

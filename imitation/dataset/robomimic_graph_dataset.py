@@ -161,12 +161,6 @@ class RobomimicGraphDataset(InMemoryDataset):
         
         x = torch.cat((x, obj_state_tensor), dim=0)
 
-        # add column for node ID (used as embedding index by the model)
-        num_nodes = x.shape[0]
-        node_ids = torch.arange(num_nodes, dtype=torch.float32).unsqueeze(1).unsqueeze(1)  # (N, 1, 1)
-        node_ids = node_ids.expand(-1, x.shape[1], -1)  # (N, T, 1)
-        x = torch.cat((x, node_ids), dim=2)
-
         return x
 
     def _get_target_actions_horizon(self, data, idx, horizon, actions):

@@ -192,7 +192,6 @@ class OSCGraphDDPMPolicy(BasePolicy):
 
         if self.use_normalization:
             nobs = self.dataset.normalize_data(obs, stats_key='obs')
-            nobs[:, :, -1] = obs[:, :, -1]   # preserve node IDs
         else:
             nobs = obs
 
@@ -266,7 +265,6 @@ class OSCGraphDDPMPolicy(BasePolicy):
                 action_raw = action_raw[:, :, :, 0].permute(0, 2, 1)  # (B, T, Da)
                 if self.use_normalization:
                     nobs = self.dataset.normalize_data(batch.x, stats_key='obs').to(self.device)
-                    nobs[:, :, -1] = batch.x[:, :, -1]
                     naction = self.dataset.normalize_data(action_raw, stats_key='action').to(self.device)
                 else:
                     naction = action_raw.to(self.device)
@@ -361,7 +359,6 @@ class OSCGraphDDPMPolicy(BasePolicy):
                         action_raw = action_raw[:, :, :, 0].permute(0, 2, 1)  # (B, T, Da)
                         if self.use_normalization:
                             nobs = self.dataset.normalize_data(batch.x, stats_key='obs').to(self.device)
-                            nobs[:, :, -1] = batch.x[:, :, -1]
                             naction = self.dataset.normalize_data(action_raw, stats_key='action').to(self.device)
                         else:
                             naction = action_raw.to(self.device)

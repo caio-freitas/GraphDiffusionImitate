@@ -202,11 +202,6 @@ class RobomimicGraphWrapper(gym.Env):
         x = torch.cat([x, torch.zeros((x.shape[0], obj_state_tensor.shape[1] - x.shape[1]))], dim=1)  # (9, 9)
         x = torch.cat([x, obj_state_tensor], dim=0)  # (10, 9)
 
-        # add column for node ID (used as embedding index by the model)
-        num_nodes = x.shape[0]
-        node_ids = torch.arange(num_nodes, dtype=torch.float32).unsqueeze(1)  # (N, 1)
-        x = torch.cat([x, node_ids], dim=1)  # (10, 7)
-        
         return x
 
     @lru_cache(maxsize=128)
