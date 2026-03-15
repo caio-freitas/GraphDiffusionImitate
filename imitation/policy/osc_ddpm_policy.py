@@ -62,7 +62,7 @@ class OSCGraphDDPMPolicy(BasePolicy):
                  use_normalization: bool = True,
                  keep_first_action: bool = True,
                  num_warmup_steps: int = 100,
-                 ema_decay: float = 0.9999):
+                 ema_decay: float = None):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
