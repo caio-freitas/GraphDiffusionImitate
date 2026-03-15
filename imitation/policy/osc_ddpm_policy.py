@@ -148,6 +148,13 @@ class OSCGraphDDPMPolicy(BasePolicy):
                 if self._ema is not None and 'ema' in checkpoint:
                     self._ema.load_state_dict(checkpoint['ema'])
                     log.info('EMA state loaded from checkpoint.')
+                elif self._ema is not None:
+                    # Checkpoint has no EMA state — reinitialize shadow params from
+                    # the loaded model weights so inference doesn't use random weights.
+                    for s_param, param in zip(self._ema.shadow_params,
+                                              self.noise_pred_net.parameters()):
+                        s_param.data.copy_(param.data)
+                    log.info('No EMA state in checkpoint; shadow params reset from model weights.')
             else:
                 # Legacy: bare state dict (EMA weights saved directly)
                 self.noise_pred_net.load_state_dict(checkpoint)
@@ -155,6 +162,10 @@ class OSCGraphDDPMPolicy(BasePolicy):
             log.info('Pretrained weights loaded.')
         except Exception:
             log.error('Error loading pretrained weights.')
+            if self._ema is not None:
+                for s_param, param in zip(self._ema.shadow_params,
+                                          self.noise_pred_net.parameters()):
+                    s_param.data.copy_(param.data)
             self._sync_ema_to_inference_net()
 
     def save_nets(self, ckpt_path):
