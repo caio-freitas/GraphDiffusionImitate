@@ -88,7 +88,7 @@ dmypy.json
 multirun/
 
 # Model weights
-weights/
+weights/*
 
 # Archive files
 archive/
