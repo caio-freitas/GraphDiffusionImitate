@@ -14,8 +14,9 @@ ConditionalGraphNoisePred are:
   1. Temporal backbone: dilated 1-D convolutions (vs. EGNN message-passing).
   2. Spatial backbone: GatedGraphConv (torch_geometric) inside each residual block,
      applied jointly over the dilated-conv output.
-  3. Conditioning: same EGraphConditionEncoder is re-used for graph-level FiLM conditioning;
-     the resulting vector is upsampled with a CondUpsampler MLP before being injected into
+  3. Conditioning: GraphCondEncoder encodes graph-structured observations into a
+     per-graph conditioning vector using GatedGraphConv (same spatial operator as
+     the residual blocks); upsampled with CondUpsampler MLP before injection into
      every residual block (instead of FiLM scales/biases per EGNN layer).
 
 """
@@ -30,7 +31,6 @@ from torch_geometric.nn import GatedGraphConv
 from torch_geometric.utils import add_self_loops
 from torch_geometric.nn.pool import global_mean_pool
 
-from imitation.model.graph_diffusion import EGraphConditionEncoder
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +83,59 @@ class CondUpsampler(nn.Module):
         x = F.leaky_relu(self.linear1(x), 0.4)
         x = F.leaky_relu(self.linear2(x), 0.4)
         return x
+
+
+# ---------------------------------------------------------------------------
+# Graph conditioning encoder  (replaces EGraphConditionEncoder from graph_diffusion.py)
+# ---------------------------------------------------------------------------
+
+class GraphCondEncoder(nn.Module):
+    """
+    GNN encoder for graph-structured observations, aligned with the GDDPM paper.
+
+    Uses GatedGraphConv (same spatial operator as the ResidualBlocks) rather
+    than the E(N)-equivariant EGNN from EGraphConditionEncoder. No coordinate
+    updates, no equivariance overhead.
+
+    Architecture:
+      1. Flatten temporal obs: (N, obs_horizon, F) -> (N, obs_horizon*F)
+      2. Concatenate learned node-ID embedding (N, 16)
+      3. Linear input projection -> (N, hidden_dim)
+      4. GatedGraphConv message passing (n_layers iterations, weight-shared)
+      5. Global mean pooling per graph -> (B, hidden_dim)
+      6. Linear output projection -> (B, output_dim)
+
+    Args:
+        input_dim:  obs_horizon * cond_feature_dim (flattened obs per node)
+        hidden_dim: internal feature dimension
+        output_dim: output conditioning vector size
+        n_layers:   GatedGraphConv iterations (default 3)
+        max_nodes:  node ID embedding table size (default 30)
+    """
+    def __init__(self, input_dim, hidden_dim, output_dim, n_layers=3, max_nodes=30):
+        super().__init__()
+        self.id_embedding = nn.Embedding(max_nodes, 16)
+        self.input_proj   = nn.Linear(input_dim + 16, hidden_dim)
+        self.gnn          = GatedGraphConv(hidden_dim, num_layers=n_layers)
+        self.output_proj  = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x, edge_index, batch, ids):
+        """
+        Args:
+            x:          (N, obs_horizon, cond_feature_dim)
+            edge_index: (2, E) — with self-loops already added by caller
+            batch:      (N,) — node-to-graph mapping
+            ids:        (N,) — node index within each graph
+        Returns:
+            (B, output_dim) — graph-level conditioning vector
+        """
+        h = x.float().flatten(start_dim=1)             # (N, input_dim)
+        id_embed = self.id_embedding(ids.long())        # (N, 16)
+        h = torch.cat([h, id_embed], dim=-1)            # (N, input_dim+16)
+        h = F.leaky_relu(self.input_proj(h), 0.4)      # (N, hidden_dim)
+        h = self.gnn(h, edge_index)                    # (N, hidden_dim)
+        g = global_mean_pool(h, batch=batch)           # (B, hidden_dim)
+        return self.output_proj(g)                     # (B, output_dim)
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +253,8 @@ class GDDPMNoisePred(nn.Module):
     GDDPM denoising network with the same interface as ConditionalGraphNoisePred.
 
     Architecture summary:
-      - EGraphConditionEncoder encodes the graph-structured observation into a
-        per-graph conditioning vector (same as in the project's existing model).
+      - GraphCondEncoder encodes the graph-structured observation into a
+        per-graph conditioning vector using GatedGraphConv.
       - CondUpsampler projects it to a node-dimension matching the graph size.
       - A stack of ResidualBlocks (dilated conv + GatedGraphConv) predicts noise.
 
@@ -215,7 +268,7 @@ class GDDPMNoisePred(nn.Module):
         residual_layers:        number of ResidualBlock layers
         residual_channels:      channels inside each block
         dilation_cycle_length:  dilation doubles every this many layers
-        hidden_dim:             hidden size for EGraphConditionEncoder and diffusion embed
+        hidden_dim:             hidden size for GraphCondEncoder and diffusion embed
         diffusion_step_embed_dim: raw sinusoidal embedding size (≤ hidden_dim)
         num_diffusion_steps:    total DDPM timesteps (for embedding table)
         device:                 torch device (auto-detected if None)
@@ -253,11 +306,10 @@ class GDDPMNoisePred(nn.Module):
         # cond_channels: output length from EGraphConditionEncoder.
         # We use it as the `cond_length` fed into CondUpsampler.
         self.cond_channels = hidden_dim
-        self.cond_encoder = EGraphConditionEncoder(
+        self.cond_encoder = GraphCondEncoder(
             input_dim=cond_feature_dim * obs_horizon,
-            output_dim=self.cond_channels,
             hidden_dim=hidden_dim,
-            device=self.device,
+            output_dim=self.cond_channels,
         ).to(self.device)
 
         # --- Diffusion step embedding ------------------------------------------
@@ -381,9 +433,8 @@ class GDDPMNoisePred(nn.Module):
         )
 
         # ---- Graph-level conditioning vector --------------------------------
-        # EGraphConditionEncoder returns (B, cond_channels)
         graph_cond = self.cond_encoder(
-            cond_feats, obs_edge_index_sl, x_coord, obs_edge_attr_sl.unsqueeze(-1),
+            cond_feats, obs_edge_index_sl,
             batch=obs_batch, ids=ids
         )                                                   # (B, cond_channels)
 
@@ -527,7 +578,7 @@ class FlatGDDPMNoisePred(nn.Module):
     (B, pred_horizon, action_dim) tensor instead of per-node.
 
     The graph structure is used *only* for observation encoding via
-    EGraphConditionEncoder.  The residual denoising blocks operate on the
+    GraphCondEncoder.  The residual denoising blocks operate on the
     full action batch at graph granularity (B, ...).
 
     Args:
@@ -540,7 +591,7 @@ class FlatGDDPMNoisePred(nn.Module):
         residual_layers:        number of FlatResidualBlock layers
         residual_channels:      channels inside each block
         dilation_cycle_length:  dilation doubles every this many layers
-        hidden_dim:             hidden size for EGraphConditionEncoder
+        hidden_dim:             hidden size for GraphCondEncoder
         diffusion_step_embed_dim: sinusoidal embedding size
         num_diffusion_steps:    total DDPM timesteps
     """
@@ -571,11 +622,10 @@ class FlatGDDPMNoisePred(nn.Module):
         self.residual_channels = residual_channels
 
         self.cond_channels = hidden_dim
-        self.cond_encoder = EGraphConditionEncoder( # TODO create clean graph encoder for this model, based on the paper
+        self.cond_encoder = GraphCondEncoder(
             input_dim=cond_feature_dim * obs_horizon,
-            output_dim=self.cond_channels,
             hidden_dim=hidden_dim,
-            device=self.device,
+            output_dim=self.cond_channels,
         ).to(self.device)
 
         self.diffusion_embedding = DiffusionEmbedding(
@@ -634,7 +684,7 @@ class FlatGDDPMNoisePred(nn.Module):
             x_coord:    (N_total, 3)
             cond:       (N_total, obs_horizon, cond_feature_dim)  graph obs features
             timesteps:  (B,)
-            batch:      (N_total,)  node-to-graph mapping for EGraphConditionEncoder
+            batch:      (N_total,)  node-to-graph mapping for GraphCondEncoder
 
         Returns:
             noise_pred: (B, pred_horizon, action_dim)
@@ -651,6 +701,7 @@ class FlatGDDPMNoisePred(nn.Module):
             batch = batch.long().to(self.device)
 
         # auto-generate node IDs from node order (no longer stored in cond)
+        B          = timesteps.shape[0]
         ids        = torch.arange(cond.shape[0], device=self.device) % (cond.shape[0] // B)
         cond_feats = cond.float().to(self.device)
 
@@ -662,7 +713,7 @@ class FlatGDDPMNoisePred(nn.Module):
 
         # Graph-level conditioning: (B, cond_channels)
         graph_cond = self.cond_encoder(
-            cond_feats, edge_index_sl, x_coord, edge_attr_sl.unsqueeze(-1),
+            cond_feats, edge_index_sl,
             batch=batch, ids=ids
         )
 
