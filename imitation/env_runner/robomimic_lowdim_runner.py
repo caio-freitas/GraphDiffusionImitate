@@ -33,15 +33,15 @@ class RobomimicEnvRunner(BaseRunner):
         self.use_full_pred_after = use_full_pred_after 
         self.output_dir = output_dir
         self.curr_video = None
-        if self.output_video: # don't create video writer if not needed
-            self.start_video()
-
+        self.video_writer = None
 
         # keep a queue of last obs_horizon steps of observations
         self.reset()
 
 
     def start_video(self):
+        if self.video_writer is not None:
+            self.video_writer.close()
         self.curr_video = f"{self.output_dir}/output_{time.time()}.mp4"
         self.video_writer = imageio.get_writer(self.curr_video, fps=30)
 
