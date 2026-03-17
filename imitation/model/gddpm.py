@@ -99,39 +99,33 @@ class GraphCondEncoder(nn.Module):
 
     Architecture:
       1. Flatten temporal obs: (N, obs_horizon, F) -> (N, obs_horizon*F)
-      2. Concatenate learned node-ID embedding (N, 16)
-      3. Linear input projection -> (N, hidden_dim)
-      4. GatedGraphConv message passing (n_layers iterations, weight-shared)
-      5. Global mean pooling per graph -> (B, hidden_dim)
-      6. Linear output projection -> (B, output_dim)
+      2. Linear input projection -> (N, hidden_dim)
+      3. GatedGraphConv message passing (n_layers iterations, weight-shared)
+      4. Global mean pooling per graph -> (B, hidden_dim)
+      5. Linear output projection -> (B, output_dim)
 
     Args:
         input_dim:  obs_horizon * cond_feature_dim (flattened obs per node)
         hidden_dim: internal feature dimension
         output_dim: output conditioning vector size
         n_layers:   GatedGraphConv iterations (default 3)
-        max_nodes:  node ID embedding table size (default 30)
     """
-    def __init__(self, input_dim, hidden_dim, output_dim, n_layers=3, max_nodes=30):
+    def __init__(self, input_dim, hidden_dim, output_dim, n_layers=3):
         super().__init__()
-        self.id_embedding = nn.Embedding(max_nodes, 16)
-        self.input_proj   = nn.Linear(input_dim + 16, hidden_dim)
-        self.gnn          = GatedGraphConv(hidden_dim, num_layers=n_layers)
-        self.output_proj  = nn.Linear(hidden_dim, output_dim)
+        self.input_proj  = nn.Linear(input_dim, hidden_dim)
+        self.gnn         = GatedGraphConv(hidden_dim, num_layers=n_layers)
+        self.output_proj = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x, edge_index, batch, ids):
+    def forward(self, x, edge_index, batch):
         """
         Args:
             x:          (N, obs_horizon, cond_feature_dim)
             edge_index: (2, E) — with self-loops already added by caller
             batch:      (N,) — node-to-graph mapping
-            ids:        (N,) — node index within each graph
         Returns:
             (B, output_dim) — graph-level conditioning vector
         """
         h = x.float().flatten(start_dim=1)             # (N, input_dim)
-        id_embed = self.id_embedding(ids.long())        # (N, 16)
-        h = torch.cat([h, id_embed], dim=-1)            # (N, input_dim+16)
         h = F.leaky_relu(self.input_proj(h), 0.4)      # (N, hidden_dim)
         h = self.gnn(h, edge_index)                    # (N, hidden_dim)
         g = global_mean_pool(h, batch=batch)           # (B, hidden_dim)
@@ -403,8 +397,6 @@ class GDDPMNoisePred(nn.Module):
         # action_batch: maps action nodes to their graph index
         action_batch = torch.arange(B, dtype=torch.long, device=self.device).repeat_interleave(act_npg)
 
-        # auto-generate node IDs from node order (no longer stored in cond)
-        ids        = torch.arange(cond.shape[0], device=self.device) % obs_npg
         cond_feats = cond.float().to(self.device)   # (N_obs, obs_horizon, C)
 
         # ---- obs edge_index with self-loops (for EGraphConditionEncoder) ----
@@ -435,7 +427,7 @@ class GDDPMNoisePred(nn.Module):
         # ---- Graph-level conditioning vector --------------------------------
         graph_cond = self.cond_encoder(
             cond_feats, obs_edge_index_sl,
-            batch=obs_batch, ids=ids
+            batch=obs_batch,
         )                                                   # (B, cond_channels)
 
         # ---- Up-sample conditioning to pred_horizon -------------------------
@@ -700,9 +692,6 @@ class FlatGDDPMNoisePred(nn.Module):
         else:
             batch = batch.long().to(self.device)
 
-        # auto-generate node IDs from node order (no longer stored in cond)
-        B          = timesteps.shape[0]
-        ids        = torch.arange(cond.shape[0], device=self.device) % (cond.shape[0] // B)
         cond_feats = cond.float().to(self.device)
 
         edge_attr_1d = edge_attr.reshape(-1)
@@ -714,7 +703,7 @@ class FlatGDDPMNoisePred(nn.Module):
         # Graph-level conditioning: (B, cond_channels)
         graph_cond = self.cond_encoder(
             cond_feats, edge_index_sl,
-            batch=batch, ids=ids
+            batch=batch,
         )
 
         # Up-sample conditioning to pred_horizon: (B, pred_horizon) -> (B, 1, pred_horizon)
