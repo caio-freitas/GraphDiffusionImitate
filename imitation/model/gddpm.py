@@ -93,9 +93,7 @@ class GraphCondEncoder(nn.Module):
     """
     GNN encoder for graph-structured observations, aligned with the GDDPM paper.
 
-    Uses GatedGraphConv (same spatial operator as the ResidualBlocks) rather
-    than the E(N)-equivariant EGNN from EGraphConditionEncoder. No coordinate
-    updates, no equivariance overhead.
+    Uses GatedGraphConv (same spatial operator as the ResidualBlocks).
 
     Architecture:
       1. Flatten temporal obs: (N, obs_horizon, F) -> (N, obs_horizon*F)
@@ -112,20 +110,23 @@ class GraphCondEncoder(nn.Module):
     """
     def __init__(self, input_dim, hidden_dim, output_dim, n_layers=3):
         super().__init__()
-        self.input_proj   = nn.Linear(input_dim, hidden_dim)
+        self.input_proj   = nn.Linear(input_dim + 3, hidden_dim)
         self.gnn          = GatedGraphConv(hidden_dim, num_layers=n_layers)
         self.output_proj  = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x, edge_index, batch):
+    def forward(self, x, edge_index, batch, pos=None):
         """
         Args:
             x:          (N, obs_horizon, cond_feature_dim)
             edge_index: (2, E) — with self-loops already added by caller
             batch:      (N,) — node-to-graph mapping
+            pos:        (N, 3) — optional 3D Cartesian node positions
         Returns:
             (B, output_dim) — graph-level conditioning vector
         """
         h = x.float().flatten(start_dim=1)             # (N, input_dim)
+        if pos is not None:
+            h = torch.cat([h, pos.float()], dim=-1)    # (N, input_dim + 3)
         h = F.leaky_relu(self.input_proj(h), 0.4)      # (N, hidden_dim)
         h = self.gnn(h, edge_index)                    # (N, hidden_dim)
         g = global_mean_pool(h, batch=batch)           # (B, hidden_dim)
@@ -426,6 +427,7 @@ class GDDPMNoisePred(nn.Module):
         graph_cond = self.cond_encoder(
             cond.float().to(self.device), obs_edge_index_sl,
             batch=obs_batch,
+            pos=x_coord,
         )                                                   # (B, cond_channels)
 
         # ---- Up-sample conditioning to pred_horizon -------------------------
@@ -702,6 +704,7 @@ class FlatGDDPMNoisePred(nn.Module):
         graph_cond = self.cond_encoder(
             cond.float().to(self.device), edge_index_sl,
             batch=batch,
+            pos=x_coord,
         )
 
         # Up-sample conditioning to pred_horizon: (B, pred_horizon) -> (B, 1, pred_horizon)
