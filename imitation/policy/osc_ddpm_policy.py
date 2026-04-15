@@ -195,6 +195,7 @@ class OSCGraphDDPMPolicy(BasePolicy):
         else:
             nobs = obs
 
+        self.ema_noise_pred_net.eval()
         with torch.no_grad():
             noisy_action = torch.randn(
                 (1, self.pred_horizon, self.action_dim), device=self.device
@@ -228,6 +229,7 @@ class OSCGraphDDPMPolicy(BasePolicy):
                 if self.keep_first_action:
                     noisy_action[:, 0, :] = self.last_naction[:, -1, :]
 
+        self.ema_noise_pred_net.train()
         naction = noisy_action.detach().cpu()   # (1, pred_horizon, action_dim)
         self.last_naction = naction
 
