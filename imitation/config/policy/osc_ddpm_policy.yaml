@@ -29,4 +29,4 @@ batch_size: 128
 use_normalization: True
 keep_first_action: False
 num_warmup_steps: 100
-ema_decay: 0.9999
+ema_decay: 0.99
