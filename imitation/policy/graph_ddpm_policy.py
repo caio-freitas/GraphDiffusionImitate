@@ -35,7 +35,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     lr: float = 1e-4,
                     batch_size: int = 256,
                     use_normalization: bool = True,
-                    keep_first_action: bool = True,):
+                    keep_first_action: bool = True,
+                    num_warmup_steps: int = 100):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -51,6 +52,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         self.lr = lr
         self.use_normalization = use_normalization
         self.keep_first_action = keep_first_action
+        self.num_warmup_steps = num_warmup_steps
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         log.info(f"Using device {self.device}")
         # create network object
@@ -103,8 +105,8 @@ class GraphConditionalDDPMPolicy(BasePolicy):
     def MOCK_get_graph_from_obs(self): # for testing purposes, remove before merge
         # plays back observation from dataset
         playback_graph = self.dataset[self.playback_count]
-        obs_cond    = playback_graph.y
-        playback_graph.x = playback_graph.x[:,0,:]
+        obs_cond    = playback_graph.x
+        playback_graph.y = playback_graph.y[:,0,:]
         self.playback_count += 7
         log.info(f"Playing back observation {self.playback_count}")
         return obs_cond, playback_graph
@@ -116,24 +118,28 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         pos = []
         G_t = obs_deque[-1]
         for i in range(len(obs_deque)):
-            obs_cond.append(obs_deque[i].y.unsqueeze(1))
+            obs_cond.append(obs_deque[i].x.unsqueeze(1))  # x = observations
             pos.append(obs_deque[i].pos)
         obs = torch.cat(obs_cond, dim=1)
         obs_pos = torch.cat(pos, dim=0)
         if self.use_normalization:
             nobs = self.dataset.normalize_data(obs, stats_key='obs')
-            nobs[:,:,-1] = obs[:,:,-1] # skip normalization for node IDs
-            self.last_naction = self.dataset.normalize_data(G_t.x.unsqueeze(1), stats_key='action').to(self.device)
+            # Use last obs step as initial action estimate (y holds actions at inference via dataset replay)
+            if hasattr(G_t, 'y') and G_t.y is not None:
+                self.last_naction = self.dataset.normalize_data(G_t.y.unsqueeze(1), stats_key='action').to(self.device)
         else:
-            self.last_naction = G_t.x.unsqueeze(1).to(self.device)
+            if hasattr(G_t, 'y') and G_t.y is not None:
+                self.last_naction = G_t.y.unsqueeze(1).to(self.device)
 
         with torch.no_grad():
-            # initialize action from Guassian noise
-            noisy_action = torch.randn((G_t.x.shape[0], self.pred_horizon, self.node_feature_dim), device=self.device)
+            # initialize action from Gaussian noise
+            # For per-node actions: (num_nodes, pred_horizon, node_feature_dim)
+            num_nodes = G_t.x.shape[0]
+            noisy_action = torch.randn((num_nodes, self.pred_horizon, self.node_feature_dim), device=self.device)
             naction = noisy_action
 
-            if self.keep_first_action:
-                naction[:,0,:] = self.last_naction[:,-1,:1] 
+            if self.keep_first_action and self.last_naction.shape[0] == num_nodes:
+                naction[:,0,:] = self.last_naction[:,-1,:self.node_feature_dim]
 
             # init scheduler
             self.noise_scheduler.set_timesteps(self.num_diffusion_iters)
@@ -157,15 +163,16 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     sample=naction
                 ).prev_sample
 
-                if self.keep_first_action:
-                    naction[:,0,:] = self.last_naction[:,-1,:1]
+                if self.keep_first_action and self.last_naction.shape[0] == num_nodes:
+                    naction[:,0,:] = self.last_naction[:,-1,:self.node_feature_dim]
 
 
-        # add node dimension, to pass through normalizer
-        naction = torch.cat([naction, torch.zeros((naction.shape[0], self.pred_horizon, 1), device=self.device)], dim=2)
         naction = naction.detach().to('cpu')
         if self.use_normalization:
             naction = self.dataset.unnormalize_data(naction, stats_key='action').numpy()
+        else:
+            naction = naction.numpy()
+        # Extract action: first action_dim nodes, all pred_horizon steps, first feature
         action = naction[:self.action_dim,:,0].T
         
         # (action_horizon, action_dim)
@@ -187,20 +194,19 @@ class GraphConditionalDDPMPolicy(BasePolicy):
         with torch.no_grad():
             val_loss = list()
             for batch in dataloader:
-                nobs = batch.y
+                # x = observations, y = actions
+                nobs = batch.x
                 if self.use_normalization:
                     # normalize observation
-                    nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
-                    nobs[:,:,-1] = batch.y[:,:,-1] # skip normalization for node IDs
+                    nobs = self.dataset.normalize_data(batch.x, stats_key='obs').to(self.device)
                     # normalize action
-                    naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
+                    naction = self.dataset.normalize_data(batch.y, stats_key='action').to(self.device)
+                else:
+                    naction = batch.y.to(self.device)
                 B = batch.num_graphs
 
                 # observation as FiLM conditioning
-                # (B, node, obs_horizon, obs_dim)
                 obs_cond = nobs
-                naction = naction[:,:,:1] # joint value
-                # (B, obs_horizon * obs_dim)
 
                 # sample a diffusion iteration for each data point
                 timesteps = torch.randint(
@@ -208,14 +214,11 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                     (B,), device=self.device
                 ).long()
 
-                # add noise to the clean images according to the noise magnitude at each diffusion iteration
-                # (this is the forward diffusion process)
-
-                # split naction into (B, N_nodes, pred_horizon, node_feature_dim), selecting the items from each batch.batch
-                naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
+                # Reshape: batch.y is (action_dim*B, pred_horizon, node_feature_dim)
+                # → (B, action_dim, pred_horizon, node_feature_dim)
+                naction = naction.view(B, self.action_dim, self.pred_horizon, self.node_feature_dim)
 
                 # sample noise to add to actions
-
                 noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                 noisy_actions = self.noise_scheduler.add_noise(
@@ -295,7 +298,7 @@ class GraphConditionalDDPMPolicy(BasePolicy):
             self.lr_scheduler = get_scheduler(
                 name='cosine',
                 optimizer=self.optimizer,
-                num_warmup_steps=500,
+                num_warmup_steps=self.num_warmup_steps,
                 num_training_steps=len(dataloader) * self.num_epochs
             )
 
@@ -306,19 +309,19 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                 # batch loop
                 with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                     for batch in tepoch:
-                        nobs = batch.y
+                        # x = observations, y = actions
+                        nobs = batch.x
                         if self.use_normalization:
                             # normalize observation
-                            nobs = self.dataset.normalize_data(batch.y, stats_key='obs').to(self.device)
-                            nobs[:,:,-1] = batch.y[:,:,-1] # skip normalization for node IDs
+                            nobs = self.dataset.normalize_data(batch.x, stats_key='obs').to(self.device)
                             # normalize action
-                            naction = self.dataset.normalize_data(batch.x, stats_key='action').to(self.device)
+                            naction = self.dataset.normalize_data(batch.y, stats_key='action').to(self.device)
+                        else:
+                            naction = batch.y.to(self.device)
                         B = batch.num_graphs
 
                         # observation as FiLM conditioning
-                        # (B, node, obs_horizon, obs_dim)
                         obs_cond = nobs
-                        naction = naction[:,:,:1] # joint value
 
                         # sample a diffusion iteration for each data point
                         timesteps = torch.randint(
@@ -326,13 +329,9 @@ class GraphConditionalDDPMPolicy(BasePolicy):
                             (B,), device=self.device
                         ).long()
 
-                        # add noise to the clean images according to the noise magnitude at each diffusion iteration
-                        # (this is the forward diffusion process)
-                        # split naction into (B, N_nodes, pred_horizon, node_feature_dim), selecting the items from each batch.batch
-
-                        naction = torch.cat([naction[batch.batch == i].unsqueeze(0) for i in batch.batch.unique()], dim=0)
-
-                        # add noise to first action instead of sampling from Gaussian
+                        # Reshape: batch.y is (action_dim*B, pred_horizon, node_feature_dim)
+                        # → (B, action_dim, pred_horizon, node_feature_dim)
+                        naction = naction.view(B, self.action_dim, self.pred_horizon, self.node_feature_dim)
                         noise = torch.randn(naction.shape, device=self.device, dtype=torch.float32)
 
                         noisy_actions = self.noise_scheduler.add_noise(

@@ -14,8 +14,8 @@ dependencies:
     - pytorchvideo
     - gymnasium==0.28.1
     - gym
-    - -e git+https://github.com/ARISE-Initiative/robomimic@main#egg=robomimic
-    - diffusers
+    - robomimic
+    - diffusers==0.29.2
     - zarr
     - einops
     - tqdm
@@ -33,6 +33,5 @@ dependencies:
     - wandb
     # related work dependencies
     - -e git+https://github.com/columbia-ai-robotics/diffusion_policy@main#egg=diffusion_policy
-    - -e git+https://github.com/anindex/stoch_gpmp@main#egg=stoch_gpmp
     - -e git+https://github.com/anindex/torch_robotics@main#egg=torch_robotics
     

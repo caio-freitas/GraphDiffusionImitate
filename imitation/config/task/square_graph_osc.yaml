@@ -1,0 +1,55 @@
+
+task_name: &task_name square
+dataset_type: &dataset_type ph
+dataset_path: &dataset_path ./data/${task.task_name}/${task.dataset_type}/low_dim_v141.hdf5
+
+max_steps: ${eval:'800 if "${task.dataset_type}" == "mh" else 600'}
+
+control_mode: "OSC_POSE"
+
+obs_dim: 10     # 9 robot + 1 object nodes
+action_dim: 7   # flat 7-D EEF vector (xyz + rotation + gripper)
+
+robots: ["Panda"]
+
+object_state_sizes: &object_state_sizes
+  nut_pos: 3
+  nut_quat: 4
+
+object_state_keys: &object_state_keys
+  nut: ["nut_pos", "nut_quat"]
+
+env_runner:
+  _target_: imitation.env_runner.robomimic_lowdim_runner.RobomimicEnvRunner
+  output_dir: ${output_dir}
+  action_horizon: ${action_horizon}
+  obs_horizon: ${obs_horizon}
+  action_offset: ${action_offset}
+  render: ${render}
+  output_video: ${output_video}
+  use_full_pred_after: 0.8
+  env:
+    _target_: imitation.env.robomimic_graph_wrapper.RobomimicGraphWrapper
+    object_state_sizes: *object_state_sizes
+    object_state_keys:  *object_state_keys
+    max_steps: ${task.max_steps}
+    task: "NutAssemblySquare"
+    has_renderer: ${render}
+    robots: ${task.robots}
+    output_video: ${output_video}
+    control_mode: ${task.control_mode}
+    controller_config:
+      interpolation: "linear"
+      ramp_ratio: 0.2
+    base_link_shift: [[-0.56, 0, 0.912]]
+
+dataset:
+  _target_: imitation.dataset.robomimic_graph_dataset.RobomimicGraphDataset
+  dataset_path: ${task.dataset_path}
+  robots: ${task.robots}
+  pred_horizon: ${pred_horizon}
+  obs_horizon: ${obs_horizon}
+  object_state_sizes: *object_state_sizes
+  object_state_keys:  *object_state_keys
+  control_mode: ${task.control_mode}
+  base_link_shift: [[-0.56, 0, 0.912]]

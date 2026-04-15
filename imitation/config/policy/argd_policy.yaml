@@ -17,3 +17,4 @@ denoising_network:
   num_layers: 2
   hidden_dim: 512
 use_normalization: False
+num_warmup_steps: 100

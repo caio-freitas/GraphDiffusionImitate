@@ -48,6 +48,8 @@ def test_lift_edge_data_match(lift_wrapper, lift_dataset):
 def test_lift_node_data_match(lift_wrapper, lift_dataset):
     env_obs = lift_wrapper.reset()
     G_0 = lift_dataset[0]
+    # Both x fields should share the same node type flags (last column)
     assert (env_obs.x[:,-1] == G_0.x[:,0,-1]).all()
-    assert (env_obs.y.shape == G_0.y[:,0,:].shape)
-    
+    # Wrapper x is 2D (nodes, feat), dataset x is 3D (nodes, obs_horizon, feat)
+    assert (env_obs.x.shape[0] == G_0.x.shape[0])  # same number of nodes
+    assert (env_obs.x.shape[-1] == G_0.x.shape[-1])  # same feature dim

@@ -88,10 +88,16 @@ dmypy.json
 multirun/
 
 # Model weights
-weights/
+weights/*
 
 # Archive files
 archive/
 
 # Notebooks
 notebooks/
+
+# Docs
+docs/
+
+# Claude
+CLAUDE.md

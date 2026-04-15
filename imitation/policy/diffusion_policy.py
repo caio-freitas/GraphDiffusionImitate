@@ -42,7 +42,8 @@ class DiffusionUnet1DPolicy(BasePolicy):
                     dataset: BaseLowdimDataset,
                     ckpt_path= None,
                     lr: float = 1e-4,
-                    batch_size: int = 256):
+                    batch_size: int = 256,
+                    num_warmup_steps: int = 100):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
@@ -55,6 +56,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         self.action_horizon = action_horizon
         self.num_diffusion_iters = num_diffusion_iters
         self.lr = lr
+        self.num_warmup_steps = num_warmup_steps
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         log.info(f"Using device {self.device}")
@@ -204,7 +206,7 @@ class DiffusionUnet1DPolicy(BasePolicy):
         lr_scheduler = get_scheduler(
             name='cosine',
             optimizer=optimizer,
-            num_warmup_steps=500,
+            num_warmup_steps=self.num_warmup_steps,
             num_training_steps=len(self.dataloader) * num_epochs
         )
 
